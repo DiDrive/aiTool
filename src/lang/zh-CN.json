@@ -499,7 +499,7 @@
     "voice.timbreDesc": "音色说明",
     "voice.timbreManage": "音色管理",
     "voice.voice": "声音",
-    "welcome.title": "欢迎使用 AIGCPanel !",
+    "welcome.title": "欢迎使用数智印象！",
     "workflow.configureRecognitionAndGeneration": "请配置声音识别和声音生成服务",
     "workflow.inputVideoParam": "请输入视频参数",
     "workflow.paramErrorMissing": "参数错误：缺少 {items}",

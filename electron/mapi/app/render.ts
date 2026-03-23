@@ -161,6 +161,9 @@ export const AppsRender = {
     windowHide,
     windowClose,
     windowMove,
+    callHandleFromMainOrRender: (name: string, ...args: any[]) => {
+        return ipcRenderer.invoke(name, ...args);
+    },
     openExternal,
     openPath,
     showItemInFolder,

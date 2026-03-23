@@ -56,7 +56,6 @@ onMounted(() => {
                 </div>
                 <div class="p-2 flex-grow">
                     {{ AppConfig.title }}
-                    <span class="bg-gray-200 text-gray-500 rounded-lg px-1 inline-block">{{ $t("社区版") }}</span>
                 </div>
             </div>
             <div v-if="!isOsx" class="p-1 leading-4">

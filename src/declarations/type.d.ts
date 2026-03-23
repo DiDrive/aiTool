@@ -383,6 +383,7 @@ declare global {
     interface Window {
         __page: DefsPage;
         $mapi: DefsMapi;
+        ipcRenderer: any;
     }
 
     const __page: DefsPage;

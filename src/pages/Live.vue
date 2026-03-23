@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import {onMounted, ref} from "vue";
 import Router from "../router";
-import ProUpgrade from "../components/common/ProUpgrade.vue";
+import LiveTalk from "./Live/LiveTalk.vue";
+import LiveKnowledge from "./Live/LiveKnowledge.vue";
+import LiveMonitor from "./Live/LiveMonitor.vue";
 
 const tab = ref("");
 
@@ -62,8 +64,13 @@ onMounted(() => {
                 </div>
             </div>
         </div>
-        <div class="flex-grow h-full overflow-y-auto">
-            <ProUpgrade />
+        <div class="flex-grow bg-gray-50 h-full overflow-hidden">
+            <LiveKnowledge v-if="tab === 'knowledge'" />
+            <LiveMonitor v-else-if="tab === 'monitor'" />
+            <LiveTalk v-else-if="tab === 'liveTalk'" />
+            <div v-else class="flex h-full items-center justify-center text-gray-400">
+                开发中...
+            </div>
         </div>
     </div>
 </template>

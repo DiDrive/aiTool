@@ -1,11 +1,11 @@
 // @see https://www.electron.build/configuration/configuration
 {
     "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-    "appId": "AigcPanel",
+    "appId": "ShuzhiYinxiang",
     "publish": [],
     "asar": true,
     "npmRebuild": true,
-    "productName": "AigcPanel",
+    "productName": "数智印象",
     "directories": {
         "output": "dist-release",
         "buildResources": "electron/resources/build"
@@ -52,9 +52,9 @@
         "requestExecutionLevel": "user"
     },
     "appx": {
-        "identityName": "AigcPanel",
+        "identityName": "ShuzhiYinxiang",
         "publisher": "CN=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXX",
-        "publisherDisplayName": "AigcPanel",
+        "publisherDisplayName": "数智印象",
         "languages": [
             "zh-CN",
             "en-US",
@@ -99,7 +99,7 @@
     "linux": {
         "icon": "logo.icns",
         "desktop": "logo",
-        "maintainer": "AigcPanel",
+        "maintainer": "ShuzhiYinxiang",
         "category": "Utility",
         "target": [
             {

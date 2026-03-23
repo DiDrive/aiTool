@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import LiveServerAvailableNotice from "./components/LiveServerAvailableNotice.vue";
 import {computed, onMounted, ref} from "vue";
 import {StorageRecord, StorageService} from "../../service/StorageService";
 import {Dialog} from "../../lib/dialog";
@@ -76,7 +75,6 @@ onMounted(() => {
             </div>
         </div>
         <div>
-            <LiveServerAvailableNotice />
             <div v-if="loading">
                 <m-loading />
             </div>

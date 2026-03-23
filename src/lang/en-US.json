@@ -499,7 +499,7 @@
     "voice.timbreDesc": "Timbre Description",
     "voice.timbreManage": "Timbre Manage",
     "voice.voice": "Voice",
-    "welcome.title": "Welcome to AIGCPanel!",
+    "welcome.title": "Welcome to ShuzhiYinxiang!",
     "workflow.configureRecognitionAndGeneration": "Please configure voice recognition and voice generation services",
     "workflow.inputVideoParam": "Please input video parameter",
     "workflow.paramErrorMissing": "Parameter error: missing {items}",

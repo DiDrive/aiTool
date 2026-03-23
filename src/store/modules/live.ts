@@ -120,6 +120,9 @@ export const liveStore = defineStore("live", {
                 eventEnterIgnoreSecond: 120,
                 liveMonitorType: "douyin",
                 liveMonitorUrl: "",
+                engineMode: "cloud" as "local" | "cloud",
+                rtmpUrl: "",
+                rtmpKey: "",
             },
         },
         status: "stopped" as LiveStatusType,
@@ -165,6 +168,12 @@ export const liveStore = defineStore("live", {
                 localConfig.config?.liveMonitorType || this.localConfig.config.liveMonitorType;
             this.localConfig.config.liveMonitorUrl =
                 localConfig.config?.liveMonitorUrl || this.localConfig.config.liveMonitorUrl;
+            this.localConfig.config.engineMode =
+                localConfig.config?.engineMode || this.localConfig.config.engineMode;
+            this.localConfig.config.rtmpUrl =
+                localConfig.config?.rtmpUrl || this.localConfig.config.rtmpUrl;
+            this.localConfig.config.rtmpKey =
+                localConfig.config?.rtmpKey || this.localConfig.config.rtmpKey;
             await this.statusUpdate();
         },
         async saveLocalConfig() {
@@ -210,7 +219,8 @@ export const liveStore = defineStore("live", {
                 this.liveStatusTimer = setTimeout(this.statusUpdate, 2000);
                 return;
             }
-            const data = res.data.scenes[0] || null;
+            const resData = res.data as any;
+            const data = resData.scenes?.[0] || null;
 
             if (data) {
                 this.liveStatus.id = data.id || SCENE_ID;
@@ -275,7 +285,8 @@ export const liveStore = defineStore("live", {
             const res = await this.apiRequest("config", {});
             let ttsProviders: any[] = [];
             if (0 === res.code) {
-                ttsProviders = res.data.ttsProviders;
+                const resData = res.data as any;
+                ttsProviders = resData.ttsProviders || [];
             }
             for (const server of serverStore.records) {
                 if (server.status !== EnumServerStatus.RUNNING) {
@@ -309,6 +320,9 @@ export const liveStore = defineStore("live", {
             }
             // console.log('ttsProviders', ttsProviders)
             this.serverConfig.ttsProviders = ttsProviders;
+            if (!this.localConfig.config.ttsProvider && this.serverConfig.ttsProviders.length > 0) {
+                this.localConfig.config.ttsProvider = this.serverConfig.ttsProviders[0].name;
+            }
         },
         async buildData() {
             const avatars: any[] = [];
@@ -440,6 +454,9 @@ export const liveStore = defineStore("live", {
                     ttsProviderSetting: this.localConfig.config.ttsProviderSetting,
                     eventDefaultUsername: this.localConfig.config.eventDefaultUsername,
                     eventEnterIgnoreSecond: this.localConfig.config.eventEnterIgnoreSecond,
+                    engineMode: this.localConfig.config.engineMode,
+                    rtmpUrl: this.localConfig.config.rtmpUrl,
+                    rtmpKey: this.localConfig.config.rtmpKey,
                 },
                 data: await this.buildData(),
             };

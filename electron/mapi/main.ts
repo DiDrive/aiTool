@@ -11,6 +11,7 @@ import user from "./user/main";
 import misc from "./misc/main";
 import updater from "./updater/main";
 import server from "./server/main";
+import live from "./live/main";
 
 const $mapi = {
     app,
@@ -26,6 +27,7 @@ const $mapi = {
     misc,
     updater,
     server,
+    live,
 };
 
 export const MAPI = {

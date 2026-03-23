@@ -1,5 +1,5 @@
 {
-    "name": "aigcpanel",
+    "name": "shuzhi-yinxiang",
     "version": "1.4.0",
     "main": "dist-electron/main/index.js",
     "description": "开源AI数字人视频系统",
