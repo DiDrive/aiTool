@@ -4,6 +4,7 @@ import Router from "../router";
 import LiveTalk from "./Live/LiveTalk.vue";
 import LiveKnowledge from "./Live/LiveKnowledge.vue";
 import LiveMonitor from "./Live/LiveMonitor.vue";
+import LiveInteraction from "./Live/LiveInteraction.vue";
 
 const tab = ref("");
 
@@ -68,6 +69,7 @@ onMounted(() => {
             <LiveKnowledge v-if="tab === 'knowledge'" />
             <LiveMonitor v-else-if="tab === 'monitor'" />
             <LiveTalk v-else-if="tab === 'liveTalk'" />
+            <LiveInteraction v-else-if="tab === 'event'" />
             <div v-else class="flex h-full items-center justify-center text-gray-400">
                 开发中...
             </div>

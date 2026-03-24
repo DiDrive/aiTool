@@ -10,6 +10,7 @@ import { LiveStatusType } from "../../types/Live";
 import { EnumServerStatus, ServerRecord } from "../../types/Server";
 import store from "../index";
 import { useServerStore } from "./server";
+import { useModelStore } from "../../module/Model/store/model";
 
 const serverStore = useServerStore();
 
@@ -121,6 +122,26 @@ export const liveStore = defineStore("live", {
                 liveMonitorType: "douyin",
                 liveMonitorUrl: "",
                 engineMode: "cloud" as "local" | "cloud",
+                replyMode: "voice" as "voice" | "text" | "both" | "random",
+                thanksMode: "local" as "local" | "llm",
+                prompt: {
+                    persona: "你现在是一个正在直播的带货主播，性格开朗热情，喜欢称呼观众为宝宝。你的回答必须口语化、简短（20字以内），绝对不能包含任何动作描写（如*笑*、*挥手*）和表情符号。",
+                    replyComment: "直播间有一个叫\"{user}\"的观众刚刚发了一条弹幕：\"{content}\"。请结合你的人设回复他。",
+                    replyLike: "直播间有一个叫\"{user}\"的观众刚刚给你点赞了。请结合你的人设，用一句话简短热情地感谢他，并呼吁大家继续点赞关注。",
+                    replyGift: "观众\"{user}\"刚刚给你送了一个礼物：\"{content}\"。请结合你的人设，用一句非常激动、热情的话感谢老板，祝老板发财。",
+                },
+                localThanks: {
+                    like: [
+                        "感谢{user}宝宝的点赞，点点关注不迷路哦！",
+                        "谢谢{user}的喜欢，大家动动发财的小手一起点点赞！",
+                        "感谢{user}送出的免费小心心，爱你哟！"
+                    ],
+                    gift: [
+                        "哇！感谢{user}老板送的{content}！老板大气，老板发大财！",
+                        "谢谢{user}宝宝的{content}，太破费啦，比心比心！",
+                        "感谢{user}的{content}，礼物走一走，活到九十九！"
+                    ]
+                },
                 rtmpUrl: "",
                 rtmpKey: "",
             },
@@ -133,6 +154,11 @@ export const liveStore = defineStore("live", {
             liveMonitorEvent: null as any,
         },
         liveDataUpdateTimer: undefined as any,
+        
+        // 新增：用于在前端展示的实时弹幕列表
+        recentEvents: [] as any[],
+        // 记录最近发送的消息，用于防回声（避免抓取自己发送的消息）
+        recentSentMessages: [] as {text: string, time: number}[],
     }),
     actions: {
         async init() {
@@ -170,6 +196,20 @@ export const liveStore = defineStore("live", {
                 localConfig.config?.liveMonitorUrl || this.localConfig.config.liveMonitorUrl;
             this.localConfig.config.engineMode =
                 localConfig.config?.engineMode || this.localConfig.config.engineMode;
+            this.localConfig.config.replyMode =
+                localConfig.config?.replyMode || this.localConfig.config.replyMode;
+            this.localConfig.config.thanksMode =
+                localConfig.config?.thanksMode || this.localConfig.config.thanksMode;
+            
+            // 初始化 prompt 配置
+            if (localConfig.config?.prompt) {
+                this.localConfig.config.prompt = { ...this.localConfig.config.prompt, ...localConfig.config.prompt };
+            }
+            // 初始化 localThanks 配置
+            if (localConfig.config?.localThanks) {
+                this.localConfig.config.localThanks = { ...this.localConfig.config.localThanks, ...localConfig.config.localThanks };
+            }
+
             this.localConfig.config.rtmpUrl =
                 localConfig.config?.rtmpUrl || this.localConfig.config.rtmpUrl;
             this.localConfig.config.rtmpKey =
@@ -196,7 +236,20 @@ export const liveStore = defineStore("live", {
             if (this.liveStatusTimer) {
                 clearTimeout(this.liveStatusTimer);
             }
+            
+            // 如果是云端模式且正在运行，不要被本地的轮询打断状态
+            if (this.localConfig.config.engineMode === 'cloud' && (this.status === 'running' || this.status === 'starting')) {
+                // Keep checking just to maintain the loop, but don't reset status
+                this.liveStatusTimer = setTimeout(this.statusUpdate, 5000);
+                return;
+            }
+
             if (!this.server) {
+                if (this.localConfig.config.engineMode === 'cloud' && (this.status === 'running' || this.status === 'starting')) {
+                    this.liveStatusTimer = setTimeout(this.statusUpdate, 5000);
+                    return;
+                }
+                
                 if (this.status !== "stopped") {
                     this.status = "stopped";
                     this.liveStatus = ObjectUtil.clone(EMPTY_LIVE_STATUS);
@@ -209,6 +262,11 @@ export const liveStore = defineStore("live", {
             //     server: ObjectUtil.clone(this.server),
             // })
             if (this.server.status !== EnumServerStatus.RUNNING) {
+                // 如果是云端模式且正在运行，忽略本地 server 的状态
+                if (this.localConfig.config.engineMode === 'cloud' && (this.status === 'running' || this.status === 'starting')) {
+                    this.liveStatusTimer = setTimeout(this.statusUpdate, 5000);
+                    return;
+                }
                 this.liveStatus = ObjectUtil.clone(EMPTY_LIVE_STATUS);
                 this.liveStatusTimer = setTimeout(this.statusUpdate, 2000);
                 return;
@@ -258,7 +316,11 @@ export const liveStore = defineStore("live", {
             } else if (this.liveStatus.status === "running") {
                 this.status = "running";
             }
-            this.liveStatusTimer = setTimeout(this.statusUpdate, 5000);
+            
+            // 只有在非云端模拟模式且有服务器的情况下，才继续轮询后端真实状态
+            if (this.server) {
+                this.liveStatusTimer = setTimeout(this.statusUpdate, 5000);
+            }
         },
         async apiRequest(
             url: string,
@@ -292,25 +354,32 @@ export const liveStore = defineStore("live", {
                 if (server.status !== EnumServerStatus.RUNNING) {
                     continue;
                 }
-                if (!["server-live-indextts"].includes(server.name)) {
-                    continue;
-                }
                 const res = await $mapi.server.config(await serverStore.serverInfo(server));
                 if (res.code) {
-                    Dialog.tipError(mapError(res.msg));
                     continue;
                 }
-                const setting = {};
-                if (res.data.httpUrl) {
-                    setting["httpUrl"] = res.data.httpUrl;
-                }
                 const config = res.data;
+                
+                // 判断服务是否包含语音合成功能 (不再硬编码服务名称，支持 InfiniteTalk, indexTTS2 等任意实现了该接口的模型)
                 let param = [];
-                if ("soundTts" in config.functions) {
+                let hasTts = false;
+                if (config.functions && "soundTts" in config.functions) {
                     param = config.functions.soundTts.param || [];
-                } else if ("soundClone" in config.functions) {
+                    hasTts = true;
+                } else if (config.functions && "soundClone" in config.functions) {
                     param = config.functions.soundClone.param || [];
+                    hasTts = true;
                 }
+                
+                if (!hasTts) {
+                    continue;
+                }
+
+                const setting = {};
+                if (config.httpUrl) {
+                    setting["httpUrl"] = config.httpUrl;
+                }
+
                 ttsProviders.push({
                     name: server.name,
                     title: server.title,
@@ -455,6 +524,10 @@ export const liveStore = defineStore("live", {
                     eventDefaultUsername: this.localConfig.config.eventDefaultUsername,
                     eventEnterIgnoreSecond: this.localConfig.config.eventEnterIgnoreSecond,
                     engineMode: this.localConfig.config.engineMode,
+                    replyMode: this.localConfig.config.replyMode,
+                    thanksMode: this.localConfig.config.thanksMode,
+                    prompt: this.localConfig.config.prompt,
+                    localThanks: this.localConfig.config.localThanks,
                     rtmpUrl: this.localConfig.config.rtmpUrl,
                     rtmpKey: this.localConfig.config.rtmpKey,
                 },
@@ -497,9 +570,21 @@ export const liveStore = defineStore("live", {
         fireEvent(type, data) {
             this.apiRequest("scene/event", {sceneId: SCENE_ID, type, data});
         },
-        onMonitorBroadcast(data: any) {
+        async onMonitorBroadcast(data: any) {
             // console.log('MonitorEvent', JSON.stringify(data))
             this.liveRuntime.liveMonitorEvent = data;
+            
+            // 新增：将弹幕保存到前端数组中用于展示 (最多保留50条)
+            this.recentEvents.push({
+                id: Date.now() + Math.random().toString(),
+                time: new Date(),
+                type: data.type,
+                ...data.data
+            });
+            if (this.recentEvents.length > 50) {
+                this.recentEvents.shift();
+            }
+
             // {"type":"Comment","data":{"source":"douyin","username":"老*****","content":"111"}}
             StorageService.add("LiveEvent", {
                 title: data.type,
@@ -513,11 +598,250 @@ export const liveStore = defineStore("live", {
                 this.fireEvent("Like", {
                     username: data.data.username,
                 });
+                // 触发点赞回复
+                this.handleAutoReply(data.data.username, "点赞", "Like");
+            } else if (data.type === "Gift") {
+                this.fireEvent("Gift", {
+                    username: data.data.username,
+                    content: data.data.content,
+                });
+                // 触发礼物感谢
+                this.handleAutoReply(data.data.username, data.data.content, "Gift");
             } else if (data.type === "Comment") {
+                // 判断是否为自己或主播发出的消息 (由前端监控脚本传入)
+                const isSelf = data.data.isSelf || false;
+                
+                // 防回声检查：如果在最近几秒内发送过完全一样的内容，也视为自己发的消息
+                const recentMatchIndex = this.recentSentMessages.findIndex(m => m.text === data.data.content && (Date.now() - m.time < 10000));
+                const isEcho = recentMatchIndex !== -1;
+                
+                if (isEcho) {
+                    // 清理匹配到的记录
+                    this.recentSentMessages.splice(recentMatchIndex, 1);
+                }
+
+                if (isSelf || isEcho) {
+                    console.log("检测到 AI 或主播自己发送的消息，仅在公屏展示，不触发自动回复:", data.data.content);
+                    // 不执行 fireEvent 和后续的大模型回复逻辑，直接返回
+                    return;
+                }
+
                 this.fireEvent("Comment", {
                     content: data.data.content,
                     username: data.data.username,
                 });
+                
+                // 触发弹幕回复
+                this.handleAutoReply(data.data.username, data.data.content, "Comment");
+            }
+        },
+        async handleAutoReply(username: string, content: string, eventType: "Comment" | "Like" | "Gift") {
+            // 本地 LLM 自动回复逻辑
+            if (this.status === "running") {
+                try {
+                    const modelStore = useModelStore();
+                    const enabledModels = await modelStore.enabledModels();
+                    let providerId = "";
+                    let modelId = "";
+                    
+                    if (enabledModels && enabledModels.length > 0) {
+                        providerId = enabledModels[0].providerId;
+                        modelId = enabledModels[0].modelId;
+                    }
+                    
+                    let finalReplyText = "";
+
+                    if (eventType === "Comment") {
+                        // 匹配知识库逻辑
+                        let matchedReply = "";
+                        const knowledgeRecords = await StorageService.list("LiveKnowledge");
+                        for (const record of knowledgeRecords) {
+                            if (record.content.enable && record.content.type === "user") {
+                                const keywords = record.content.keywords.split(/[,，]/);
+                                for (const keyword of keywords) {
+                                    if (keyword.trim() && content.includes(keyword.trim())) {
+                                        matchedReply = record.content.reply;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (matchedReply) break;
+                        }
+
+                        // 如果匹配到知识库
+                        if (matchedReply) {
+                            // 替换变量
+                            finalReplyText = matchedReply.replace(/{user}/g, username);
+                        } else {
+                            // 没匹配到知识库，走大模型自动生成
+                            if (providerId && modelId) {
+                                try {
+                                    const promptTemplate = this.localConfig.config.prompt.replyComment;
+                                    const prompt = promptTemplate.replace(/{user}/g, username).replace(/{content}/g, content);
+                                    const systemPrompt = this.localConfig.config.prompt.persona;
+                                    
+                                    const chatRes = await modelStore.chat(providerId, modelId, prompt, { systemPrompt: systemPrompt });
+                                    if (chatRes.code === 0 && chatRes.data && chatRes.data.content) {
+                                        finalReplyText = chatRes.data.content;
+                                    }
+                                } catch (e) {
+                                    console.error("LLM API Exception:", e);
+                                }
+                            }
+                        }
+                    } else if (eventType === "Like") {
+                        if (this.localConfig.config.thanksMode === "llm" && providerId && modelId) {
+                            try {
+                                const promptTemplate = this.localConfig.config.prompt.replyLike;
+                                const prompt = promptTemplate.replace(/{user}/g, username);
+                                const systemPrompt = this.localConfig.config.prompt.persona;
+
+                                const chatRes = await modelStore.chat(providerId, modelId, prompt, { systemPrompt: systemPrompt });
+                                if (chatRes.code === 0 && chatRes.data && chatRes.data.content) {
+                                    finalReplyText = chatRes.data.content;
+                                }
+                            } catch (e) { console.error("LLM API Exception:", e); }
+                        }
+                        
+                        if (!finalReplyText) {
+                            // 点赞感谢话术 (本地极速)
+                            const likeThanks = this.localConfig.config.localThanks.like;
+                            const template = likeThanks[Math.floor(Math.random() * likeThanks.length)];
+                            finalReplyText = template.replace(/{user}/g, username);
+                        }
+                    } else if (eventType === "Gift") {
+                        if (this.localConfig.config.thanksMode === "llm" && providerId && modelId) {
+                            try {
+                                const promptTemplate = this.localConfig.config.prompt.replyGift;
+                                const prompt = promptTemplate.replace(/{user}/g, username).replace(/{content}/g, content);
+                                const systemPrompt = this.localConfig.config.prompt.persona;
+
+                                const chatRes = await modelStore.chat(providerId, modelId, prompt, { systemPrompt: systemPrompt });
+                                if (chatRes.code === 0 && chatRes.data && chatRes.data.content) {
+                                    finalReplyText = chatRes.data.content;
+                                }
+                            } catch (e) { console.error("LLM API Exception:", e); }
+                        }
+                        
+                        if (!finalReplyText) {
+                            // 礼物感谢话术 (本地极速)
+                            const giftThanks = this.localConfig.config.localThanks.gift;
+                            const template = giftThanks[Math.floor(Math.random() * giftThanks.length)];
+                            finalReplyText = template.replace(/{user}/g, username).replace(/{content}/g, content);
+                        }
+                    }
+
+                    if (finalReplyText) {
+                        // 记录 AI 回复到面板
+                        this.recentEvents.push({
+                            id: Date.now() + Math.random().toString(),
+                            time: new Date(),
+                            type: 'AI_Reply',
+                            username: username,
+                            content: finalReplyText
+                        });
+                        if (this.recentEvents.length > 50) {
+                            this.recentEvents.shift();
+                        }
+                        
+                        // 更新当前播报状态
+                        this.liveStatus.talkTitle = "回复 " + username;
+                        this.liveStatus.talkContent = finalReplyText;
+                        
+                        const replyMode = this.localConfig.config.replyMode || 'voice';
+                        let doVoice = false;
+                        let doText = false;
+                        
+                        // 点赞和礼物默认只用语音播报，不刷屏打字
+                        if (eventType === "Like" || eventType === "Gift") {
+                            doVoice = true;
+                        } else {
+                            if (replyMode === 'voice') {
+                                doVoice = true;
+                            } else if (replyMode === 'text') {
+                                doText = true;
+                            } else if (replyMode === 'both') {
+                                doVoice = true;
+                                doText = true;
+                            } else if (replyMode === 'random') {
+                                if (Math.random() > 0.5) {
+                                    doVoice = true;
+                                } else {
+                                    doText = true;
+                                }
+                            }
+                        }
+
+                        if (doVoice) {
+                            // 将生成的文本加入播报历史并进行语音合成（如果需要的话，调用后端的 talk 接口）
+                            if (this.localConfig.config.engineMode === 'local' && this.server) {
+                                this.talk(finalReplyText);
+                            } else {
+                                // 如果没有启动本地直播服务，直接在前端调用选定的 TTS 模型念出来
+                                this.playTtsFrontend(finalReplyText);
+                            }
+                        }
+                        
+                        if (doText) {
+                            // 通过 IPC 向 monitor 窗口发送打字回复指令
+                            try {
+                                // 记录到发送历史，防止回声
+                                this.recentSentMessages.push({ text: finalReplyText, time: Date.now() });
+                                if (this.recentSentMessages.length > 20) this.recentSentMessages.shift();
+
+                                window.$mapi.event.callPage("monitor", "MonitorData", {
+                                    type: "SendMessage",
+                                    data: {
+                                        platform: this.localConfig.config.liveMonitorType,
+                                        text: finalReplyText
+                                    }
+                                }).catch(err => {
+                                    console.log("打字回复发送失败, 可能是监听窗口未打开", err);
+                                });
+                            } catch (e) {
+                                console.error("打字回复发送异常:", e);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("LLM 自动回复失败:", e);
+                }
+            }
+        },
+        async playTtsFrontend(text: string) {
+            const providerName = this.localConfig.config.ttsProvider;
+            if (!providerName) return;
+
+            const ttsServer = serverStore.records.find(s => s.name === providerName);
+            if (!ttsServer || ttsServer.status !== EnumServerStatus.RUNNING) return;
+
+            try {
+                const serverInfo = await serverStore.serverInfo(ttsServer);
+                const configRes = await $mapi.server.config(serverInfo);
+                const config = configRes.data;
+                
+                let funcName = "";
+                if (config.functions && "soundTts" in config.functions) {
+                    funcName = "soundTts";
+                } else if (config.functions && "soundClone" in config.functions) {
+                    funcName = "soundClone";
+                } else {
+                    return;
+                }
+
+                const res = await $mapi.server.callFunctionWithException(serverInfo, funcName, {
+                    id: "live_frontend_tts_" + Date.now(),
+                    result: {},
+                    param: this.localConfig.config.ttsProviderParam || {},
+                    text: text
+                });
+
+                if (res && res.code === 0 && res.data && res.data.file) {
+                    const audio = new Audio("file://" + res.data.file);
+                    audio.play().catch(e => console.error("音频播放失败:", e));
+                }
+            } catch (e) {
+                console.error("前端调用 TTS 播放失败:", e);
             }
         },
         async startMonitor() {
@@ -528,15 +852,30 @@ export const liveStore = defineStore("live", {
             await this.saveLocalConfig();
             window.__page.offBroadcast("MonitorEvent", this.onMonitorBroadcast);
             window.__page.onBroadcast("MonitorEvent", this.onMonitorBroadcast);
-            await $mapi.app.windowOpen("monitor", {
-                title: "直播监听",
-                width: 1300,
-                height: 800,
-                url: this.localConfig.config.liveMonitorUrl,
-                script: "server/live_monitor_script",
-                openDevTools: false,
-                broadcastPages: ["main"],
-            });
+            
+            try {
+                // 使用原版项目中最标准的窗口打开方式
+                let scriptType = "server/live_monitor_script";
+                if (this.localConfig.config.liveMonitorUrl.includes("bilibili.com")) {
+                    scriptType = "local:bilibili";
+                } else if (this.localConfig.config.liveMonitorUrl.includes("douyin.com")) {
+                    scriptType = "local:douyin";
+                } else if (this.localConfig.config.liveMonitorUrl.includes("kuaishou.com")) {
+                    scriptType = "local:kuaishou";
+                }
+
+                await window.$mapi.app.windowOpen("monitor", {
+                    title: "直播监听",
+                    width: 1300,
+                    height: 800,
+                    url: this.localConfig.config.liveMonitorUrl,
+                    script: scriptType,
+                    openDevTools: false,
+                    broadcastPages: ["main"],
+                });
+            } catch(e) {
+                console.error("打开弹幕窗口失败", e);
+            }
         },
         async stopMonitor() {
             await $mapi.app.windowClose("monitor");

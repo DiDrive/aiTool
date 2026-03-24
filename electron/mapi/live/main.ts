@@ -46,16 +46,16 @@ ipcMain.handle("live:startMockStream", async (event, options: { rtmpUrl: string;
             ffmpegProcess = spawn(ffmpegPath, args);
             
             ffmpegProcess.stdout.on("data", (data: any) => {
-                // Log.info("live.ffmpeg", data.toString());
+                console.log("[FFmpeg stdout]", data.toString());
             });
 
             ffmpegProcess.stderr.on("data", (data: any) => {
                 // FFmpeg usually outputs to stderr
-                // Log.info("live.ffmpeg", data.toString());
+                console.log("[FFmpeg stderr]", data.toString());
             });
 
             ffmpegProcess.on("close", (code: number) => {
-                Log.info("live", `FFmpeg process exited with code ${code}`);
+                console.log(`[FFmpeg] process exited with code ${code}`);
                 ffmpegProcess = null;
             });
 

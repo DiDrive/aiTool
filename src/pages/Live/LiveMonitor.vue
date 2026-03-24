@@ -36,6 +36,29 @@ const isRunning = computed(() => liveStore.status === "running");
 const isStarting = computed(() => liveStore.status === "starting");
 const isStopped = computed(() => liveStore.status === "stopped");
 
+// 视频预览控制
+const previewVolume = ref(50);
+const previewMuted = ref(true);
+const videoRef = ref<HTMLVideoElement | null>(null);
+
+const onVolumeChange = (val: number) => {
+    if (videoRef.value) {
+        videoRef.value.volume = val / 100;
+        previewMuted.value = val === 0;
+    }
+};
+
+const toggleMute = () => {
+    previewMuted.value = !previewMuted.value;
+    if (videoRef.value) {
+        videoRef.value.muted = previewMuted.value;
+        if (!previewMuted.value && previewVolume.value === 0) {
+            previewVolume.value = 50;
+            videoRef.value.volume = 0.5;
+        }
+    }
+};
+
 // Actions
 const doStart = async () => {
     if (!liveStore.localConfig.config.liveMonitorUrl) {
@@ -53,7 +76,12 @@ const doStart = async () => {
         
         // 触发本地 IPC 进行推流 (前端模拟云端下发流，本地 FFmpeg 负责转推)
         try {
-            if (window.ipcRenderer) {
+            if (window.$mapi.app.callHandleFromMainOrRender) {
+                await window.$mapi.app.callHandleFromMainOrRender("live:startMockStream", {
+                    rtmpUrl: liveStore.localConfig.config.rtmpUrl,
+                    rtmpKey: liveStore.localConfig.config.rtmpKey
+                });
+            } else if (window.ipcRenderer) {
                 await window.ipcRenderer.invoke("live:startMockStream", {
                     rtmpUrl: liveStore.localConfig.config.rtmpUrl,
                     rtmpKey: liveStore.localConfig.config.rtmpKey
@@ -84,7 +112,9 @@ const doStop = async () => {
     if (liveStore.localConfig.config.engineMode === 'cloud' || !liveStore.server) {
         liveStore.status = "stopping";
         try {
-            if (window.ipcRenderer) {
+            if (window.$mapi.app.callHandleFromMainOrRender) {
+                await window.$mapi.app.callHandleFromMainOrRender("live:stopMockStream", {});
+            } else if (window.ipcRenderer) {
                 await window.ipcRenderer.invoke("live:stopMockStream", {});
             } else {
                 await window.$mapi.event.callPage('main', 'live:stopMockStream', {});
@@ -106,6 +136,44 @@ const doSaveSettings = async () => {
 
 const doOpenMonitor = async () => {
     await liveStore.startMonitor();
+};
+
+const manualReplyText = ref("");
+const doManualReply = () => {
+    if (!manualReplyText.value.trim()) return;
+    try {
+        const textToSend = manualReplyText.value;
+        
+        // 记录到发送历史，防止回声
+        liveStore.recentSentMessages.push({ text: textToSend, time: Date.now() });
+        if (liveStore.recentSentMessages.length > 20) liveStore.recentSentMessages.shift();
+
+        window.$mapi.event.callPage("monitor", "MonitorData", {
+            type: "SendMessage",
+            data: {
+                platform: liveStore.localConfig.config.liveMonitorType,
+                text: textToSend
+            }
+        }).then(() => {
+            // Also add it to recentEvents to show it in the list
+            liveStore.recentEvents.push({
+                id: Date.now() + Math.random().toString(),
+                time: new Date(),
+                type: 'AI_Reply',
+                username: '手动发送',
+                content: textToSend
+            });
+            if (liveStore.recentEvents.length > 50) {
+                liveStore.recentEvents.shift();
+            }
+            manualReplyText.value = "";
+        }).catch(err => {
+            Dialog.tipError("发送失败, 请确认是否已开启弹幕监听窗口");
+            console.log("手动发送失败:", err);
+        });
+    } catch (e) {
+        console.error(e);
+    }
 };
 
 onMounted(async () => {
@@ -143,18 +211,44 @@ onUnmounted(() => {
             <div class="w-2/3 flex flex-col gap-4">
                 <!-- 视频预览区 -->
                 <div class="bg-black rounded-xl flex-grow relative overflow-hidden flex items-center justify-center border border-gray-200 shadow-sm">
-                    <div v-if="!isRunning" class="text-gray-500 flex flex-col items-center">
+                    <div v-if="!isRunning" class="text-gray-500 flex flex-col items-center z-10">
                         <icon-video-camera class="text-6xl mb-4 opacity-50" />
                         <span class="text-lg">等待开播...</span>
                         <span v-if="liveStore.statusMsg" class="text-red-500 mt-2 text-sm">{{ liveStore.statusMsg }}</span>
                     </div>
-                    <!-- 真实的视频流预览通常通过 WebRTC 或 FLV.js 在这里渲染 -->
-                    <!-- 占位提示 -->
-                    <div v-if="isRunning" class="absolute top-4 right-4 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold animate-pulse">
-                        LIVE
+                    
+                    <!-- 本地推流预览 (通过 file 协议直接播放本地 mp4) -->
+                    <video 
+                        ref="videoRef"
+                        v-if="isRunning && liveStore.localConfig.config.engineMode === 'cloud'" 
+                        class="absolute inset-0 w-full h-full object-contain"
+                        src="http://localhost:5173/test.mp4" 
+                        autoplay 
+                        loop 
+                        :muted="previewMuted"
+                        :volume="previewVolume / 100">
+                    </video>
+
+                    <!-- 预览控制条 -->
+                    <div v-if="isRunning" class="absolute bottom-4 left-4 right-4 flex items-center justify-between z-20 bg-black bg-opacity-50 px-4 py-2 rounded-lg opacity-0 hover:opacity-100 transition-opacity">
+                        <div class="flex items-center space-x-3 text-white">
+                            <a-button type="text" class="text-white hover:text-blue-400" @click="toggleMute">
+                                <template #icon>
+                                    <icon-sound-fill v-if="!previewMuted" />
+                                    <icon-mute-fill v-else />
+                                </template>
+                            </a-button>
+                            <div class="w-32">
+                                <a-slider v-model="previewVolume" @change="onVolumeChange" :min="0" :max="100" />
+                            </div>
+                        </div>
+                        <div class="text-white text-xs opacity-70">
+                            仅控制本地预览音量，不影响实际推流
+                        </div>
                     </div>
-                    <div v-if="isRunning" class="text-white text-opacity-50 text-2xl font-bold tracking-widest">
-                        数字人推流画面预览区
+
+                    <div v-if="isRunning" class="absolute top-4 right-4 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold animate-pulse z-20 pointer-events-none">
+                        LIVE
                     </div>
                 </div>
 
@@ -234,6 +328,20 @@ onUnmounted(() => {
                                 <a-option value="kuaishou">快手 (Kuaishou)</a-option>
                             </a-select>
                         </a-form-item>
+                        <a-form-item label="AI 回复方式">
+                            <a-select v-model="liveStore.localConfig.config.replyMode">
+                                <a-option value="voice">仅语音播报</a-option>
+                                <a-option value="text">仅打字回复 (公屏)</a-option>
+                                <a-option value="both">语音和打字</a-option>
+                                <a-option value="random">随机 (50%打字 / 50%语音)</a-option>
+                            </a-select>
+                        </a-form-item>
+                        <a-form-item label="礼物/点赞感谢模式">
+                            <a-select v-model="liveStore.localConfig.config.thanksMode">
+                                <a-option value="local">本地极速话术库 (推荐, 响应快)</a-option>
+                                <a-option value="llm">AI大模型生成 (文案丰富, 有延迟)</a-option>
+                            </a-select>
+                        </a-form-item>
 
                         <div class="font-bold text-gray-700 mb-2 mt-4 bg-gray-50 p-2 rounded">话术策略</div>
                         <a-form-item label="循环话术模式">
@@ -262,22 +370,45 @@ onUnmounted(() => {
                 <div v-else class="flex-grow flex flex-col overflow-hidden">
                     <div class="flex-grow bg-gray-50 rounded p-2 overflow-y-auto custom-scrollbar flex flex-col gap-2">
                         <!-- 弹幕列表占位 -->
-                        <div class="text-center text-gray-400 text-xs py-4" v-if="!isRunning">
+                        <div class="text-center text-gray-400 text-xs py-4" v-if="!isRunning && liveStore.recentEvents.length === 0">
                             直播未开启，暂无弹幕数据
                         </div>
-                        <div v-else class="text-center text-gray-400 text-xs py-4">
+                        <div class="text-center text-gray-400 text-xs py-4" v-else-if="liveStore.recentEvents.length === 0">
                             等待弹幕接入...
                         </div>
-                        <!-- 示例弹幕 -->
-                        <!-- 
-                        <div class="bg-white p-2 rounded shadow-sm text-sm">
-                            <span class="text-blue-500 font-bold">老张:</span> 这个产品怎么卖？
-                        </div> 
-                        -->
+                        
+                        <!-- 真实弹幕列表渲染 -->
+                        <div v-for="event in liveStore.recentEvents" :key="event.id" class="bg-white p-2 rounded shadow-sm text-sm break-words">
+                            <span class="text-gray-400 text-xs mr-1">[{{ new Date(event.time).toLocaleTimeString() }}]</span>
+                            
+                            <template v-if="event.type === 'Enter'">
+                                <span class="text-gray-500">欢迎 <span class="text-blue-500 font-bold">{{ event.username }}</span> 进入直播间</span>
+                            </template>
+                            
+                            <template v-else-if="event.type === 'Like'">
+                                <span class="text-pink-500 font-bold">{{ event.username }}</span> <span class="text-gray-500">点赞了直播间</span>
+                            </template>
+                            
+                            <template v-else-if="event.type === 'Gift'">
+                                <span class="text-orange-500 font-bold">{{ event.username }}</span> <span class="text-gray-500">送出了 🎁 {{ event.content || '礼物' }}</span>
+                            </template>
+                            
+                            <template v-else-if="event.type === 'Comment'">
+                                <span class="text-blue-500 font-bold">{{ event.username }}:</span> <span class="text-gray-800">{{ event.content }}</span>
+                            </template>
+                            
+                            <template v-else-if="event.type === 'AI_Reply'">
+                                <span class="text-purple-500 font-bold">🤖 AI回复 {{ event.username }}:</span> <span class="text-gray-800 font-bold">{{ event.content }}</span>
+                            </template>
+                            
+                            <template v-else>
+                                <span class="text-gray-500">{{ event.type }} - {{ JSON.stringify(event.data) }}</span>
+                            </template>
+                        </div>
                     </div>
                     <div class="mt-2 flex gap-2">
-                        <a-input placeholder="手动发送弹幕回复..." />
-                        <a-button type="primary">发送</a-button>
+                        <a-input v-model="manualReplyText" placeholder="手动发送弹幕回复..." @keyup.enter="doManualReply" />
+                        <a-button type="primary" @click="doManualReply" :disabled="!manualReplyText">发送</a-button>
                     </div>
                 </div>
             </div>
