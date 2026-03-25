@@ -8,6 +8,17 @@ import LiveKnowledgeEditDialog from "./components/LiveKnowledgeEditDialog.vue";
 const loading = ref(false);
 const records = ref<StorageRecord[]>([]);
 const editDialog = ref<InstanceType<typeof LiveKnowledgeEditDialog> | null>(null);
+const currentTab = ref("all");
+
+// 批量添加循环话术相关
+const batchDialogVisible = ref(false);
+const batchTalksText = ref("");
+const batchSaving = ref(false);
+
+const filteredRecords = computed(() => {
+    if (currentTab.value === "all") return records.value;
+    return records.value.filter(r => r.content.type === currentTab.value);
+});
 
 const doRefresh = async () => {
     loading.value = true;
@@ -21,8 +32,54 @@ const doDelete = async (record: StorageRecord) => {
     await doRefresh();
 };
 
-const doAdd = () => {
-    editDialog.value?.show();
+const doAdd = (defaultType?: string) => {
+    editDialog.value?.show(undefined, defaultType);
+};
+
+const doBatchAddTalks = () => {
+    batchTalksText.value = "";
+    batchDialogVisible.value = true;
+};
+
+const saveBatchTalks = async () => {
+    if (!batchTalksText.value.trim()) {
+        Dialog.tipError("请输入话术内容");
+        return;
+    }
+
+    batchSaving.value = true;
+    try {
+        const lines = batchTalksText.value.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+        
+        // 去重
+        const uniqueLines = [...new Set(lines)];
+        
+        let successCount = 0;
+        for (const text of uniqueLines) {
+            await StorageService.add("LiveKnowledge", {
+                title: text.substring(0, 15) + (text.length > 15 ? "..." : ""),
+                content: {
+                    enable: true,
+                    type: "flowTalk",
+                    reply: text,
+                    keywords: "",
+                    action: "",
+                    systemType: "Follow"
+                }
+            });
+            successCount++;
+        }
+        
+        Dialog.tipSuccess(`成功批量添加 ${successCount} 条循环话术`);
+        batchDialogVisible.value = false;
+        await doRefresh();
+        currentTab.value = "flowTalk"; // 切换到循环话术 tab 方便查看
+    } catch (e) {
+        Dialog.tipError("批量添加失败");
+        console.error(e);
+    } finally {
+        batchSaving.value = false;
+    }
 };
 
 const doEdit = (record: StorageRecord) => {
@@ -39,12 +96,19 @@ onMounted(() => {
         <div class="mb-4 flex items-center">
             <div class="text-3xl font-bold flex-grow">直播知识库</div>
             <div class="flex items-center">
-                <a-button class="ml-1" type="primary" @click="doAdd()">
+                <a-dropdown-button class="ml-1" type="primary" @click="doAdd('user')">
                     <template #icon>
-                        <icon-plus />
+                        <icon-down />
                     </template>
-                    添加知识
-                </a-button>
+                    添加知识 (默认关键词)
+                    <template #content>
+                        <a-doption @click="doAdd('user')">添加关键词回复</a-doption>
+                        <a-doption @click="doAdd('system')">添加系统事件回复</a-doption>
+                        <a-doption @click="doAdd('flowTalk')">添加循环话术</a-doption>
+                        <a-doption @click="doBatchAddTalks">批量添加循环话术</a-doption>
+                        <a-doption @click="doAdd('flowVideo')">添加循环发呆视频</a-doption>
+                    </template>
+                </a-dropdown-button>
                 <a-button class="ml-1" @click="doRefresh()">
                     <template #icon>
                         <icon-refresh />
@@ -101,5 +165,23 @@ onMounted(() => {
         </div>
         
         <LiveKnowledgeEditDialog ref="editDialog" @update="doRefresh" />
+
+        <!-- 批量添加循环话术弹窗 -->
+        <a-modal v-model:visible="batchDialogVisible" title="批量添加循环话术" @ok="saveBatchTalks" :ok-loading="batchSaving">
+            <div class="mb-2 text-gray-500 text-sm">
+                请在下方输入话术，<span class="text-red-500 font-bold">每行一句</span>。系统会自动过滤空行和重复内容。
+            </div>
+            <a-textarea 
+                v-model="batchTalksText" 
+                :auto-size="{ minRows: 10, maxRows: 15 }"
+                placeholder="例如：
+欢迎大家来到直播间！
+右下角小黄车有惊喜哦~
+喜欢主播的可以点点关注，谢谢支持！"
+            />
+            <div class="mt-2 text-xs text-gray-400 text-right">
+                已输入 {{ batchTalksText.split('\n').filter(s => s.trim()).length }} 条有效话术
+            </div>
+        </a-modal>
     </div>
 </template>

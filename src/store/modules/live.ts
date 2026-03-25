@@ -129,6 +129,7 @@ export const liveStore = defineStore("live", {
                     replyComment: "直播间有一个叫\"{user}\"的观众刚刚发了一条弹幕：\"{content}\"。请结合你的人设回复他。",
                     replyLike: "直播间有一个叫\"{user}\"的观众刚刚给你点赞了。请结合你的人设，用一句话简短热情地感谢他，并呼吁大家继续点赞关注。",
                     replyGift: "观众\"{user}\"刚刚给你送了一个礼物：\"{content}\"。请结合你的人设，用一句非常激动、热情的话感谢老板，祝老板发财。",
+                    replyEnter: "观众\"{user}\"刚刚进入了直播间。请结合你的人设，用一句简短、热情的话欢迎他，并引导他关注或了解产品。",
                 },
                 localThanks: {
                     like: [
@@ -140,6 +141,11 @@ export const liveStore = defineStore("live", {
                         "哇！感谢{user}老板送的{content}！老板大气，老板发大财！",
                         "谢谢{user}宝宝的{content}，太破费啦，比心比心！",
                         "感谢{user}的{content}，礼物走一走，活到九十九！"
+                    ],
+                    enter: [
+                        "欢迎{user}宝宝来到直播间，喜欢主播点点关注哦！",
+                        "欢迎{user}进直播间，大家没点关注的把关注点一点！",
+                        "欢迎{user}，有什么想了解的商品可以弹幕告诉我哦！"
                     ]
                 },
                 rtmpUrl: "",
@@ -444,7 +450,10 @@ export const liveStore = defineStore("live", {
             }
             const users: any[] = [];
             const systems: any[] = [];
+            // 获取知识库数据
             const storageUsers = await StorageService.list("LiveKnowledge");
+            
+            // 过滤并处理不同类型的知识库条目
             for (const s of storageUsers) {
                 if (!s.content.enable) {
                     continue;
@@ -463,6 +472,8 @@ export const liveStore = defineStore("live", {
                         video: s.content.url,
                     });
                 } else if (s.content.type === "system") {
+                    // 注意：Enter, Like, Gift 等高频互动事件已统一由前端大模型/本地话术接管并实时生成音频播报
+                    // 这里的 systems 仅保留可能未被前端接管的特殊事件（如 Follow, Share 等）
                     systems.push({
                         id: "System" + s.id,
                         title: s.title,
@@ -594,6 +605,8 @@ export const liveStore = defineStore("live", {
                 this.fireEvent("Enter", {
                     username: data.data.username,
                 });
+                // 触发进场欢迎
+                this.handleAutoReply(data.data.username, "", "Enter");
             } else if (data.type === "Like") {
                 this.fireEvent("Like", {
                     username: data.data.username,
@@ -635,7 +648,7 @@ export const liveStore = defineStore("live", {
                 this.handleAutoReply(data.data.username, data.data.content, "Comment");
             }
         },
-        async handleAutoReply(username: string, content: string, eventType: "Comment" | "Like" | "Gift") {
+        async handleAutoReply(username: string, content: string, eventType: "Comment" | "Like" | "Gift" | "Enter") {
             // 本地 LLM 自动回复逻辑
             if (this.status === "running") {
                 try {
@@ -729,6 +742,26 @@ export const liveStore = defineStore("live", {
                             const template = giftThanks[Math.floor(Math.random() * giftThanks.length)];
                             finalReplyText = template.replace(/{user}/g, username).replace(/{content}/g, content);
                         }
+                    } else if (eventType === "Enter") {
+                        if (this.localConfig.config.thanksMode === "llm" && providerId && modelId) {
+                            try {
+                                const promptTemplate = this.localConfig.config.prompt.replyEnter;
+                                const prompt = promptTemplate.replace(/{user}/g, username);
+                                const systemPrompt = this.localConfig.config.prompt.persona;
+
+                                const chatRes = await modelStore.chat(providerId, modelId, prompt, { systemPrompt: systemPrompt });
+                                if (chatRes.code === 0 && chatRes.data && chatRes.data.content) {
+                                    finalReplyText = chatRes.data.content;
+                                }
+                            } catch (e) { console.error("LLM API Exception:", e); }
+                        }
+                        
+                        if (!finalReplyText) {
+                            // 进场欢迎话术 (本地极速)
+                            const enterThanks = this.localConfig.config.localThanks.enter;
+                            const template = enterThanks[Math.floor(Math.random() * enterThanks.length)];
+                            finalReplyText = template.replace(/{user}/g, username);
+                        }
                     }
 
                     if (finalReplyText) {
@@ -752,8 +785,8 @@ export const liveStore = defineStore("live", {
                         let doVoice = false;
                         let doText = false;
                         
-                        // 点赞和礼物默认只用语音播报，不刷屏打字
-                        if (eventType === "Like" || eventType === "Gift") {
+                        // 点赞、礼物和进场默认只用语音播报，不刷屏打字
+                        if (eventType === "Like" || eventType === "Gift" || eventType === "Enter") {
                             doVoice = true;
                         } else {
                             if (replyMode === 'voice') {

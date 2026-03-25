@@ -24,7 +24,7 @@ const formData = ref<{ title: string; content: LiveKnowledgeContentType }>({
     }
 });
 
-const show = (record?: StorageRecord) => {
+const show = (record?: StorageRecord, defaultType?: string) => {
     if (record) {
         isEdit.value = true;
         currentRecordId.value = record.id as number;
@@ -39,8 +39,8 @@ const show = (record?: StorageRecord) => {
             title: "新知识库",
             content: {
                 enable: true,
-                type: "user",
-                systemType: "Enter",
+                type: (defaultType as any) || "user",
+                systemType: "Follow",
                 tags: [],
                 keywords: "",
                 reply: "",
@@ -111,7 +111,8 @@ const emit = defineEmits({
                     <a-switch v-model="formData.content.enable" />
                 </a-form-item>
 
-                <a-form-item label="知识类型" required>
+                <!-- 隐藏类型选择器，避免数据交叉污染。类型由外部点击的按钮决定 -->
+                <a-form-item label="知识类型" v-show="false">
                     <a-radio-group v-model="formData.content.type" type="button">
                         <a-radio value="user">弹幕关键词触发</a-radio>
                         <a-radio value="system">系统事件触发 (如进场/点赞)</a-radio>
@@ -120,9 +121,7 @@ const emit = defineEmits({
                     </a-radio-group>
                 </a-form-item>
 
-                <!-- 根据类型动态显示字段 -->
-                
-                <!-- 用户互动 (关键词) -->
+                <!-- 弹幕关键词 -->
                 <div v-if="formData.content.type === 'user'" class="bg-blue-50 p-4 rounded-lg mb-4">
                     <a-form-item label="触发关键词 (多个词用逗号分隔)" required>
                         <a-input v-model="formData.content.keywords" placeholder="例如：多少钱,怎么卖,价格" />
@@ -131,11 +130,14 @@ const emit = defineEmits({
 
                 <!-- 系统事件 -->
                 <div v-if="formData.content.type === 'system'" class="bg-purple-50 p-4 rounded-lg mb-4">
+                    <div class="mb-4 text-orange-500 text-sm bg-orange-50 p-2 rounded">
+                        提示：进场、点赞和送礼的互动话术现已迁移至全局的【直播互动】页面进行统一配置。这里仅保留对特殊自定义系统事件的支持。
+                    </div>
                     <a-form-item label="选择系统事件" required>
                         <a-select v-model="formData.content.systemType">
-                            <a-option v-for="event in EventTypes" :key="event.value" :value="event.value">
-                                {{ event.label }}
-                            </a-option>
+                            <!-- 移除了 Enter, Like, Gift, 仅保留可能扩展的其他类型或提示 -->
+                            <a-option value="Follow">用户关注 (Follow)</a-option>
+                            <a-option value="Share">分享直播间 (Share)</a-option>
                         </a-select>
                     </a-form-item>
                 </div>
