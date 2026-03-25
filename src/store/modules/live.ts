@@ -165,6 +165,9 @@ export const liveStore = defineStore("live", {
         recentEvents: [] as any[],
         // 记录最近发送的消息，用于防回声（避免抓取自己发送的消息）
         recentSentMessages: [] as {text: string, time: number}[],
+        // 播报队列系统
+        replyQueue: [] as { username: string; text: string; eventType: string; doVoice: boolean; doText: boolean }[],
+        isSpeaking: false, // 标记当前是否正在播报语音
     }),
     actions: {
         async init() {
@@ -765,7 +768,7 @@ export const liveStore = defineStore("live", {
                     }
 
                     if (finalReplyText) {
-                        // 记录 AI 回复到面板
+                        // 记录 AI 回复到面板 (提早展示)
                         this.recentEvents.push({
                             id: Date.now() + Math.random().toString(),
                             time: new Date(),
@@ -776,10 +779,6 @@ export const liveStore = defineStore("live", {
                         if (this.recentEvents.length > 50) {
                             this.recentEvents.shift();
                         }
-                        
-                        // 更新当前播报状态
-                        this.liveStatus.talkTitle = "回复 " + username;
-                        this.liveStatus.talkContent = finalReplyText;
                         
                         const replyMode = this.localConfig.config.replyMode || 'voice';
                         let doVoice = false;
@@ -805,77 +804,141 @@ export const liveStore = defineStore("live", {
                             }
                         }
 
-                        if (doVoice) {
-                            // 将生成的文本加入播报历史并进行语音合成（如果需要的话，调用后端的 talk 接口）
-                            if (this.localConfig.config.engineMode === 'local' && this.server) {
-                                this.talk(finalReplyText);
-                            } else {
-                                // 如果没有启动本地直播服务，直接在前端调用选定的 TTS 模型念出来
-                                this.playTtsFrontend(finalReplyText);
-                            }
-                        }
+                        // 将任务推入队列并尝试处理
+                        this.replyQueue.push({
+                            username,
+                            text: finalReplyText,
+                            eventType,
+                            doVoice,
+                            doText
+                        });
                         
-                        if (doText) {
-                            // 通过 IPC 向 monitor 窗口发送打字回复指令
-                            try {
-                                // 记录到发送历史，防止回声
-                                this.recentSentMessages.push({ text: finalReplyText, time: Date.now() });
-                                if (this.recentSentMessages.length > 20) this.recentSentMessages.shift();
-
-                                window.$mapi.event.callPage("monitor", "MonitorData", {
-                                    type: "SendMessage",
-                                    data: {
-                                        platform: this.localConfig.config.liveMonitorType,
-                                        text: finalReplyText
-                                    }
-                                }).catch(err => {
-                                    console.log("打字回复发送失败, 可能是监听窗口未打开", err);
-                                });
-                            } catch (e) {
-                                console.error("打字回复发送异常:", e);
-                            }
-                        }
+                        this.processReplyQueue();
                     }
                 } catch (e) {
                     console.error("LLM 自动回复失败:", e);
                 }
             }
         },
-        async playTtsFrontend(text: string) {
-            const providerName = this.localConfig.config.ttsProvider;
-            if (!providerName) return;
+        async processReplyQueue() {
+            // 如果正在播报，或者队列为空，则不执行
+            if (this.isSpeaking || this.replyQueue.length === 0) {
+                return;
+            }
 
-            const ttsServer = serverStore.records.find(s => s.name === providerName);
-            if (!ttsServer || ttsServer.status !== EnumServerStatus.RUNNING) return;
+            // 取出队首任务并标记为正在播报
+            const task = this.replyQueue.shift();
+            if (!task) return;
+            
+            this.isSpeaking = true;
+            
+            // 更新当前播报状态UI
+            this.liveStatus.talkTitle = "回复 " + task.username;
+            this.liveStatus.talkContent = task.text;
 
-            try {
-                const serverInfo = await serverStore.serverInfo(ttsServer);
-                const configRes = await $mapi.server.config(serverInfo);
-                const config = configRes.data;
-                
-                let funcName = "";
-                if (config.functions && "soundTts" in config.functions) {
-                    funcName = "soundTts";
-                } else if (config.functions && "soundClone" in config.functions) {
-                    funcName = "soundClone";
+            // 1. 处理打字回复 (不需要等待)
+            if (task.doText) {
+                try {
+                    this.recentSentMessages.push({ text: task.text, time: Date.now() });
+                    if (this.recentSentMessages.length > 20) this.recentSentMessages.shift();
+
+                    window.$mapi.event.callPage("monitor", "MonitorData", {
+                        type: "SendMessage",
+                        data: {
+                            platform: this.localConfig.config.liveMonitorType,
+                            text: task.text
+                        }
+                    }).catch(err => {
+                        console.log("打字回复发送失败, 可能是监听窗口未打开", err);
+                    });
+                } catch (e) {
+                    console.error("打字回复发送异常:", e);
+                }
+            }
+
+            // 2. 处理语音播报 (需要等待播放完毕)
+            if (task.doVoice) {
+                if (this.localConfig.config.engineMode === 'local' && this.server) {
+                    // 如果是本地数字人引擎，发送给引擎。
+                    // 暂无法监听引擎内部的音频结束状态，因此给一个基础的估算延迟后释放队列，或依靠引擎自身队列
+                    this.talk(task.text);
+                    const estimatedTime = Math.max(2000, task.text.length * 250); // 粗略估算：每个字250ms，最少2秒
+                    await new Promise(resolve => setTimeout(resolve, estimatedTime));
                 } else {
+                    // 如果是前端直接播报，则等待音频播放完毕
+                    await this.playTtsFrontend(task.text);
+                }
+            } else {
+                // 如果纯打字不播报，也给一个短暂的间隔，防止瞬间刷屏
+                await new Promise(resolve => setTimeout(resolve, 1500));
+            }
+
+            // 当前任务处理完毕，释放标记并处理下一个
+            this.isSpeaking = false;
+            this.processReplyQueue();
+        },
+        async playTtsFrontend(text: string): Promise<void> {
+            return new Promise(async (resolve) => {
+                const providerName = this.localConfig.config.ttsProvider;
+                if (!providerName) {
+                    resolve();
                     return;
                 }
 
-                const res = await $mapi.server.callFunctionWithException(serverInfo, funcName, {
-                    id: "live_frontend_tts_" + Date.now(),
-                    result: {},
-                    param: this.localConfig.config.ttsProviderParam || {},
-                    text: text
-                });
-
-                if (res && res.code === 0 && res.data && res.data.file) {
-                    const audio = new Audio("file://" + res.data.file);
-                    audio.play().catch(e => console.error("音频播放失败:", e));
+                const ttsServer = serverStore.records.find(s => s.name === providerName);
+                if (!ttsServer || ttsServer.status !== EnumServerStatus.RUNNING) {
+                    resolve();
+                    return;
                 }
-            } catch (e) {
-                console.error("前端调用 TTS 播放失败:", e);
-            }
+
+                try {
+                    const serverInfo = await serverStore.serverInfo(ttsServer);
+                    const configRes = await $mapi.server.config(serverInfo);
+                    const config = configRes.data;
+                    
+                    let funcName = "";
+                    if (config.functions && "soundTts" in config.functions) {
+                        funcName = "soundTts";
+                    } else if (config.functions && "soundClone" in config.functions) {
+                        funcName = "soundClone";
+                    } else {
+                        resolve();
+                        return;
+                    }
+
+                    const res = await $mapi.server.callFunctionWithException(serverInfo, funcName, {
+                        id: "live_frontend_tts_" + Date.now(),
+                        result: {},
+                        param: this.localConfig.config.ttsProviderParam || {},
+                        text: text
+                    });
+
+                    if (res && res.code === 0 && res.data && res.data.file) {
+                        const audio = new Audio("file://" + res.data.file);
+                        
+                        // 监听音频播放结束事件
+                        audio.onended = () => {
+                            resolve();
+                        };
+                        
+                        // 监听音频错误事件（防止因文件损坏卡死队列）
+                        audio.onerror = (e) => {
+                            console.error("音频播放出错:", e);
+                            resolve();
+                        };
+
+                        audio.play().catch(e => {
+                            console.error("音频播放失败:", e);
+                            resolve(); // 即使报错也释放 Promise，避免队列永久卡死
+                        });
+                    } else {
+                        resolve();
+                    }
+                } catch (e) {
+                    console.error("前端调用 TTS 播放失败:", e);
+                    resolve();
+                }
+            });
         },
         async startMonitor() {
             if (!this.localConfig.config.liveMonitorUrl) {

@@ -124,7 +124,7 @@ onMounted(() => {
             </div>
             <div v-else-if="records.length === 0" class="py-20">
                 <m-empty />
-            </div>
+            </div>  
             <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div v-for="r in records" :key="r.id" 
                      class="rounded-xl shadow border p-4 bg-white hover:shadow-lg transition-shadow relative group cursor-pointer"
