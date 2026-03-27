@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref} from "vue";
-import {useLiveStore} from "../../store/modules/live";
+import {useLiveStore, liveModels} from "../../store/modules/live";
 import {Dialog} from "../../lib/dialog";
 import {t} from "../../lang";
+import VideoPlayer from "../../components/common/VideoPlayer.vue";
 
 const liveStore = useLiveStore();
 
@@ -65,7 +66,7 @@ const doStart = async () => {
         Dialog.tipError("请先配置直播间抓取地址");
         return;
     }
-    if (!liveStore.localConfig.config.rtmpUrl || !liveStore.localConfig.config.rtmpKey) {
+    if (liveStore.localConfig.config.streamMode === 'rtmp' && (!liveStore.localConfig.config.rtmpUrl || !liveStore.localConfig.config.rtmpKey)) {
         Dialog.tipError("请先配置 RTMP 推流地址和推流码");
         return;
     }
@@ -79,17 +80,20 @@ const doStart = async () => {
             if (window.$mapi.app.callHandleFromMainOrRender) {
                 await window.$mapi.app.callHandleFromMainOrRender("live:startMockStream", {
                     rtmpUrl: liveStore.localConfig.config.rtmpUrl,
-                    rtmpKey: liveStore.localConfig.config.rtmpKey
+                    rtmpKey: liveStore.localConfig.config.rtmpKey,
+                    streamMode: liveStore.localConfig.config.streamMode
                 });
             } else if (window.ipcRenderer) {
                 await window.ipcRenderer.invoke("live:startMockStream", {
                     rtmpUrl: liveStore.localConfig.config.rtmpUrl,
-                    rtmpKey: liveStore.localConfig.config.rtmpKey
+                    rtmpKey: liveStore.localConfig.config.rtmpKey,
+                    streamMode: liveStore.localConfig.config.streamMode
                 });
             } else {
                 await window.$mapi.event.callPage('main', 'live:startMockStream', {
                     rtmpUrl: liveStore.localConfig.config.rtmpUrl,
-                    rtmpKey: liveStore.localConfig.config.rtmpKey
+                    rtmpKey: liveStore.localConfig.config.rtmpKey,
+                    streamMode: liveStore.localConfig.config.streamMode
                 });
             }
             liveStore.status = "running";
@@ -217,17 +221,48 @@ onUnmounted(() => {
                         <span v-if="liveStore.statusMsg" class="text-red-500 mt-2 text-sm">{{ liveStore.statusMsg }}</span>
                     </div>
                     
-                    <!-- 本地推流预览 (通过 file 协议直接播放本地 mp4) -->
+                    <!-- 云端模式本地推流预览 (通过 file 协议直接播放本地 mp4) -->
                     <video 
                         ref="videoRef"
                         v-if="isRunning && liveStore.localConfig.config.engineMode === 'cloud'" 
-                        class="absolute inset-0 w-full h-full object-contain"
+                        class="absolute inset-0 w-full h-full object-contain transition-opacity duration-300"
+                        :class="{'opacity-30 blur-sm': liveStore.isSpeaking}"
                         src="http://localhost:5173/test.mp4" 
                         autoplay 
                         loop 
                         :muted="previewMuted"
                         :volume="previewVolume / 100">
                     </video>
+
+                    <!-- 本地模式渲染引擎视频流 (HLS 播放器) -->
+                    <VideoPlayer
+                        v-if="isRunning && liveStore.localConfig.config.engineMode === 'local' && liveStore.liveStatus.videoHls"
+                        :url="liveStore.liveStatus.videoHls"
+                        :autoplay="true"
+                        :autoplayMuted="previewMuted"
+                        :controls="false"
+                        class="absolute inset-0 w-full h-full object-contain z-10"
+                    />
+
+                    <!-- 模拟打断状态：当是云端模式且 isSpeaking 为 true 时，覆盖显示口型驱动中的画面 -->
+                    <div v-if="isRunning && liveStore.isSpeaking && liveStore.localConfig.config.engineMode === 'cloud'" class="absolute inset-0 flex flex-col items-center justify-center z-15 bg-black bg-opacity-60 text-white transition-all duration-300">
+                        <div class="relative w-48 h-48 rounded-full overflow-hidden border-4 border-green-400 animate-pulse mb-4 shadow-xl">
+                            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Felix" class="w-full h-full object-cover bg-gray-800" />
+                        </div>
+                        <div class="text-xl font-bold bg-black bg-opacity-60 px-4 py-2 rounded-full flex items-center gap-2">
+                            <icon-sound-fill class="animate-bounce text-green-400" />
+                            【互动模式】正在回答弹幕...
+                        </div>
+                        <div class="mt-2 text-sm text-gray-200">
+                            正在调用 {{ liveStore.localConfig.model }} 进行实时口型合成
+                        </div>
+                    </div>
+
+                    <!-- 正常带货状态指示 -->
+                    <div v-if="isRunning && !liveStore.isSpeaking" class="absolute top-4 left-4 bg-blue-500 bg-opacity-80 text-white px-3 py-1.5 rounded-lg text-sm font-bold z-20 flex items-center shadow transition-all duration-300">
+                        <icon-play-arrow class="mr-1" />
+                        【带货模式】循环发呆/商品展示中...
+                    </div>
 
                     <!-- 预览控制条 -->
                     <div v-if="isRunning" class="absolute bottom-4 left-4 right-4 flex items-center justify-between z-20 bg-black bg-opacity-50 px-4 py-2 rounded-lg opacity-0 hover:opacity-100 transition-opacity">
@@ -273,7 +308,7 @@ onUnmounted(() => {
                     </div>
                     <div>
                         <div class="text-gray-500 text-xs mb-1">排队任务数</div>
-                        <div class="font-bold text-xl">0</div>
+                        <div class="font-bold text-xl">{{ liveStore.replyQueue.length }}</div>
                     </div>
                 </div>
             </div>
@@ -310,14 +345,36 @@ onUnmounted(() => {
                                 </div>
                             </template>
                         </a-form-item>
+                        
+                        <a-form-item label="口型驱动模型">
+                            <a-select v-model="liveStore.localConfig.model" placeholder="请选择口型驱动模型">
+                                <a-option v-for="m in liveModels" :key="m.value" :value="m.value">
+                                    {{ m.title }}
+                                </a-option>
+                            </a-select>
+                        </a-form-item>
 
                         <div class="font-bold text-gray-700 mb-2 mt-2 bg-gray-50 p-2 rounded">推流配置</div>
-                        <a-form-item label="RTMP 推流服务器地址" required>
-                            <a-input v-model="liveStore.localConfig.config.rtmpUrl" placeholder="例如: rtmp://192.168.110.238:1935" />
+                        <a-form-item label="推流模式">
+                            <a-radio-group v-model="liveStore.localConfig.config.streamMode" type="button">
+                                <a-radio value="rtmp">RTMP 直播平台推流</a-radio>
+                                <a-radio value="virtualCam">本地虚拟摄像头输出 (推荐)</a-radio>
+                            </a-radio-group>
+                            <template #extra>
+                                <div class="text-xs text-gray-400 mt-1">
+                                    {{ liveStore.localConfig.config.streamMode === 'virtualCam' ? '将数字人画面输出为系统摄像头，供 OBS 或抖音/快手直播伴侣直接调用。' : '直接将画面推送到第三方平台的推流地址。' }}
+                                </div>
+                            </template>
                         </a-form-item>
-                        <a-form-item label="推流码 (串流密钥)" required>
-                            <a-input v-model="liveStore.localConfig.config.rtmpKey" placeholder="例如: livehime" />
-                        </a-form-item>
+
+                        <div v-if="liveStore.localConfig.config.streamMode !== 'virtualCam'">
+                            <a-form-item label="RTMP 推流服务器地址" required>
+                                <a-input v-model="liveStore.localConfig.config.rtmpUrl" placeholder="例如: rtmp://192.168.110.238:1935" />
+                            </a-form-item>
+                            <a-form-item label="推流码 (串流密钥)" required>
+                                <a-input v-model="liveStore.localConfig.config.rtmpKey" placeholder="例如: livehime" />
+                            </a-form-item>
+                        </div>
                         <a-form-item label="直播间地址 (用于抓取弹幕)">
                             <a-input v-model="liveStore.localConfig.config.liveMonitorUrl" placeholder="例如抖音/B站的网页直播间链接" />
                         </a-form-item>

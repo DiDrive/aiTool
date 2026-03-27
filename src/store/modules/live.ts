@@ -6,6 +6,7 @@ import { mapError } from "../../lib/error";
 import { ObjectUtil } from "../../lib/util";
 import { StorageService } from "../../service/StorageService";
 import { VideoTemplateService } from "../../service/VideoTemplateService";
+import { VideoActionService } from "../../service/VideoActionService";
 import { LiveStatusType } from "../../types/Live";
 import { EnumServerStatus, ServerRecord } from "../../types/Server";
 import store from "../index";
@@ -17,6 +18,8 @@ const serverStore = useServerStore();
 export const liveModels = [
     {value: "wav2lip", title: "Wav2Lip标准版"},
     {value: "wav2lip384", title: "Wav2Lip清晰版"},
+    {value: "musetalk", title: "MuseTalk高画质版"},
+    {value: "infinitetalk", title: "InfiniteTalk实时版"},
 ]
 
 const SCENE_ID = "live";
@@ -148,6 +151,7 @@ export const liveStore = defineStore("live", {
                         "欢迎{user}，有什么想了解的商品可以弹幕告诉我哦！"
                     ]
                 },
+                streamMode: "rtmp" as "rtmp" | "virtualCam",
                 rtmpUrl: "",
                 rtmpKey: "",
             },
@@ -223,6 +227,8 @@ export const liveStore = defineStore("live", {
                 localConfig.config?.rtmpUrl || this.localConfig.config.rtmpUrl;
             this.localConfig.config.rtmpKey =
                 localConfig.config?.rtmpKey || this.localConfig.config.rtmpKey;
+            this.localConfig.config.streamMode =
+                localConfig.config?.streamMode || this.localConfig.config.streamMode || "rtmp";
             await this.statusUpdate();
         },
         async saveLocalConfig() {
@@ -453,6 +459,20 @@ export const liveStore = defineStore("live", {
             }
             const users: any[] = [];
             const systems: any[] = [];
+            const videoActions: any[] = []; // 新增：将动作库发送给后端
+            
+            // 获取并封装数字人动作库资产
+            const storageActions = await VideoActionService.list();
+            for (const a of storageActions) {
+                videoActions.push({
+                    id: "Action" + a.id,
+                    name: a.name,
+                    tags: a.tags.split(',').map(t => t.trim()).filter(Boolean),
+                    video: a.video,
+                    type: a.type // 'idle' 或 'action'
+                });
+            }
+
             // 获取知识库数据
             const storageUsers = await StorageService.list("LiveKnowledge");
             
@@ -486,7 +506,7 @@ export const liveStore = defineStore("live", {
                     });
                 }
             }
-            return {avatars, flowVideos, flowTalks, users, systems};
+            return {avatars, flowVideos, flowTalks, users, systems, videoActions};
         },
         async update() {
             const configPost = {
@@ -881,13 +901,14 @@ export const liveStore = defineStore("live", {
             return new Promise(async (resolve) => {
                 const providerName = this.localConfig.config.ttsProvider;
                 if (!providerName) {
-                    resolve();
+                    // 兜底：如果没配语音模型，也要停留一段时间，用于展示 UI 的打断动画
+                    setTimeout(() => resolve(), 3000);
                     return;
                 }
 
                 const ttsServer = serverStore.records.find(s => s.name === providerName);
                 if (!ttsServer || ttsServer.status !== EnumServerStatus.RUNNING) {
-                    resolve();
+                    setTimeout(() => resolve(), 3000);
                     return;
                 }
 
@@ -902,7 +923,8 @@ export const liveStore = defineStore("live", {
                     } else if (config.functions && "soundClone" in config.functions) {
                         funcName = "soundClone";
                     } else {
-                        resolve();
+                        // 兜底：如果没配语音模型，也要停留一段时间，用于展示 UI 的打断动画
+                        setTimeout(() => resolve(), 3000);
                         return;
                     }
 

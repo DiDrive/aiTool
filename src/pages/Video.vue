@@ -4,6 +4,7 @@ import {t} from "../lang";
 import Router from "../router";
 import VideoGen from "./Video/VideoGen.vue";
 import VideoTemplate from "./Video/VideoTemplate.vue";
+import VideoAction from "./Video/VideoAction.vue";
 import {VideoApps} from "./Apps/all";
 
 const tab = ref("");
@@ -46,6 +47,16 @@ const dynamicComponent = computed(() => {
                 </div>
             </div>
             <div
+                class="p-2 rounded-lg mb-4 cursor-pointer"
+                :class="tab === 'videoAction' ? 'bg-gray-200' : ''"
+                @click="tab = 'videoAction'"
+            >
+                <div class="text-base truncate flex items-center">
+                    <icon-interaction class="w-6 inline-block" />
+                    数字人动作库
+                </div>
+            </div>
+            <div
                 v-for="s in VideoApps"
                 class="p-2 rounded-lg mb-4 cursor-pointer"
                 :class="tab === s.name ? 'bg-gray-200' : ''"
@@ -60,6 +71,7 @@ const dynamicComponent = computed(() => {
         <div class="flex-grow h-full overflow-y-auto">
             <VideoGen v-if="tab === 'videoGen'"/>
             <VideoTemplate v-else-if="tab === 'videoTemplate'"/>
+            <VideoAction v-else-if="tab === 'videoAction'"/>
             <component v-else :is="dynamicComponent"/>
         </div>
     </div>

@@ -7,39 +7,54 @@ import {extraResolveBin} from "../../lib/env";
 
 let ffmpegProcess: any = null;
 
-ipcMain.handle("live:startMockStream", async (event, options: { rtmpUrl: string; rtmpKey: string }) => {
+ipcMain.handle("live:startMockStream", async (event, options: { rtmpUrl: string; rtmpKey: string; streamMode?: string }) => {
     if (ffmpegProcess) {
         throw new Error("Stream is already running");
     }
 
-    const fullRtmpUrl = `${options.rtmpUrl.replace(/\/$/, "")}/${options.rtmpKey}`;
-    
-    // 我们需要一个本地的测试视频来做推流。
-    // 在开发环境中，我们可以放一个 test.mp4 到某个目录，这里我们假设它存在。
     const testVideoPath = path.join(AppEnv.appRoot, "test.mp4");
-    
-    // 这里调用内置的 ffmpeg 二进制文件
     const ffmpegPath = extraResolveBin("ffmpeg");
 
-    Log.info("live", "Starting mock stream to " + fullRtmpUrl);
-    
-    // ffmpeg 循环推流命令
-    const args = [
-        "-re", // 按照原始帧率读取
-        "-stream_loop", "-1", // 无限循环
-        "-i", testVideoPath, // 输入文件
-        "-c:v", "libx264", // 视频编码器
-        "-preset", "veryfast", // 编码速度
-        "-maxrate", "3000k", // 最大码率
-        "-bufsize", "6000k", // 缓冲大小
-        "-pix_fmt", "yuv420p", // 像素格式，兼容性最好
-        "-g", "50", // 关键帧间隔
-        "-c:a", "aac", // 音频编码器
-        "-b:a", "128k", // 音频码率
-        "-ar", "44100", // 音频采样率
-        "-f", "flv", // 输出格式
-        fullRtmpUrl // 输出地址
-    ];
+    let args: string[] = [];
+
+    if (options.streamMode === "virtualCam") {
+        Log.info("live", "Starting mock stream to Virtual Camera (dshow)");
+        
+        // 虚拟摄像头推流参数 (Windows 下通常使用 dshow 推送给 OBS-Camera)
+        // 注意：这要求用户安装了 OBS-VirtualCam 插件并开启
+        args = [
+            "-re",
+            "-stream_loop", "-1",
+            "-i", testVideoPath,
+            "-f", "dshow",
+            "-video_size", "1920x1080",
+            "-framerate", "30",
+            "-vcodec", "rawvideo",
+            "-pix_fmt", "yuv420p",
+            "video=OBS-Camera" // 这里默认推送给名为 OBS-Camera 的虚拟设备
+        ];
+    } else {
+        const fullRtmpUrl = `${options.rtmpUrl.replace(/\/$/, "")}/${options.rtmpKey}`;
+        Log.info("live", "Starting mock stream to " + fullRtmpUrl);
+        
+        // rtmp 循环推流命令
+        args = [
+            "-re", // 按照原始帧率读取
+            "-stream_loop", "-1", // 无限循环
+            "-i", testVideoPath, // 输入文件
+            "-c:v", "libx264", // 视频编码器
+            "-preset", "veryfast", // 编码速度
+            "-maxrate", "3000k", // 最大码率
+            "-bufsize", "6000k", // 缓冲大小
+            "-pix_fmt", "yuv420p", // 像素格式，兼容性最好
+            "-g", "50", // 关键帧间隔
+            "-c:a", "aac", // 音频编码器
+            "-b:a", "128k", // 音频码率
+            "-ar", "44100", // 音频采样率
+            "-f", "flv", // 输出格式
+            fullRtmpUrl // 输出地址
+        ];
+    }
 
     return new Promise((resolve, reject) => {
         try {

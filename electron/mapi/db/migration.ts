@@ -337,6 +337,20 @@ const versions = [
                 ADD COLUMN info TEXT`);
         },
     },
+    {
+        version: 12,
+        up: async (db: DB) => {
+            await db.execute(`CREATE TABLE IF NOT EXISTS data_video_action (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                    name TEXT,
+                    tags TEXT,
+                    video TEXT,
+                    type TEXT,
+                    info TEXT
+            )`);
+        },
+    },
 ];
 
 export default {
