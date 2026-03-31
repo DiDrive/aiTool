@@ -71,8 +71,8 @@ const doStart = async () => {
         return;
     }
     
-    if (liveStore.localConfig.config.engineMode === 'cloud') {
-        Dialog.tipSuccess("正在连接云端数字人渲染引擎...");
+    if (liveStore.localConfig.config.engineMode === 'cloud' || liveStore.localConfig.config.streamMode === 'virtualCam') {
+        Dialog.tipSuccess(liveStore.localConfig.config.streamMode === 'virtualCam' ? "正在启动虚拟摄像头推流..." : "正在连接云端数字人渲染引擎...");
         liveStore.status = "starting";
         
         // 触发本地 IPC 进行推流 (前端模拟云端下发流，本地 FFmpeg 负责转推)
@@ -113,7 +113,7 @@ const doStart = async () => {
 };
 
 const doStop = async () => {
-    if (liveStore.localConfig.config.engineMode === 'cloud' || !liveStore.server) {
+    if (liveStore.localConfig.config.engineMode === 'cloud' || liveStore.localConfig.config.streamMode === 'virtualCam' || !liveStore.server) {
         liveStore.status = "stopping";
         try {
             if (window.$mapi.app.callHandleFromMainOrRender) {
@@ -221,10 +221,10 @@ onUnmounted(() => {
                         <span v-if="liveStore.statusMsg" class="text-red-500 mt-2 text-sm">{{ liveStore.statusMsg }}</span>
                     </div>
                     
-                    <!-- 云端模式本地推流预览 (通过 file 协议直接播放本地 mp4) -->
+                    <!-- 云端模式或虚拟摄像头模式下的本地推流预览 (通过 file 协议直接播放本地 mp4) -->
                     <video 
                         ref="videoRef"
-                        v-if="isRunning && liveStore.localConfig.config.engineMode === 'cloud'" 
+                        v-if="isRunning && (liveStore.localConfig.config.engineMode === 'cloud' || liveStore.localConfig.config.streamMode === 'virtualCam')" 
                         class="absolute inset-0 w-full h-full object-contain transition-opacity duration-300"
                         :class="{'opacity-30 blur-sm': liveStore.isSpeaking}"
                         src="http://localhost:5173/test.mp4" 
@@ -234,9 +234,9 @@ onUnmounted(() => {
                         :volume="previewVolume / 100">
                     </video>
 
-                    <!-- 本地模式渲染引擎视频流 (HLS 播放器) -->
+                    <!-- 本地模式且为RTMP推流时的视频流 (HLS 播放器) -->
                     <VideoPlayer
-                        v-if="isRunning && liveStore.localConfig.config.engineMode === 'local' && liveStore.liveStatus.videoHls"
+                        v-if="isRunning && liveStore.localConfig.config.engineMode === 'local' && liveStore.localConfig.config.streamMode === 'rtmp' && liveStore.liveStatus.videoHls"
                         :url="liveStore.liveStatus.videoHls"
                         :autoplay="true"
                         :autoplayMuted="previewMuted"
@@ -244,8 +244,8 @@ onUnmounted(() => {
                         class="absolute inset-0 w-full h-full object-contain z-10"
                     />
 
-                    <!-- 模拟打断状态：当是云端模式且 isSpeaking 为 true 时，覆盖显示口型驱动中的画面 -->
-                    <div v-if="isRunning && liveStore.isSpeaking && liveStore.localConfig.config.engineMode === 'cloud'" class="absolute inset-0 flex flex-col items-center justify-center z-15 bg-black bg-opacity-60 text-white transition-all duration-300">
+                    <!-- 模拟打断状态：当为云端/虚拟摄像头模式且 isSpeaking 为 true 时，覆盖显示口型驱动中的画面 -->
+                    <div v-if="isRunning && liveStore.isSpeaking && (liveStore.localConfig.config.engineMode === 'cloud' || liveStore.localConfig.config.streamMode === 'virtualCam')" class="absolute inset-0 flex flex-col items-center justify-center z-15 bg-black bg-opacity-60 text-white transition-all duration-300">
                         <div class="relative w-48 h-48 rounded-full overflow-hidden border-4 border-green-400 animate-pulse mb-4 shadow-xl">
                             <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Felix" class="w-full h-full object-cover bg-gray-800" />
                         </div>
@@ -358,11 +358,11 @@ onUnmounted(() => {
                         <a-form-item label="推流模式">
                             <a-radio-group v-model="liveStore.localConfig.config.streamMode" type="button">
                                 <a-radio value="rtmp">RTMP 直播平台推流</a-radio>
-                                <a-radio value="virtualCam">本地虚拟摄像头输出 (推荐)</a-radio>
+                                <a-radio value="virtualCam">本地直播伴侣/OBS接入 (推荐)</a-radio>
                             </a-radio-group>
                             <template #extra>
                                 <div class="text-xs text-gray-400 mt-1">
-                                    {{ liveStore.localConfig.config.streamMode === 'virtualCam' ? '将数字人画面输出为系统摄像头，供 OBS 或抖音/快手直播伴侣直接调用。' : '直接将画面推送到第三方平台的推流地址。' }}
+                                    {{ liveStore.localConfig.config.streamMode === 'virtualCam' ? '选择此模式后，在直播伴侣/OBS中添加【媒体源】，取消勾选本地文件，输入 udp://127.0.0.1:12345 即可获取画面。' : '直接将画面推送到第三方平台的推流地址。' }}
                                 </div>
                             </template>
                         </a-form-item>

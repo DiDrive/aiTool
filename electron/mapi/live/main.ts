@@ -18,20 +18,22 @@ ipcMain.handle("live:startMockStream", async (event, options: { rtmpUrl: string;
     let args: string[] = [];
 
     if (options.streamMode === "virtualCam") {
-        Log.info("live", "Starting mock stream to Virtual Camera (dshow)");
+        Log.info("live", "Starting mock stream to UDP for OBS/直播伴侣");
         
-        // 虚拟摄像头推流参数 (Windows 下通常使用 dshow 推送给 OBS-Camera)
-        // 注意：这要求用户安装了 OBS-VirtualCam 插件并开启
+        // 核心修正：FFmpeg 的 dshow 不能作为输出！
+        // 正确的虚拟摄像头/直播伴侣对接方案：通过 UDP 推送 mpegts 流到本地端口
+        // 用户在直播伴侣/OBS中添加“媒体源”或“网络流”，地址填入 udp://127.0.0.1:12345 即可获取画面
         args = [
             "-re",
             "-stream_loop", "-1",
             "-i", testVideoPath,
-            "-f", "dshow",
-            "-video_size", "1920x1080",
-            "-framerate", "30",
-            "-vcodec", "rawvideo",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-tune", "zerolatency", // 零延迟优化
             "-pix_fmt", "yuv420p",
-            "video=OBS-Camera" // 这里默认推送给名为 OBS-Camera 的虚拟设备
+            "-c:a", "aac",
+            "-f", "mpegts",
+            "udp://127.0.0.1:12345"
         ];
     } else {
         const fullRtmpUrl = `${options.rtmpUrl.replace(/\/$/, "")}/${options.rtmpKey}`;
