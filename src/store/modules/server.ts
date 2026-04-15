@@ -97,6 +97,15 @@ const createEventChannel = (server: ServerRecord, serverRuntime?: ServerRuntime)
                             $mapi.user.open().then();
                         }, 2000);
                         break;
+                    case "LiveTalkDone":
+                    case "LiveTalkStart":
+                    case "LiveTalkError":
+                        window.dispatchEvent(
+                            new CustomEvent("live-engine-action", {
+                                detail: data,
+                            })
+                        );
+                        break;
                 }
                 break;
             case "liveTalk":

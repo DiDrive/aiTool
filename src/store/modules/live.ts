@@ -154,10 +154,25 @@ export const liveStore = defineStore("live", {
                 streamMode: "rtmp" as "rtmp" | "virtualCam",
                 rtmpUrl: "",
                 rtmpKey: "",
+                cloudApiBaseUrl: "",
+                cloudApiKey: "",
+                cloudSceneId: "default",
+                cloudStartPath: "scene/start",
+                cloudStopPath: "scene/stop",
+                cloudStatusPath: "scene/status",
+                cloudStatusFallbackPath: "status",
+                cloudTalkPath: "scene/talk",
+                cloudPreviewFieldPath: "",
+                cloudStatusFieldPath: "",
             },
         },
         status: "stopped" as LiveStatusType,
         statusMsg: "",
+        mockStream: {
+            running: false,
+            mode: "" as "" | "rtmp" | "virtualCam",
+            pid: 0,
+        },
         liveStatusTimer: undefined as any,
         liveStatus: ObjectUtil.clone(EMPTY_LIVE_STATUS),
         liveRuntime: {
@@ -172,6 +187,13 @@ export const liveStore = defineStore("live", {
         // 播报队列系统
         replyQueue: [] as { username: string; text: string; eventType: string; doVoice: boolean; doText: boolean }[],
         isSpeaking: false, // 标记当前是否正在播报语音
+        pendingTalkWaiters: [] as { resolve: () => void; timer: any }[],
+        engineActionListenerBound: false,
+        cloudStatusFailCount: 0,
+        cloudStartGraceUntil: 0,
+        cloudSessionExpectedRunning: false,
+        cloudStartInFlight: false,
+        cloudLastStartAt: 0,
     }),
     actions: {
         async init() {
@@ -227,9 +249,176 @@ export const liveStore = defineStore("live", {
                 localConfig.config?.rtmpUrl || this.localConfig.config.rtmpUrl;
             this.localConfig.config.rtmpKey =
                 localConfig.config?.rtmpKey || this.localConfig.config.rtmpKey;
+            this.localConfig.config.cloudApiBaseUrl =
+                localConfig.config?.cloudApiBaseUrl || this.localConfig.config.cloudApiBaseUrl;
+            this.localConfig.config.cloudApiKey =
+                localConfig.config?.cloudApiKey || this.localConfig.config.cloudApiKey;
+            this.localConfig.config.cloudSceneId =
+                localConfig.config?.cloudSceneId || this.localConfig.config.cloudSceneId || "default";
+            this.localConfig.config.cloudStartPath =
+                localConfig.config?.cloudStartPath || this.localConfig.config.cloudStartPath || "scene/start";
+            this.localConfig.config.cloudStopPath =
+                localConfig.config?.cloudStopPath || this.localConfig.config.cloudStopPath || "scene/stop";
+            this.localConfig.config.cloudStatusPath =
+                localConfig.config?.cloudStatusPath || this.localConfig.config.cloudStatusPath || "scene/status";
+            this.localConfig.config.cloudStatusFallbackPath =
+                localConfig.config?.cloudStatusFallbackPath || this.localConfig.config.cloudStatusFallbackPath || "status";
+            this.localConfig.config.cloudTalkPath =
+                localConfig.config?.cloudTalkPath || this.localConfig.config.cloudTalkPath || "scene/talk";
+            this.localConfig.config.cloudPreviewFieldPath =
+                localConfig.config?.cloudPreviewFieldPath || this.localConfig.config.cloudPreviewFieldPath || "";
+            this.localConfig.config.cloudStatusFieldPath =
+                localConfig.config?.cloudStatusFieldPath || this.localConfig.config.cloudStatusFieldPath || "";
             this.localConfig.config.streamMode =
                 localConfig.config?.streamMode || this.localConfig.config.streamMode || "rtmp";
+            if (!this.engineActionListenerBound) {
+                window.addEventListener("live-engine-action", this.onEngineActionBroadcast as EventListener);
+                this.engineActionListenerBound = true;
+            }
             await this.statusUpdate();
+        },
+        onEngineActionBroadcast(event: any) {
+            const data = event?.detail || {};
+            if (data.type === "LiveTalkDone") {
+                const waiter = this.pendingTalkWaiters.shift();
+                if (waiter) {
+                    clearTimeout(waiter.timer);
+                    waiter.resolve();
+                }
+            }
+        },
+        waitLocalTalkDone(timeoutMs = 30000): Promise<void> {
+            return new Promise(resolve => {
+                const timer = setTimeout(() => {
+                    const idx = this.pendingTalkWaiters.findIndex(item => item.resolve === resolve);
+                    if (idx >= 0) {
+                        this.pendingTalkWaiters.splice(idx, 1);
+                    }
+                    resolve();
+                }, timeoutMs);
+                this.pendingTalkWaiters.push({
+                    resolve,
+                    timer,
+                });
+            });
+        },
+        flushPendingTalkWaiters() {
+            if (!this.pendingTalkWaiters.length) {
+                return;
+            }
+            for (const waiter of this.pendingTalkWaiters) {
+                clearTimeout(waiter.timer);
+                waiter.resolve();
+            }
+            this.pendingTalkWaiters = [];
+        },
+        async validateLocalStartDependencies(): Promise<{ok: boolean; msg: string}> {
+            if (this.localConfig.config.engineMode !== "local") {
+                return {ok: true, msg: ""};
+            }
+            if (!liveModels.some(item => item.value === this.localConfig.model)) {
+                return {
+                    ok: false,
+                    msg: "本地渲染不可用：当前口型模型配置无效，请在直播控制台重新选择可用模型",
+                };
+            }
+            if (this.localConfig.mode === "avatar") {
+                const avatarId = Number(this.localConfig.avatar.avatarId || 0);
+                if (!avatarId) {
+                    return {
+                        ok: false,
+                        msg: "本地渲染不可用：未选择数字人形象，请先在数字人管理中选择并保存模板",
+                    };
+                }
+                const avatar = await VideoTemplateService.get(avatarId);
+                if (!avatar || !avatar.video) {
+                    return {
+                        ok: false,
+                        msg: "本地渲染不可用：数字人模板不存在或视频路径为空，请重新选择数字人素材",
+                    };
+                }
+                const avatarExists = await $mapi.file.exists(avatar.video);
+                if (!avatarExists) {
+                    return {
+                        ok: false,
+                        msg: "本地渲染不可用：数字人模板视频文件不存在，请检查素材路径后重试",
+                    };
+                }
+            }
+            const liveKnowledge = await StorageService.list("LiveKnowledge");
+            const flowTalks = liveKnowledge.filter(s => s.content.type === "flowTalk" && s.content.enable);
+            if (!flowTalks.length) {
+                return {
+                    ok: false,
+                    msg: "本地渲染不可用：未配置循环话术，请先在直播知识库启用至少一条循环话术",
+                };
+            }
+            for (const item of flowTalks) {
+                if (item.content?.url) {
+                    const exists = await $mapi.file.exists(item.content.url);
+                    if (!exists) {
+                        return {
+                            ok: false,
+                            msg: "本地渲染不可用：循环话术关联素材文件不存在，请在直播知识库修复素材路径",
+                        };
+                    }
+                }
+            }
+            if (this.localConfig.video.enable) {
+                const flowVideos = liveKnowledge.filter(s => s.content.type === "flowVideo" && s.content.enable);
+                if (!flowVideos.length) {
+                    return {
+                        ok: false,
+                        msg: "本地渲染不可用：未启用循环视频素材，请先在直播知识库配置循环视频",
+                    };
+                }
+                for (const item of flowVideos) {
+                    if (!item.content?.url) {
+                        return {
+                            ok: false,
+                            msg: "本地渲染不可用：循环视频素材路径为空，请在直播知识库补全素材路径",
+                        };
+                    }
+                    const exists = await $mapi.file.exists(item.content.url);
+                    if (!exists) {
+                        return {
+                            ok: false,
+                            msg: "本地渲染不可用：循环视频素材文件不存在，请检查素材路径后重试",
+                        };
+                    }
+                }
+            }
+            const actions = await VideoActionService.list();
+            for (const action of actions) {
+                if (!action.video) {
+                    return {
+                        ok: false,
+                        msg: "本地渲染不可用：动作库存在空视频路径，请在数字人动作库修复后再开播",
+                    };
+                }
+                const exists = await $mapi.file.exists(action.video);
+                if (!exists) {
+                    return {
+                        ok: false,
+                        msg: "本地渲染不可用：动作库素材文件不存在，请在数字人动作库修复素材路径",
+                    };
+                }
+            }
+            try {
+                const statusRes = await this.apiRequest("status", {sceneId: SCENE_ID});
+                if (statusRes.code) {
+                    return {
+                        ok: false,
+                        msg: "本地渲染不可用：引擎状态检查失败，请确认服务端口未被占用并重启直播服务",
+                    };
+                }
+            } catch (e) {
+                return {
+                    ok: false,
+                    msg: "本地渲染不可用：引擎通信失败，请确认服务端口可用并在服务管理中重启引擎",
+                };
+            }
+            return {ok: true, msg: ""};
         },
         async saveLocalConfig() {
             await $mapi.storage.set("live", "config", ObjectUtil.clone(this.localConfig));
@@ -246,21 +435,356 @@ export const liveStore = defineStore("live", {
                 await this.update();
             }, 5 * 1000);
         },
+        async callLiveHandle(handle: string, payload: any = {}) {
+            if (window.$mapi.app.callHandleFromMainOrRender) {
+                return await window.$mapi.app.callHandleFromMainOrRender(handle, payload);
+            }
+            if (window.ipcRenderer) {
+                return await window.ipcRenderer.invoke(handle, payload);
+            }
+            return await window.$mapi.event.callPage("main", handle, payload);
+        },
+        hasCloudApiConfigured() {
+            return !!String(this.localConfig.config.cloudApiBaseUrl || "").trim();
+        },
+        async resolveCloudApiBaseUrl() {
+            const configured = String(this.localConfig.config.cloudApiBaseUrl || "").trim().replace(/\/+$/, "");
+            if (configured) {
+                return { apiBaseUrl: configured, autoDetected: false };
+            }
+            try {
+                if (!this.server) {
+                    return { apiBaseUrl: "", autoDetected: false };
+                }
+                const serverInfo = await serverStore.serverInfo(this.server);
+                const configRes: any = await $mapi.server.config(serverInfo);
+                const detected = String(configRes?.data?.httpUrl || "").trim().replace(/\/+$/, "");
+                if (detected) {
+                    return { apiBaseUrl: detected, autoDetected: true };
+                }
+            } catch (e) {
+            }
+            try {
+                const probeRes: any = await this.callLiveHandle("live:probeCloudApiBaseUrl", {
+                    candidates: [],
+                });
+                const probed = String(probeRes?.apiBaseUrl || "").trim().replace(/\/+$/, "");
+                if (probeRes?.ok && probed) {
+                    return { apiBaseUrl: probed, autoDetected: true };
+                }
+            } catch (e) {
+            }
+            return { apiBaseUrl: "", autoDetected: false };
+        },
+        cloudPathList(customPath: string, defaultPaths: string[]) {
+            const custom = String(customPath || "").trim();
+            if (!custom) {
+                return defaultPaths;
+            }
+            const paths = custom
+                .split("|")
+                .map(item => item.trim())
+                .filter(item => item.length > 0);
+            return paths.length ? paths : defaultPaths;
+        },
+        cloudGetByPath(source: any, path: string) {
+            if (!source || !path) {
+                return undefined;
+            }
+            const parts = String(path)
+                .split(".")
+                .map(item => item.trim())
+                .filter(item => item.length > 0);
+            let current: any = source;
+            for (const part of parts) {
+                if (current === null || typeof current === "undefined") {
+                    return undefined;
+                }
+                if (/^\d+$/.test(part)) {
+                    current = current[Number(part)];
+                } else {
+                    current = current[part];
+                }
+            }
+            return current;
+        },
+        cloudPickFirstValue(source: any, paths: string[]) {
+            for (const path of paths) {
+                const value = this.cloudGetByPath(source, path);
+                if (value !== null && typeof value !== "undefined" && value !== "") {
+                    return value;
+                }
+            }
+            return "";
+        },
+        mapCloudErrorMessage(code: any, msg: string) {
+            const rawCode = String(code ?? "");
+            const rawMsg = String(msg || "");
+            const codeUpper = rawCode.toUpperCase();
+            const msgUpper = rawMsg.toUpperCase();
+            if (rawCode === "11203") {
+                return "云端会话忙碌或形象占用，请先停止直播后等待 3-5 秒再重试";
+            }
+            if (rawCode === "11200") {
+                return "云端参数校验失败，请检查 avatar_id、APPID 及服务区域";
+            }
+            if (rawCode === "401" || rawCode === "403" || codeUpper.includes("AUTH") || msgUpper.includes("UNAUTHORIZED") || msgUpper.includes("TOKEN")) {
+                return "云端鉴权失败，请检查 API Key";
+            }
+            if (rawCode === "402" || codeUpper.includes("QUOTA") || msgUpper.includes("QUOTA") || msgUpper.includes("BALANCE")) {
+                return "云端额度不足，请检查套餐或余额";
+            }
+            if (rawCode === "404" || codeUpper.includes("MODEL") || msgUpper.includes("MODEL")) {
+                return "云端模型不可用，请检查模型配置";
+            }
+            if (rawCode === "408" || rawCode === "504" || codeUpper.includes("TIMEOUT") || msgUpper.includes("TIMEOUT") || msgUpper.includes("TIMED OUT")) {
+                return "云端请求超时，请稍后重试";
+            }
+            return rawMsg || "云端请求失败";
+        },
+        mapCloudStatus(rawStatus: string) {
+            const val = String(rawStatus || "").toLowerCase();
+            if (val === "running") return "running";
+            if (val === "starting" || val === "pending" || val === "init") return "starting";
+            if (val === "stopping") return "stopping";
+            if (val === "error" || val === "failed") return "error";
+            if (val === "stopped" || val === "idle") return "stopped";
+            return "stopped";
+        },
+        async queryCloudStreamStatus() {
+            const resolved = await this.resolveCloudApiBaseUrl();
+            if (!resolved.apiBaseUrl) {
+                return await this.queryMockStreamStatus();
+            }
+            try {
+                const result: any = await this.callLiveHandle("live:getCloudStreamStatus", {
+                    apiBaseUrl: resolved.apiBaseUrl,
+                    apiKey: this.localConfig.config.cloudApiKey,
+                    sceneId: this.localConfig.config.cloudSceneId || "default",
+                    statusPath: this.localConfig.config.cloudStatusPath,
+                    statusFallbackPath: this.localConfig.config.cloudStatusFallbackPath,
+                });
+                const statusPathList = this.cloudPathList(this.localConfig.config.cloudStatusFieldPath, [
+                    "data.scene.status",
+                    "data.scenes.0.status",
+                    "scene.status",
+                    "scenes.0.status",
+                    "data.status",
+                    "status",
+                ]);
+                const previewPathList = this.cloudPathList(this.localConfig.config.cloudPreviewFieldPath, [
+                    "data.scene.videoHls",
+                    "data.scene.previewUrl",
+                    "data.scenes.0.videoHls",
+                    "data.scenes.0.previewUrl",
+                    "scene.videoHls",
+                    "scene.previewUrl",
+                    "scenes.0.videoHls",
+                    "scenes.0.previewUrl",
+                    "data.videoHls",
+                    "data.previewUrl",
+                ]);
+                const status = String(this.cloudPickFirstValue(result, statusPathList) || "");
+                const previewUrl = String(this.cloudPickFirstValue(result, previewPathList) || "");
+                const mappedStatus = this.mapCloudStatus(status);
+                const running = result?.code === 0 && (mappedStatus === "running" || mappedStatus === "starting" || !!previewUrl);
+                this.mockStream.running = running;
+                this.mockStream.mode = running ? (this.localConfig.config.streamMode as any) : "";
+                this.mockStream.pid = 0;
+                this.liveStatus.status = mappedStatus;
+                this.liveStatus.videoHls = previewUrl || "";
+                if (result?.code) {
+                    this.statusMsg = this.mapCloudErrorMessage(result?.code, result?.msg || "云端状态查询失败");
+                }
+                return this.mockStream;
+            } catch (e) {
+                this.mockStream.running = false;
+                this.mockStream.mode = "";
+                this.mockStream.pid = 0;
+                this.liveStatus.status = "error";
+                this.liveStatus.videoHls = "";
+                if (!this.statusMsg) {
+                    this.statusMsg = "云端状态查询失败";
+                }
+                return this.mockStream;
+            }
+        },
+        async startCloudStream() {
+            if (this.cloudStartInFlight) {
+                return {ok: true, ignored: true, msg: "开播请求处理中，已自动忽略重复点击"};
+            }
+            const now = Date.now();
+            if (now - this.cloudLastStartAt < 3000) {
+                return {ok: true, ignored: true, msg: "请求过于频繁，已自动忽略本次点击"};
+            }
+            this.cloudStartInFlight = true;
+            this.cloudLastStartAt = now;
+            const resolved = await this.resolveCloudApiBaseUrl();
+            if (!resolved.apiBaseUrl) {
+                this.statusMsg = "未找到可用云端 API 地址";
+                this.liveStatus.videoHls = "";
+                this.cloudStartInFlight = false;
+                return {
+                    ok: false,
+                    fallback: false,
+                    msg: "未找到可用云端 API 地址，请在“云端 API 地址”填写当前 AI_Live_Server 地址（例如 http://127.0.0.1:18000）",
+                };
+            }
+            try {
+                const result: any = await this.callLiveHandle("live:startCloudStream", {
+                    apiBaseUrl: resolved.apiBaseUrl,
+                    apiKey: this.localConfig.config.cloudApiKey,
+                    sceneId: this.localConfig.config.cloudSceneId || "default",
+                    startPath: this.localConfig.config.cloudStartPath,
+                    streamMode: this.localConfig.config.streamMode,
+                    rtmpUrl: this.localConfig.config.rtmpUrl,
+                    rtmpKey: this.localConfig.config.rtmpKey,
+                    liveMonitorUrl: this.localConfig.config.liveMonitorUrl,
+                    model: this.localConfig.model,
+                });
+                if (result?.code) {
+                    // Some cloud providers return transient errors while session is actually becoming ready.
+                    await new Promise(resolve => setTimeout(resolve, 1200));
+                    const status = await this.queryCloudStreamStatus();
+                    if (status?.running) {
+                        this.statusMsg = "";
+                        this.cloudStatusFailCount = 0;
+                        this.cloudStartGraceUntil = Date.now() + 20000;
+                        this.cloudSessionExpectedRunning = true;
+                        return {
+                            ok: true,
+                            recovered: true,
+                            fallback: false,
+                            autoDetected: resolved.autoDetected,
+                            apiBaseUrl: resolved.apiBaseUrl,
+                        };
+                    }
+                    this.cloudSessionExpectedRunning = false;
+                    return {ok: false, msg: this.mapCloudErrorMessage(result?.code, result?.msg || "云端开播失败")};
+                }
+                const previewPathList = this.cloudPathList(this.localConfig.config.cloudPreviewFieldPath, [
+                    "data.scene.videoHls",
+                    "data.scene.previewUrl",
+                    "data.videoHls",
+                    "data.previewUrl",
+                    "scene.videoHls",
+                    "scene.previewUrl",
+                ]);
+                const previewUrl = String(this.cloudPickFirstValue(result, previewPathList) || "");
+                this.liveStatus.videoHls = previewUrl || "";
+                this.statusMsg = "";
+                this.cloudStatusFailCount = 0;
+                this.cloudStartGraceUntil = Date.now() + 20000;
+                this.cloudSessionExpectedRunning = true;
+                return {ok: true, fallback: false, autoDetected: resolved.autoDetected, apiBaseUrl: resolved.apiBaseUrl};
+            } finally {
+                this.cloudStartInFlight = false;
+            }
+        },
+        async stopCloudStream() {
+            const resolved = await this.resolveCloudApiBaseUrl();
+            if (!resolved.apiBaseUrl) {
+                await this.callLiveHandle("live:stopMockStream", {});
+                this.liveStatus.videoHls = "";
+                this.cloudSessionExpectedRunning = false;
+                return {ok: true, fallback: true};
+            }
+            const result: any = await this.callLiveHandle("live:stopCloudStream", {
+                apiBaseUrl: resolved.apiBaseUrl,
+                apiKey: this.localConfig.config.cloudApiKey,
+                sceneId: this.localConfig.config.cloudSceneId || "default",
+                stopPath: this.localConfig.config.cloudStopPath,
+            });
+            if (result?.code) {
+                return {ok: false, msg: this.mapCloudErrorMessage(result?.code, result?.msg || "云端停播失败")};
+            }
+            this.liveStatus.videoHls = "";
+            this.cloudStatusFailCount = 0;
+            this.cloudStartGraceUntil = 0;
+            this.cloudSessionExpectedRunning = false;
+            return {ok: true, fallback: false};
+        },
+        async talkCloud(text: string, option: {silent?: boolean} = {}) {
+            const resolved = await this.resolveCloudApiBaseUrl();
+            if (!resolved.apiBaseUrl) {
+                if (!option.silent) {
+                    Dialog.tipError("云端播报失败：未配置云端 API 地址");
+                }
+                return false;
+            }
+            const result: any = await this.callLiveHandle("live:talkCloudStream", {
+                apiBaseUrl: resolved.apiBaseUrl,
+                apiKey: this.localConfig.config.cloudApiKey,
+                sceneId: this.localConfig.config.cloudSceneId || "default",
+                talkPath: this.localConfig.config.cloudTalkPath,
+                text,
+            });
+            if (result?.code) {
+                if (!option.silent) {
+                    Dialog.tipError(this.mapCloudErrorMessage(result?.code, result?.msg || "云端播报失败"));
+                }
+                return false;
+            }
+            return true;
+        },
+        async queryMockStreamStatus() {
+            try {
+                const result: any = await this.callLiveHandle("live:getMockStreamStatus", {});
+                const running = !!result?.running;
+                const mode = (result?.mode || "") as "" | "rtmp" | "virtualCam";
+                const pid = Number(result?.pid || 0);
+                this.mockStream.running = running;
+                this.mockStream.mode = running ? mode : "";
+                this.mockStream.pid = running ? pid : 0;
+                return this.mockStream;
+            } catch (e) {
+                this.mockStream.running = false;
+                this.mockStream.mode = "";
+                this.mockStream.pid = 0;
+                return this.mockStream;
+            }
+        },
         async statusUpdate() {
             // console.log('update live', JSON.stringify(this.server))
             if (this.liveStatusTimer) {
                 clearTimeout(this.liveStatusTimer);
             }
             
-            // 如果是云端模式且正在运行，不要被本地的轮询打断状态
-            if (this.localConfig.config.engineMode === 'cloud' && (this.status === 'running' || this.status === 'starting')) {
-                // Keep checking just to maintain the loop, but don't reset status
+            const isCloudMode = this.localConfig.config.engineMode === "cloud";
+
+            if (isCloudMode && (this.status === "running" || this.status === "starting" || this.status === "stopping")) {
+                const cloudStatus = await this.queryCloudStreamStatus();
+                if (cloudStatus.running) {
+                    this.cloudStatusFailCount = 0;
+                    this.status = this.liveStatus.status === "starting" ? "starting" : "running";
+                    if (!this.hasCloudApiConfigured() && !this.statusMsg) {
+                        this.statusMsg = "未配置云端 API，当前为本地模拟推流";
+                    }
+                } else if (this.status !== "stopping") {
+                    this.cloudStatusFailCount += 1;
+                    const inStartGrace = Date.now() < this.cloudStartGraceUntil;
+                    const failThreshold = this.cloudSessionExpectedRunning ? 12 : 3;
+                    const shouldHoldState = inStartGrace || this.cloudStatusFailCount < failThreshold;
+                    if (shouldHoldState) {
+                        if (this.status !== "running") {
+                            this.status = "starting";
+                        }
+                        if (this.statusMsg === "" || this.statusMsg === "云端状态查询失败") {
+                            this.statusMsg = "云端状态同步中，请稍候...";
+                        }
+                    } else {
+                        this.status = this.liveStatus.status === "error" ? "error" : "stopped";
+                        if (this.statusMsg === "" || this.statusMsg === "本地推流未运行" || this.statusMsg === "云端状态查询失败" || this.statusMsg === "云端状态同步中，请稍候...") {
+                            this.statusMsg = this.hasCloudApiConfigured() ? "云端推流未运行" : "本地推流未运行";
+                        }
+                    }
+                }
                 this.liveStatusTimer = setTimeout(this.statusUpdate, 5000);
                 return;
             }
 
             if (!this.server) {
-                if (this.localConfig.config.engineMode === 'cloud' && (this.status === 'running' || this.status === 'starting')) {
+                if (isCloudMode && (this.status === 'running' || this.status === 'starting')) {
                     this.liveStatusTimer = setTimeout(this.statusUpdate, 5000);
                     return;
                 }
@@ -269,6 +793,7 @@ export const liveStore = defineStore("live", {
                     this.status = "stopped";
                     this.liveStatus = ObjectUtil.clone(EMPTY_LIVE_STATUS);
                 }
+                this.statusMsg = "";
                 this.liveStatusTimer = setTimeout(this.statusUpdate, 2000);
                 return;
             }
@@ -277,12 +802,13 @@ export const liveStore = defineStore("live", {
             //     server: ObjectUtil.clone(this.server),
             // })
             if (this.server.status !== EnumServerStatus.RUNNING) {
-                // 如果是云端模式且正在运行，忽略本地 server 的状态
-                if (this.localConfig.config.engineMode === 'cloud' && (this.status === 'running' || this.status === 'starting')) {
+                // 云端模拟或本地直播伴侣模式下，忽略本地 server 状态
+                if (isCloudMode && (this.status === 'running' || this.status === 'starting')) {
                     this.liveStatusTimer = setTimeout(this.statusUpdate, 5000);
                     return;
                 }
                 this.liveStatus = ObjectUtil.clone(EMPTY_LIVE_STATUS);
+                this.statusMsg = "";
                 this.liveStatusTimer = setTimeout(this.statusUpdate, 2000);
                 return;
             }
@@ -530,6 +1056,13 @@ export const liveStore = defineStore("live", {
         },
         async start() {
             await this.saveLocalConfig();
+            let sceneData;
+            try {
+                sceneData = await this.buildData();
+            } catch (e) {
+                Dialog.tipError(mapError(e));
+                return false;
+            }
             // console.log('live.start', this.localConfig)
             const configPost = {
                 id: SCENE_ID,
@@ -565,7 +1098,7 @@ export const liveStore = defineStore("live", {
                     rtmpUrl: this.localConfig.config.rtmpUrl,
                     rtmpKey: this.localConfig.config.rtmpKey,
                 },
-                data: await this.buildData(),
+                data: sceneData,
             };
             const configPostContent = JSON.stringify(configPost, null, 2);
             await $mapi.file.write("data-live-last.json", configPostContent);
@@ -578,11 +1111,13 @@ export const liveStore = defineStore("live", {
                 this.status = "error";
                 this.statusMsg = res.msg;
                 Dialog.tipError(t("service.startFailed") + ":" + res.msg);
-                return;
+                return false;
             }
+            return true;
         },
         async stop() {
             this.status = "stopping";
+            this.flushPendingTalkWaiters();
             const res = await this.apiRequest("scene/stop", {sceneId: SCENE_ID});
             // console.log('live.stop', res)
             if (res.code) {
@@ -593,13 +1128,18 @@ export const liveStore = defineStore("live", {
             }
             this.statusMsg = "";
         },
-        async talk(text) {
+        async talk(text, option: {silent?: boolean} = {}) {
             const res = await this.apiRequest("scene/talk", {sceneId: SCENE_ID, data: {text}});
             if (res.code) {
-                Dialog.tipError(t("common.sendFailed") + ":" + res.msg);
-                return;
+                if (!option.silent) {
+                    Dialog.tipError(t("common.sendFailed") + ":" + res.msg);
+                }
+                return false;
             }
-            Dialog.tipSuccess(t("common.sendSuccess"));
+            if (!option.silent) {
+                Dialog.tipSuccess(t("common.sendSuccess"));
+            }
+            return true;
         },
         fireEvent(type, data) {
             this.apiRequest("scene/event", {sceneId: SCENE_ID, type, data});
@@ -879,17 +1419,19 @@ export const liveStore = defineStore("live", {
             // 2. 处理语音播报 (需要等待播放完毕)
             if (task.doVoice) {
                 if (this.localConfig.config.engineMode === 'local' && this.server) {
-                    // 如果是本地数字人引擎，发送给引擎。
-                    // 暂无法监听引擎内部的音频结束状态，因此给一个基础的估算延迟后释放队列，或依靠引擎自身队列
-                    this.talk(task.text);
-                    const estimatedTime = Math.max(2000, task.text.length * 250); // 粗略估算：每个字250ms，最少2秒
-                    await new Promise(resolve => setTimeout(resolve, estimatedTime));
+                    const sent = await this.talk(task.text, {silent: true});
+                    if (sent) {
+                        await this.waitLocalTalkDone();
+                    }
+                } else if (this.localConfig.config.engineMode === 'cloud' && this.hasCloudApiConfigured()) {
+                    const sent = await this.talkCloud(task.text, {silent: true});
+                    if (sent) {
+                        await new Promise(resolve => setTimeout(resolve, 1500));
+                    }
                 } else {
-                    // 如果是前端直接播报，则等待音频播放完毕
                     await this.playTtsFrontend(task.text);
                 }
             } else {
-                // 如果纯打字不播报，也给一个短暂的间隔，防止瞬间刷屏
                 await new Promise(resolve => setTimeout(resolve, 1500));
             }
 
