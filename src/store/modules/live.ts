@@ -22,6 +22,12 @@ export const liveModels = [
     {value: "infinitetalk", title: "InfiniteTalk实时版"},
 ]
 
+export const liveCloudProviders = [
+    {value: "custom", title: "自定义接口"},
+    {value: "runninghub", title: "RunningHub"},
+    {value: "heygem", title: "Heygem/其他"},
+] as const;
+
 const SCENE_ID = "live";
 const EMPTY_LIVE_STATUS = {
     id: SCENE_ID,
@@ -154,6 +160,7 @@ export const liveStore = defineStore("live", {
                 streamMode: "rtmp" as "rtmp" | "virtualCam",
                 rtmpUrl: "",
                 rtmpKey: "",
+                cloudProvider: "custom" as "custom" | "runninghub" | "heygem",
                 cloudApiBaseUrl: "",
                 cloudApiKey: "",
                 cloudSceneId: "default",
@@ -164,6 +171,21 @@ export const liveStore = defineStore("live", {
                 cloudTalkPath: "scene/talk",
                 cloudPreviewFieldPath: "",
                 cloudStatusFieldPath: "",
+                runningHubBaseUrl: "https://www.runninghub.ai",
+                runningHubApiKey: "",
+                runningHubWebappId: "",
+                runningHubNodeInfoListJson: "[]",
+                runningHubWebhookUrl: "",
+                runningHubInstanceType: "default",
+                cloudSdkEnabled: false,
+                cloudSdkScriptUrl: "",
+                cloudSdkGlobalName: "AvatarPlatform",
+                cloudSdkAppId: "",
+                cloudSdkApiKey: "",
+                cloudSdkApiSecret: "",
+                cloudSdkSceneId: "",
+                cloudSdkUseInlinePlayer: true,
+                cloudSdkGlobalParams: "{}",
             },
         },
         status: "stopped" as LiveStatusType,
@@ -194,6 +216,8 @@ export const liveStore = defineStore("live", {
         cloudSessionExpectedRunning: false,
         cloudStartInFlight: false,
         cloudLastStartAt: 0,
+        cloudTaskId: "",
+        cloudTaskProvider: "",
     }),
     actions: {
         async init() {
@@ -249,6 +273,8 @@ export const liveStore = defineStore("live", {
                 localConfig.config?.rtmpUrl || this.localConfig.config.rtmpUrl;
             this.localConfig.config.rtmpKey =
                 localConfig.config?.rtmpKey || this.localConfig.config.rtmpKey;
+            this.localConfig.config.cloudProvider =
+                localConfig.config?.cloudProvider || this.localConfig.config.cloudProvider || "custom";
             this.localConfig.config.cloudApiBaseUrl =
                 localConfig.config?.cloudApiBaseUrl || this.localConfig.config.cloudApiBaseUrl;
             this.localConfig.config.cloudApiKey =
@@ -269,6 +295,36 @@ export const liveStore = defineStore("live", {
                 localConfig.config?.cloudPreviewFieldPath || this.localConfig.config.cloudPreviewFieldPath || "";
             this.localConfig.config.cloudStatusFieldPath =
                 localConfig.config?.cloudStatusFieldPath || this.localConfig.config.cloudStatusFieldPath || "";
+            this.localConfig.config.runningHubBaseUrl =
+                localConfig.config?.runningHubBaseUrl || this.localConfig.config.runningHubBaseUrl || "https://www.runninghub.ai";
+            this.localConfig.config.runningHubApiKey =
+                localConfig.config?.runningHubApiKey || this.localConfig.config.runningHubApiKey || "";
+            this.localConfig.config.runningHubWebappId =
+                localConfig.config?.runningHubWebappId || this.localConfig.config.runningHubWebappId || "";
+            this.localConfig.config.runningHubNodeInfoListJson =
+                localConfig.config?.runningHubNodeInfoListJson || this.localConfig.config.runningHubNodeInfoListJson || "[]";
+            this.localConfig.config.runningHubWebhookUrl =
+                localConfig.config?.runningHubWebhookUrl || this.localConfig.config.runningHubWebhookUrl || "";
+            this.localConfig.config.runningHubInstanceType =
+                localConfig.config?.runningHubInstanceType || this.localConfig.config.runningHubInstanceType || "default";
+            this.localConfig.config.cloudSdkEnabled =
+                localConfig.config?.cloudSdkEnabled ?? this.localConfig.config.cloudSdkEnabled ?? false;
+            this.localConfig.config.cloudSdkScriptUrl =
+                localConfig.config?.cloudSdkScriptUrl || this.localConfig.config.cloudSdkScriptUrl || "";
+            this.localConfig.config.cloudSdkGlobalName =
+                localConfig.config?.cloudSdkGlobalName || this.localConfig.config.cloudSdkGlobalName || "AvatarPlatform";
+            this.localConfig.config.cloudSdkAppId =
+                localConfig.config?.cloudSdkAppId || this.localConfig.config.cloudSdkAppId || "";
+            this.localConfig.config.cloudSdkApiKey =
+                localConfig.config?.cloudSdkApiKey || this.localConfig.config.cloudSdkApiKey || "";
+            this.localConfig.config.cloudSdkApiSecret =
+                localConfig.config?.cloudSdkApiSecret || this.localConfig.config.cloudSdkApiSecret || "";
+            this.localConfig.config.cloudSdkSceneId =
+                localConfig.config?.cloudSdkSceneId || this.localConfig.config.cloudSdkSceneId || "";
+            this.localConfig.config.cloudSdkUseInlinePlayer =
+                localConfig.config?.cloudSdkUseInlinePlayer ?? this.localConfig.config.cloudSdkUseInlinePlayer ?? true;
+            this.localConfig.config.cloudSdkGlobalParams =
+                localConfig.config?.cloudSdkGlobalParams || this.localConfig.config.cloudSdkGlobalParams || "{}";
             this.localConfig.config.streamMode =
                 localConfig.config?.streamMode || this.localConfig.config.streamMode || "rtmp";
             if (!this.engineActionListenerBound) {
@@ -436,19 +492,79 @@ export const liveStore = defineStore("live", {
             }, 5 * 1000);
         },
         async callLiveHandle(handle: string, payload: any = {}) {
-            if (window.$mapi.app.callHandleFromMainOrRender) {
-                return await window.$mapi.app.callHandleFromMainOrRender(handle, payload);
+            const appAny = (window as any)?.$mapi?.app as any;
+            if (appAny?.callHandleFromMainOrRender) {
+                return await appAny.callHandleFromMainOrRender(handle, payload);
             }
             if (window.ipcRenderer) {
                 return await window.ipcRenderer.invoke(handle, payload);
             }
             return await window.$mapi.event.callPage("main", handle, payload);
         },
+        getCloudProvider() {
+            return (this.localConfig.config.cloudProvider || "custom") as "custom" | "runninghub" | "heygem";
+        },
+        isRunningHubProvider() {
+            return this.getCloudProvider() === "runninghub";
+        },
         hasCloudApiConfigured() {
+            if (this.isRunningHubProvider()) {
+                return !!String(this.localConfig.config.runningHubApiKey || "").trim() && !!String(this.localConfig.config.runningHubWebappId || "").trim();
+            }
             return !!String(this.localConfig.config.cloudApiBaseUrl || "").trim();
         },
+        normalizeCloudApiBaseUrl(rawUrl: string) {
+            const trimmed = String(rawUrl || "").trim().replace(/\/+$/, "");
+            if (!trimmed) {
+                return "";
+            }
+            if (/^https?:\/\//i.test(trimmed)) {
+                return trimmed;
+            }
+            // 兼容用户只填 127.0.0.1:8000 / localhost:8000 的情况
+            if (/^(localhost|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?(\/.*)?$/i.test(trimmed)) {
+                return `http://${trimmed}`;
+            }
+            return trimmed;
+        },
+        parseRunningHubNodeInfoList() {
+            const raw = String(this.localConfig.config.runningHubNodeInfoListJson || "").trim();
+            if (!raw) {
+                return [];
+            }
+            try {
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                throw new Error("RunningHub 节点参数 JSON 格式不正确");
+            }
+        },
+        currentCloudApiKey() {
+            if (this.isRunningHubProvider()) {
+                return String(this.localConfig.config.runningHubApiKey || "").trim();
+            }
+            return String(this.localConfig.config.cloudApiKey || "").trim();
+        },
+        mapCloudInvokeError(e: any, fallback = "云端请求失败") {
+            const raw = String(e?.message || e || "").trim();
+            const upper = raw.toUpperCase();
+            if (!raw) {
+                return fallback;
+            }
+            if (upper.includes("FETCH FAILED") || upper.includes("ECONNREFUSED") || upper.includes("ENOTFOUND")) {
+                return "云端接口连接失败，请检查云端 API 地址和服务是否已启动";
+            }
+            if (upper.includes("ABORT") || upper.includes("TIMEOUT")) {
+                return "云端接口请求超时，请稍后重试";
+            }
+            return raw;
+        },
         async resolveCloudApiBaseUrl() {
-            const configured = String(this.localConfig.config.cloudApiBaseUrl || "").trim().replace(/\/+$/, "");
+            if (this.isRunningHubProvider()) {
+                const baseUrl = this.normalizeCloudApiBaseUrl(this.localConfig.config.runningHubBaseUrl || "https://www.runninghub.ai");
+                return { apiBaseUrl: baseUrl, autoDetected: false };
+            }
+            const configured = this.normalizeCloudApiBaseUrl(this.localConfig.config.cloudApiBaseUrl || "");
             if (configured) {
                 return { apiBaseUrl: configured, autoDetected: false };
             }
@@ -458,7 +574,7 @@ export const liveStore = defineStore("live", {
                 }
                 const serverInfo = await serverStore.serverInfo(this.server);
                 const configRes: any = await $mapi.server.config(serverInfo);
-                const detected = String(configRes?.data?.httpUrl || "").trim().replace(/\/+$/, "");
+                const detected = this.normalizeCloudApiBaseUrl(configRes?.data?.httpUrl || "");
                 if (detected) {
                     return { apiBaseUrl: detected, autoDetected: true };
                 }
@@ -468,7 +584,7 @@ export const liveStore = defineStore("live", {
                 const probeRes: any = await this.callLiveHandle("live:probeCloudApiBaseUrl", {
                     candidates: [],
                 });
-                const probed = String(probeRes?.apiBaseUrl || "").trim().replace(/\/+$/, "");
+                const probed = this.normalizeCloudApiBaseUrl(probeRes?.apiBaseUrl || "");
                 if (probeRes?.ok && probed) {
                     return { apiBaseUrl: probed, autoDetected: true };
                 }
@@ -551,39 +667,63 @@ export const liveStore = defineStore("live", {
             if (val === "stopped" || val === "idle") return "stopped";
             return "stopped";
         },
+        runningHubStatusPaths() {
+            return {
+                taskIdPaths: ["data.taskId", "taskId"],
+                statusPaths: ["data.taskStatus", "data.status", "status", "data"],
+                previewPaths: ["data.previewUrl", "data.videoHls", "data.scene.previewUrl", "data.scene.videoHls", "results.0.url", "data.0.fileUrl", "data.fileUrl"],
+            };
+        },
         async queryCloudStreamStatus() {
             const resolved = await this.resolveCloudApiBaseUrl();
             if (!resolved.apiBaseUrl) {
                 return await this.queryMockStreamStatus();
             }
             try {
-                const result: any = await this.callLiveHandle("live:getCloudStreamStatus", {
+                const payload: any = {
+                    provider: this.getCloudProvider(),
                     apiBaseUrl: resolved.apiBaseUrl,
-                    apiKey: this.localConfig.config.cloudApiKey,
+                    apiKey: this.currentCloudApiKey(),
                     sceneId: this.localConfig.config.cloudSceneId || "default",
                     statusPath: this.localConfig.config.cloudStatusPath,
                     statusFallbackPath: this.localConfig.config.cloudStatusFallbackPath,
+                };
+                if (this.isRunningHubProvider()) {
+                    payload.taskId = this.cloudTaskId;
+                }
+                const result: any = await this.callLiveHandle("live:getCloudStreamStatus", {
+                    ...payload,
                 });
-                const statusPathList = this.cloudPathList(this.localConfig.config.cloudStatusFieldPath, [
-                    "data.scene.status",
-                    "data.scenes.0.status",
-                    "scene.status",
-                    "scenes.0.status",
-                    "data.status",
-                    "status",
-                ]);
-                const previewPathList = this.cloudPathList(this.localConfig.config.cloudPreviewFieldPath, [
-                    "data.scene.videoHls",
-                    "data.scene.previewUrl",
-                    "data.scenes.0.videoHls",
-                    "data.scenes.0.previewUrl",
-                    "scene.videoHls",
-                    "scene.previewUrl",
-                    "scenes.0.videoHls",
-                    "scenes.0.previewUrl",
-                    "data.videoHls",
-                    "data.previewUrl",
-                ]);
+                const providerDefaults = this.isRunningHubProvider() ? this.runningHubStatusPaths() : {
+                    taskIdPaths: [],
+                    statusPaths: [
+                        "data.scene.status",
+                        "data.scenes.0.status",
+                        "scene.status",
+                        "scenes.0.status",
+                        "data.status",
+                        "status",
+                    ],
+                    previewPaths: [
+                        "data.scene.videoHls",
+                        "data.scene.previewUrl",
+                        "data.scenes.0.videoHls",
+                        "data.scenes.0.previewUrl",
+                        "scene.videoHls",
+                        "scene.previewUrl",
+                        "scenes.0.videoHls",
+                        "scenes.0.previewUrl",
+                        "data.videoHls",
+                        "data.previewUrl",
+                    ],
+                };
+                const statusPathList = this.cloudPathList(this.localConfig.config.cloudStatusFieldPath, providerDefaults.statusPaths);
+                const previewPathList = this.cloudPathList(this.localConfig.config.cloudPreviewFieldPath, providerDefaults.previewPaths);
+                const taskId = String(this.cloudPickFirstValue(result, providerDefaults.taskIdPaths) || this.cloudTaskId || "");
+                if (taskId) {
+                    this.cloudTaskId = taskId;
+                    this.cloudTaskProvider = this.getCloudProvider();
+                }
                 const status = String(this.cloudPickFirstValue(result, statusPathList) || "");
                 const previewUrl = String(this.cloudPickFirstValue(result, previewPathList) || "");
                 const mappedStatus = this.mapCloudStatus(status);
@@ -627,13 +767,16 @@ export const liveStore = defineStore("live", {
                 return {
                     ok: false,
                     fallback: false,
-                    msg: "未找到可用云端 API 地址，请在“云端 API 地址”填写当前 AI_Live_Server 地址（例如 http://127.0.0.1:18000）",
+                    msg: this.isRunningHubProvider()
+                        ? "未找到可用 RunningHub 地址，请检查 RunningHub Base URL 配置"
+                        : "未找到可用云端 API 地址，请填写当前服务地址（例如 http://127.0.0.1:18000）",
                 };
             }
             try {
-                const result: any = await this.callLiveHandle("live:startCloudStream", {
+                const payload: any = {
+                    provider: this.getCloudProvider(),
                     apiBaseUrl: resolved.apiBaseUrl,
-                    apiKey: this.localConfig.config.cloudApiKey,
+                    apiKey: this.currentCloudApiKey(),
                     sceneId: this.localConfig.config.cloudSceneId || "default",
                     startPath: this.localConfig.config.cloudStartPath,
                     streamMode: this.localConfig.config.streamMode,
@@ -641,7 +784,21 @@ export const liveStore = defineStore("live", {
                     rtmpKey: this.localConfig.config.rtmpKey,
                     liveMonitorUrl: this.localConfig.config.liveMonitorUrl,
                     model: this.localConfig.model,
+                };
+                if (this.isRunningHubProvider()) {
+                    payload.webappId = this.localConfig.config.runningHubWebappId;
+                    payload.nodeInfoList = this.parseRunningHubNodeInfoList();
+                    payload.webhookUrl = this.localConfig.config.runningHubWebhookUrl;
+                    payload.instanceType = this.localConfig.config.runningHubInstanceType;
+                }
+                const result: any = await this.callLiveHandle("live:startCloudStream", {
+                    ...payload,
                 });
+                const taskId = String(this.cloudPickFirstValue(result, ["data.taskId", "taskId"]) || "");
+                if (taskId) {
+                    this.cloudTaskId = taskId;
+                    this.cloudTaskProvider = this.getCloudProvider();
+                }
                 if (result?.code) {
                     // Some cloud providers return transient errors while session is actually becoming ready.
                     await new Promise(resolve => setTimeout(resolve, 1200));
@@ -662,14 +819,12 @@ export const liveStore = defineStore("live", {
                     this.cloudSessionExpectedRunning = false;
                     return {ok: false, msg: this.mapCloudErrorMessage(result?.code, result?.msg || "云端开播失败")};
                 }
-                const previewPathList = this.cloudPathList(this.localConfig.config.cloudPreviewFieldPath, [
-                    "data.scene.videoHls",
-                    "data.scene.previewUrl",
-                    "data.videoHls",
-                    "data.previewUrl",
-                    "scene.videoHls",
-                    "scene.previewUrl",
-                ]);
+                const previewPathList = this.cloudPathList(
+                    this.localConfig.config.cloudPreviewFieldPath,
+                    this.isRunningHubProvider()
+                        ? this.runningHubStatusPaths().previewPaths
+                        : ["data.scene.videoHls", "data.scene.previewUrl", "data.videoHls", "data.previewUrl", "scene.videoHls", "scene.previewUrl"]
+                );
                 const previewUrl = String(this.cloudPickFirstValue(result, previewPathList) || "");
                 this.liveStatus.videoHls = previewUrl || "";
                 this.statusMsg = "";
@@ -677,6 +832,11 @@ export const liveStore = defineStore("live", {
                 this.cloudStartGraceUntil = Date.now() + 20000;
                 this.cloudSessionExpectedRunning = true;
                 return {ok: true, fallback: false, autoDetected: resolved.autoDetected, apiBaseUrl: resolved.apiBaseUrl};
+            } catch (e: any) {
+                this.cloudSessionExpectedRunning = false;
+                const msg = this.mapCloudInvokeError(e, "云端开播失败");
+                this.statusMsg = msg;
+                return {ok: false, fallback: false, msg};
             } finally {
                 this.cloudStartInFlight = false;
             }
@@ -687,13 +847,17 @@ export const liveStore = defineStore("live", {
                 await this.callLiveHandle("live:stopMockStream", {});
                 this.liveStatus.videoHls = "";
                 this.cloudSessionExpectedRunning = false;
+                this.cloudTaskId = "";
+                this.cloudTaskProvider = "";
                 return {ok: true, fallback: true};
             }
             const result: any = await this.callLiveHandle("live:stopCloudStream", {
+                provider: this.getCloudProvider(),
                 apiBaseUrl: resolved.apiBaseUrl,
-                apiKey: this.localConfig.config.cloudApiKey,
+                apiKey: this.currentCloudApiKey(),
                 sceneId: this.localConfig.config.cloudSceneId || "default",
                 stopPath: this.localConfig.config.cloudStopPath,
+                taskId: this.cloudTaskId,
             });
             if (result?.code) {
                 return {ok: false, msg: this.mapCloudErrorMessage(result?.code, result?.msg || "云端停播失败")};
@@ -702,9 +866,17 @@ export const liveStore = defineStore("live", {
             this.cloudStatusFailCount = 0;
             this.cloudStartGraceUntil = 0;
             this.cloudSessionExpectedRunning = false;
+            this.cloudTaskId = "";
+            this.cloudTaskProvider = "";
             return {ok: true, fallback: false};
         },
         async talkCloud(text: string, option: {silent?: boolean} = {}) {
+            if (this.isRunningHubProvider()) {
+                if (!option.silent) {
+                    Dialog.tipError("RunningHub 当前按任务提交模式接入，暂不支持实时播报接口");
+                }
+                return false;
+            }
             const resolved = await this.resolveCloudApiBaseUrl();
             if (!resolved.apiBaseUrl) {
                 if (!option.silent) {
@@ -713,8 +885,9 @@ export const liveStore = defineStore("live", {
                 return false;
             }
             const result: any = await this.callLiveHandle("live:talkCloudStream", {
+                provider: this.getCloudProvider(),
                 apiBaseUrl: resolved.apiBaseUrl,
-                apiKey: this.localConfig.config.cloudApiKey,
+                apiKey: this.currentCloudApiKey(),
                 sceneId: this.localConfig.config.cloudSceneId || "default",
                 talkPath: this.localConfig.config.cloudTalkPath,
                 text,

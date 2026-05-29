@@ -1,4 +1,11 @@
-export type StorageBiz = "SoundPrompt" | "LiveAvatar" | "LiveKnowledge" | "LiveEvent" | "LiveTalk";
+export type StorageBiz =
+    | "SoundPrompt"
+    | "LiveAvatar"
+    | "LiveKnowledge"
+    | "LiveEvent"
+    | "LiveTalk"
+    | "CloudTemplate"
+    | "CloudProviderProfile";
 
 export type StorageRecord = {
     id?: number;

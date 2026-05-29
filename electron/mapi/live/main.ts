@@ -20,6 +20,13 @@ const normalizeApiBaseUrl = (url: string) => {
     return String(url || "").trim().replace(/\/+$/, "");
 };
 
+const normalizeProvider = (provider?: string) => {
+    const val = String(provider || "custom").trim().toLowerCase();
+    if (val === "runninghub") return "runninghub";
+    if (val === "heygem") return "heygem";
+    return "custom";
+};
+
 const normalizeApiPath = (apiPath: string, fallbackPath: string) => {
     const val = String(apiPath || "").trim();
     if (!val) {
@@ -102,6 +109,49 @@ const cloudPing = async (apiBaseUrl: string) => {
     } finally {
         clearTimeout(timeout);
     }
+};
+
+const runningHubPost = async (
+    apiBaseUrl: string,
+    apiPath: string,
+    body: Record<string, any>,
+    apiKey?: string
+) => {
+    const baseUrl = normalizeApiBaseUrl(apiBaseUrl || "https://www.runninghub.ai");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+        const res = await fetch(`${baseUrl}/${apiPath.replace(/^\/+/, "")}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(apiKey ? {Authorization: `Bearer ${apiKey}`} : {}),
+            },
+            body: JSON.stringify(body || {}),
+            signal: controller.signal,
+        });
+        const text = await res.text();
+        try {
+            return text ? JSON.parse(text) : {};
+        } catch (e) {
+            return {
+                code: res.ok ? 0 : res.status,
+                msg: text || `HTTP ${res.status}`,
+                data: {},
+            };
+        }
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
+const runningHubMapStatus = (raw: any) => {
+    const val = String(raw || "").trim().toUpperCase();
+    if (val === "RUNNING" || val === "QUEUED") return "starting";
+    if (val === "SUCCESS") return "running";
+    if (val === "FAILED") return "error";
+    if (val === "CANCELLED" || val === "STOPPED") return "stopped";
+    return "stopped";
 };
 
 ipcMain.handle("live:startMockStream", async (event, options: { rtmpUrl: string; rtmpKey: string; streamMode?: string }) => {
@@ -250,6 +300,7 @@ ipcMain.handle("live:probeCloudApiBaseUrl", async (event, options: { candidates?
 });
 
 ipcMain.handle("live:startCloudStream", async (event, options: {
+    provider?: "custom" | "runninghub" | "heygem";
     apiBaseUrl: string;
     apiKey?: string;
     sceneId?: string;
@@ -259,7 +310,26 @@ ipcMain.handle("live:startCloudStream", async (event, options: {
     rtmpKey?: string;
     liveMonitorUrl?: string;
     model?: string;
+    webappId?: string;
+    nodeInfoList?: Array<Record<string, any>>;
+    webhookUrl?: string;
+    instanceType?: string;
 }) => {
+    const provider = normalizeProvider(options.provider);
+    if (provider === "runninghub") {
+        return await runningHubPost(
+            options.apiBaseUrl || "https://www.runninghub.ai",
+            "task/openapi/ai-app/run",
+            {
+                apiKey: options.apiKey || "",
+                webappId: options.webappId || "",
+                nodeInfoList: Array.isArray(options.nodeInfoList) ? options.nodeInfoList : [],
+                webhookUrl: options.webhookUrl || undefined,
+                instanceType: options.instanceType || undefined,
+            },
+            options.apiKey
+        );
+    }
     const scene = {
         id: options.sceneId || "default",
         model: options.model || "",
@@ -280,11 +350,24 @@ ipcMain.handle("live:startCloudStream", async (event, options: {
 });
 
 ipcMain.handle("live:stopCloudStream", async (event, options: {
+    provider?: "custom" | "runninghub" | "heygem";
     apiBaseUrl: string;
     apiKey?: string;
     sceneId?: string;
     stopPath?: string;
+    taskId?: string;
 }) => {
+    const provider = normalizeProvider(options.provider);
+    if (provider === "runninghub") {
+        return {
+            code: 0,
+            msg: options.taskId ? "RunningHub 任务已从本地状态移除，远端取消暂未接入" : "未找到 RunningHub 任务ID",
+            data: {
+                stopped: false,
+                taskId: options.taskId || "",
+            },
+        };
+    }
     return await cloudPost(
         options.apiBaseUrl,
         normalizeApiPath(options.stopPath || "", "scene/stop"),
@@ -294,12 +377,78 @@ ipcMain.handle("live:stopCloudStream", async (event, options: {
 });
 
 ipcMain.handle("live:getCloudStreamStatus", async (event, options: {
+    provider?: "custom" | "runninghub" | "heygem";
     apiBaseUrl: string;
     apiKey?: string;
     sceneId?: string;
     statusPath?: string;
     statusFallbackPath?: string;
+    taskId?: string;
 }) => {
+    const provider = normalizeProvider(options.provider);
+    if (provider === "runninghub") {
+        if (!options.taskId) {
+            return {code: 404, msg: "RUNNINGHUB_TASK_ID_MISSING", data: {status: "stopped"}};
+        }
+        const v2Result = await runningHubPost(
+            options.apiBaseUrl || "https://www.runninghub.ai",
+            "openapi/v2/query",
+            {
+                taskId: options.taskId,
+            },
+            options.apiKey
+        );
+        const v2Status = String(v2Result?.status || "");
+        if (v2Status) {
+            return {
+                code: v2Status === "FAILED" ? 500 : 0,
+                msg: v2Result?.errorMessage || "",
+                data: {
+                    taskId: v2Result?.taskId || options.taskId,
+                    status: runningHubMapStatus(v2Status),
+                    previewUrl: v2Result?.results?.[0]?.url || "",
+                    rawStatus: v2Status,
+                    results: v2Result?.results || [],
+                },
+            };
+        }
+        const statusResult = await runningHubPost(
+            options.apiBaseUrl || "https://www.runninghub.ai",
+            "task/openapi/status",
+            {
+                apiKey: options.apiKey || "",
+                taskId: options.taskId,
+            },
+            options.apiKey
+        );
+        const statusText = String(statusResult?.data || "");
+        let previewUrl = "";
+        const outputsResult = await runningHubPost(
+            options.apiBaseUrl || "https://www.runninghub.ai",
+            "task/openapi/outputs",
+            {
+                apiKey: options.apiKey || "",
+                taskId: options.taskId,
+            },
+            options.apiKey
+        );
+        if (Array.isArray(outputsResult?.data) && outputsResult.data.length) {
+            previewUrl = String(outputsResult.data[0]?.fileUrl || "");
+        } else if (outputsResult?.data?.netWssUrl) {
+            previewUrl = String(outputsResult.data.netWssUrl || "");
+        }
+        return {
+            code: statusResult?.code === 0 || statusResult?.code === 804 ? 0 : (statusResult?.code || outputsResult?.code || 500),
+            msg: statusResult?.msg || outputsResult?.msg || "",
+            data: {
+                taskId: options.taskId,
+                status: runningHubMapStatus(statusText),
+                previewUrl,
+                rawStatus: statusText,
+                outputs: outputsResult?.data || [],
+            },
+        };
+    }
     const body = {sceneId: options.sceneId || "default"};
     const primaryStatusPath = normalizeApiPath(options.statusPath || "", "scene/status");
     const fallbackStatusPath = normalizeApiPath(options.statusFallbackPath || "", "status");
@@ -316,12 +465,21 @@ ipcMain.handle("live:getCloudStreamStatus", async (event, options: {
 });
 
 ipcMain.handle("live:talkCloudStream", async (event, options: {
+    provider?: "custom" | "runninghub" | "heygem";
     apiBaseUrl: string;
     apiKey?: string;
     sceneId?: string;
     talkPath?: string;
     text: string;
 }) => {
+    const provider = normalizeProvider(options.provider);
+    if (provider === "runninghub") {
+        return {
+            code: 415,
+            msg: "RUNNINGHUB_TALK_UNSUPPORTED",
+            data: {},
+        };
+    }
     return await cloudPost(
         options.apiBaseUrl,
         normalizeApiPath(options.talkPath || "", "scene/talk"),

@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import {computed, onMounted, ref} from "vue";
-import {t} from "../lang";
 import Router from "../router";
-import VideoGen from "./Video/VideoGen.vue";
-import VideoTemplate from "./Video/VideoTemplate.vue";
-import VideoAction from "./Video/VideoAction.vue";
 import {VideoApps} from "./Apps/all";
 
 const tab = ref("");
+const defaultTab = VideoApps[0]?.name || "";
 
 onMounted(() => {
-    tab.value = (Router.currentRoute.value.query.tab as string) || "videoGen";
+    const queryTab = (Router.currentRoute.value.query.tab as string) || "";
+    tab.value = VideoApps.some(app => app.name === queryTab) ? queryTab : defaultTab;
 });
 
 const dynamicComponent = computed(() => {
@@ -19,43 +17,13 @@ const dynamicComponent = computed(() => {
             return app.component;
         }
     }
-    return null;
+    return VideoApps[0]?.component || null;
 });
 </script>
 
 <template>
     <div class="pb-device-container bg-white h-full relative select-none flex">
         <div class="p-6 w-52 flex-shrink-0 border-r border-solid border-gray-100 overflow-x-hidden overflow-y-auto">
-            <div
-                class="p-2 rounded-lg mb-4 cursor-pointer"
-                :class="tab === 'videoGen' ? 'bg-gray-200' : ''"
-                @click="tab = 'videoGen'"
-            >
-                <div class="text-base truncate flex items-center">
-                    <i class="iconfont icon-video w-6 inline-block"></i>
-                    {{ t("avatar.synthesis") }}
-                </div>
-            </div>
-            <div
-                class="p-2 rounded-lg mb-4 cursor-pointer"
-                :class="tab === 'videoTemplate' ? 'bg-gray-200' : ''"
-                @click="tab = 'videoTemplate'"
-            >
-                <div class="text-base truncate flex items-center">
-                    <i class="iconfont icon-video-template w-6 inline-block"></i>
-                    {{ t("avatar.avatar") }}
-                </div>
-            </div>
-            <div
-                class="p-2 rounded-lg mb-4 cursor-pointer"
-                :class="tab === 'videoAction' ? 'bg-gray-200' : ''"
-                @click="tab = 'videoAction'"
-            >
-                <div class="text-base truncate flex items-center">
-                    <icon-interaction class="w-6 inline-block" />
-                    数字人动作库
-                </div>
-            </div>
             <div
                 v-for="s in VideoApps"
                 class="p-2 rounded-lg mb-4 cursor-pointer"
@@ -69,10 +37,7 @@ const dynamicComponent = computed(() => {
             </div>
         </div>
         <div class="flex-grow h-full overflow-y-auto">
-            <VideoGen v-if="tab === 'videoGen'"/>
-            <VideoTemplate v-else-if="tab === 'videoTemplate'"/>
-            <VideoAction v-else-if="tab === 'videoAction'"/>
-            <component v-else :is="dynamicComponent"/>
+            <component :is="dynamicComponent"/>
         </div>
     </div>
 </template>

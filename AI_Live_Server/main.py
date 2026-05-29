@@ -764,7 +764,7 @@ async def scene_start(request: Request):
                         xfyun_stream_url = decoded
                     relay_target = relay_target_for_mode(config.get("streamMode", "rtmp"), config)
                     relay_warning = ""
-                    if config.get("streamMode", "rtmp") == "rtmp" and relay_target and xfyun_stream_url:
+                    if relay_target and xfyun_stream_url:
                         ok_relay, relay_msg = ensure_relay_running(xfyun_stream_url, relay_target)
                         if not ok_relay:
                             relay_warning = relay_msg or "中转推流启动失败"
@@ -807,7 +807,7 @@ async def scene_start(request: Request):
         xfyun_stream_url = xfyun_decode_stream_url(result)
         relay_target = relay_target_for_mode(config.get("streamMode", "rtmp"), config)
         relay_warning = ""
-        if config.get("streamMode", "rtmp") == "rtmp" and relay_target and xfyun_stream_url:
+        if relay_target and xfyun_stream_url:
             ok_relay, relay_msg = ensure_relay_running(xfyun_stream_url, relay_target)
             if not ok_relay:
                 relay_warning = relay_msg or "中转推流启动失败"

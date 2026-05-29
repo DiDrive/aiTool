@@ -4,6 +4,7 @@ import PageNav from "./../components/PageNav.vue";
 import {AppConfig} from "../config";
 import AppQuitConfirm from "../components/AppQuitConfirm.vue";
 import {useDragWindow} from "../components/common/dragWindow";
+import CloudTaskSidebar from "../components/cloud/CloudTaskSidebar.vue";
 
 const appQuitConfirm = ref<InstanceType<typeof AppQuitConfirm> | null>(null);
 const isOsx = ref(false);
@@ -76,13 +77,16 @@ onMounted(() => {
                 </div>
             </div>
         </div>
-        <div class="window-body">
+        <div class="window-body bg-[#f5f7fb]">
             <div class="page-container flex">
                 <div class="w-16 flex-shrink-0 h-full text-white" style="background-color: var(--color-bg-page-nav)">
                     <PageNav />
                 </div>
                 <div class="flex-grow overflow-y-auto">
                     <router-view></router-view>
+                </div>
+                <div class="flex-shrink-0 h-full border-l border-white/70 bg-white/55 backdrop-blur">
+                    <CloudTaskSidebar />
                 </div>
             </div>
         </div>

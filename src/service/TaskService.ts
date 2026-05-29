@@ -17,7 +17,9 @@ export type TaskBiz =
     // video apps
     | "TextToImage"
     | "ImageToImage"
-    | "VideoGenFlow";
+    | "VideoGenFlow"
+    // runninghub apps
+    | "RunningHubTask";
 
 export type TaskJobResultStepStatus = undefined | "queue" | "pending" | "running" | "success" | "fail";
 

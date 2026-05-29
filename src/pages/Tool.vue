@@ -4,9 +4,11 @@ import Router from "../router";
 import {ToolApps} from "./Apps/all";
 
 const tab = ref("");
+const defaultTab = ToolApps[0]?.name || "";
 
 onMounted(() => {
-    tab.value = (Router.currentRoute.value.query.tab as string) || "TextToImage";
+    const queryTab = (Router.currentRoute.value.query.tab as string) || "";
+    tab.value = ToolApps.some(app => app.name === queryTab) ? queryTab : defaultTab;
 });
 
 const dynamicComponent = computed(() => {
@@ -15,7 +17,7 @@ const dynamicComponent = computed(() => {
             return app.component;
         }
     }
-    return null;
+    return ToolApps[0]?.component || null;
 });
 </script>
 

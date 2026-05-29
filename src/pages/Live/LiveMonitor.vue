@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref} from "vue";
-import {useLiveStore, liveModels} from "../../store/modules/live";
+import {useLiveStore, liveModels, liveCloudProviders} from "../../store/modules/live";
 import {Dialog} from "../../lib/dialog";
 import {t} from "../../lang";
 import VideoPlayer from "../../components/common/VideoPlayer.vue";
+import XfyunSdkPreview from "../../components/live/XfyunSdkPreview.vue";
 import {EnumServerStatus} from "../../types/Server";
 
 const liveStore = useLiveStore();
@@ -39,6 +40,11 @@ const isStarting = computed(() => liveStore.status === "starting");
 const isStopped = computed(() => liveStore.status === "stopped");
 const isMockStreamMode = computed(() => liveStore.localConfig.config.engineMode === "cloud");
 const isCloudApiConfigured = computed(() => liveStore.hasCloudApiConfigured());
+const selectedCloudProvider = computed(() => liveStore.getCloudProvider());
+const isRunningHubProvider = computed(() => selectedCloudProvider.value === "runninghub");
+const useCloudSdkPreview = computed(() => {
+    return liveStore.localConfig.config.engineMode === "cloud" && !isRunningHubProvider.value && !!liveStore.localConfig.config.cloudSdkEnabled;
+});
 const isLocalVirtualCamMode = computed(
     () => liveStore.localConfig.config.engineMode === "local" && liveStore.localConfig.config.streamMode === "virtualCam"
 );
@@ -55,6 +61,7 @@ const streamTransportText = computed(() => {
     if (isMockStreamMode.value) {
         if (!liveStore.mockStream.running) return isCloudApiConfigured.value ? "云端推流未运行" : "本地推流未运行";
         if (isCloudApiConfigured.value) {
+            if (isRunningHubProvider.value) return "RunningHub 任务执行中";
             return liveStore.localConfig.config.streamMode === "virtualCam" ? "云端输出中(UDP/伴侣接入)" : "云端推流中(RTMP)";
         }
         return liveStore.mockStream.mode === "virtualCam" ? "本地推流中(直播伴侣)" : "本地推流中(RTMP)";
@@ -94,7 +101,7 @@ const hasPreviewVideo = computed(() => {
         return false;
     }
     if (liveStore.localConfig.config.engineMode === "cloud") {
-        return !!cloudPreviewUrl.value;
+        return useCloudSdkPreview.value || !!cloudPreviewUrl.value;
     }
     if (liveStore.localConfig.config.engineMode === "local" && liveStore.localConfig.config.streamMode === "rtmp") {
         return !!liveStore.liveStatus.videoHls;
@@ -162,7 +169,7 @@ const doStart = async () => {
                 return;
             }
             if (result.fallback) {
-                Dialog.tipError("当前未连接到云端接口，已进入本地模拟推流，不会触发讯飞开播请求");
+                Dialog.tipError("当前未连接到云端接口，已进入本地模拟推流，不会触发远端数字人开播请求");
             }
             if (result.recovered) {
                 Dialog.tipSuccess("云端开播已自动恢复，推流继续中");
@@ -314,10 +321,26 @@ onUnmounted(() => {
                         <span v-if="liveStore.statusMsg" class="text-red-500 mt-2 text-sm">{{ liveStore.statusMsg }}</span>
                     </div>
                     
+                    <XfyunSdkPreview
+                        v-if="isRunning && useCloudSdkPreview"
+                        class="z-10"
+                        :active="isRunning && useCloudSdkPreview"
+                        :script-url="liveStore.localConfig.config.cloudSdkScriptUrl"
+                        :global-name="liveStore.localConfig.config.cloudSdkGlobalName"
+                        :app-id="liveStore.localConfig.config.cloudSdkAppId"
+                        :api-key="liveStore.localConfig.config.cloudSdkApiKey"
+                        :api-secret="liveStore.localConfig.config.cloudSdkApiSecret"
+                        :scene-id="liveStore.localConfig.config.cloudSdkSceneId"
+                        :use-inline-player="liveStore.localConfig.config.cloudSdkUseInlinePlayer"
+                        :global-params="liveStore.localConfig.config.cloudSdkGlobalParams"
+                        :muted="previewMuted"
+                        :volume="previewVolume"
+                    />
+
                     <!-- 云端模式优先使用真实预览流地址 -->
                     <video 
                         ref="videoRef"
-                        v-if="isRunning && liveStore.localConfig.config.engineMode === 'cloud' && cloudPreviewUrl" 
+                        v-else-if="isRunning && liveStore.localConfig.config.engineMode === 'cloud' && cloudPreviewUrl" 
                         class="absolute inset-0 w-full h-full object-contain transition-opacity duration-300"
                         :class="{'opacity-30 blur-sm': liveStore.isSpeaking}"
                         :src="cloudPreviewUrl"
@@ -338,7 +361,7 @@ onUnmounted(() => {
                     />
 
                     <div
-                        v-if="isRunning && liveStore.localConfig.config.engineMode === 'cloud' && !cloudPreviewUrl"
+                        v-if="isRunning && liveStore.localConfig.config.engineMode === 'cloud' && !useCloudSdkPreview && !cloudPreviewUrl"
                         class="absolute inset-0 flex flex-col items-center justify-center z-10 text-gray-300"
                     >
                         <icon-video-camera class="text-6xl mb-4 opacity-70" />
@@ -451,36 +474,112 @@ onUnmounted(() => {
                             </template>
                         </a-form-item>
                         <div v-if="liveStore.localConfig.config.engineMode === 'cloud'">
-                            <a-form-item label="云端 API 地址">
-                                <a-input v-model="liveStore.localConfig.config.cloudApiBaseUrl" placeholder="例如: https://api.example.com/live" />
+                            <a-form-item label="云端供应商">
+                                <a-select v-model="liveStore.localConfig.config.cloudProvider">
+                                    <a-option v-for="provider in liveCloudProviders" :key="provider.value" :value="provider.value">
+                                        {{ provider.title }}
+                                    </a-option>
+                                </a-select>
                             </a-form-item>
-                            <a-form-item label="云端 API Key">
-                                <a-input-password v-model="liveStore.localConfig.config.cloudApiKey" placeholder="可选：Bearer Token" />
-                            </a-form-item>
-                            <a-form-item label="云端场景ID">
-                                <a-input v-model="liveStore.localConfig.config.cloudSceneId" placeholder="默认: default" />
-                            </a-form-item>
-                            <a-form-item label="开播接口路径">
-                                <a-input v-model="liveStore.localConfig.config.cloudStartPath" placeholder="默认: scene/start" />
-                            </a-form-item>
-                            <a-form-item label="停播接口路径">
-                                <a-input v-model="liveStore.localConfig.config.cloudStopPath" placeholder="默认: scene/stop" />
-                            </a-form-item>
-                            <a-form-item label="状态接口路径">
-                                <a-input v-model="liveStore.localConfig.config.cloudStatusPath" placeholder="默认: scene/status" />
-                            </a-form-item>
-                            <a-form-item label="状态接口回退路径">
-                                <a-input v-model="liveStore.localConfig.config.cloudStatusFallbackPath" placeholder="默认: status" />
-                            </a-form-item>
-                            <a-form-item label="播报接口路径">
-                                <a-input v-model="liveStore.localConfig.config.cloudTalkPath" placeholder="默认: scene/talk" />
-                            </a-form-item>
-                            <a-form-item label="预览地址字段路径">
-                                <a-input v-model="liveStore.localConfig.config.cloudPreviewFieldPath" placeholder="可选，支持 a.b.c 或 a|b|c" />
-                            </a-form-item>
-                            <a-form-item label="状态字段路径">
-                                <a-input v-model="liveStore.localConfig.config.cloudStatusFieldPath" placeholder="可选，支持 a.b.c 或 a|b|c" />
-                            </a-form-item>
+
+                            <template v-if="isRunningHubProvider">
+                                <a-form-item label="RunningHub Base URL">
+                                    <a-input v-model="liveStore.localConfig.config.runningHubBaseUrl" placeholder="默认: https://www.runninghub.ai" />
+                                </a-form-item>
+                                <a-form-item label="RunningHub API Key">
+                                    <a-input-password v-model="liveStore.localConfig.config.runningHubApiKey" placeholder="RunningHub 控制台 API Key" />
+                                </a-form-item>
+                                <a-form-item label="RunningHub WebApp ID">
+                                    <a-input v-model="liveStore.localConfig.config.runningHubWebappId" placeholder="AI App 的 webappId" />
+                                </a-form-item>
+                                <a-form-item label="RunningHub 节点参数(JSON)">
+                                    <a-textarea
+                                        v-model="liveStore.localConfig.config.runningHubNodeInfoListJson"
+                                        :auto-size="{ minRows: 5, maxRows: 12 }"
+                                        placeholder='例如: [{"nodeId":"122","fieldName":"prompt","fieldValue":"你的提示词"}]'
+                                    />
+                                </a-form-item>
+                                <a-form-item label="RunningHub Webhook URL">
+                                    <a-input v-model="liveStore.localConfig.config.runningHubWebhookUrl" placeholder="可选：任务完成回调地址" />
+                                </a-form-item>
+                                <a-form-item label="RunningHub 机器规格">
+                                    <a-select v-model="liveStore.localConfig.config.runningHubInstanceType">
+                                        <a-option value="default">default (24GB)</a-option>
+                                        <a-option value="plus">plus (48GB)</a-option>
+                                    </a-select>
+                                </a-form-item>
+                                <a-form-item label="RunningHub 接入说明">
+                                    <div class="text-xs text-gray-500 leading-5">
+                                        当前按 AI App 任务模式接入：支持启动任务、轮询状态和读取输出文件；实时播报接口暂未启用。
+                                    </div>
+                                </a-form-item>
+                            </template>
+
+                            <template v-else>
+                                <a-form-item label="云端 API 地址">
+                                    <a-input v-model="liveStore.localConfig.config.cloudApiBaseUrl" placeholder="例如: https://api.example.com/live" />
+                                </a-form-item>
+                                <a-form-item label="云端 API Key">
+                                    <a-input-password v-model="liveStore.localConfig.config.cloudApiKey" placeholder="可选：Bearer Token" />
+                                </a-form-item>
+                                <a-form-item label="云端场景ID">
+                                    <a-input v-model="liveStore.localConfig.config.cloudSceneId" placeholder="默认: default" />
+                                </a-form-item>
+                                <a-form-item label="开播接口路径">
+                                    <a-input v-model="liveStore.localConfig.config.cloudStartPath" placeholder="默认: scene/start" />
+                                </a-form-item>
+                                <a-form-item label="停播接口路径">
+                                    <a-input v-model="liveStore.localConfig.config.cloudStopPath" placeholder="默认: scene/stop" />
+                                </a-form-item>
+                                <a-form-item label="状态接口路径">
+                                    <a-input v-model="liveStore.localConfig.config.cloudStatusPath" placeholder="默认: scene/status" />
+                                </a-form-item>
+                                <a-form-item label="状态接口回退路径">
+                                    <a-input v-model="liveStore.localConfig.config.cloudStatusFallbackPath" placeholder="默认: status" />
+                                </a-form-item>
+                                <a-form-item label="播报接口路径">
+                                    <a-input v-model="liveStore.localConfig.config.cloudTalkPath" placeholder="默认: scene/talk" />
+                                </a-form-item>
+                                <a-form-item label="预览地址字段路径">
+                                    <a-input v-model="liveStore.localConfig.config.cloudPreviewFieldPath" placeholder="可选，支持 a.b.c 或 a|b|c" />
+                                </a-form-item>
+                                <a-form-item label="状态字段路径">
+                                    <a-input v-model="liveStore.localConfig.config.cloudStatusFieldPath" placeholder="可选，支持 a.b.c 或 a|b|c" />
+                                </a-form-item>
+                                <a-form-item label="启用浏览器 SDK 预览">
+                                    <a-switch v-model="liveStore.localConfig.config.cloudSdkEnabled" />
+                                </a-form-item>
+                                <template v-if="liveStore.localConfig.config.cloudSdkEnabled">
+                                    <a-form-item label="SDK 脚本地址">
+                                        <a-input v-model="liveStore.localConfig.config.cloudSdkScriptUrl" placeholder="例如: http://127.0.0.1:8000/avatar-sdk-web.js" />
+                                    </a-form-item>
+                                    <a-form-item label="SDK 全局对象名">
+                                        <a-input v-model="liveStore.localConfig.config.cloudSdkGlobalName" placeholder="默认: AvatarPlatform" />
+                                    </a-form-item>
+                                    <a-form-item label="SDK AppId">
+                                        <a-input v-model="liveStore.localConfig.config.cloudSdkAppId" placeholder="供应商 SDK AppId" />
+                                    </a-form-item>
+                                    <a-form-item label="SDK ApiKey">
+                                        <a-input v-model="liveStore.localConfig.config.cloudSdkApiKey" placeholder="供应商 SDK ApiKey" />
+                                    </a-form-item>
+                                    <a-form-item label="SDK ApiSecret">
+                                        <a-input-password v-model="liveStore.localConfig.config.cloudSdkApiSecret" placeholder="供应商 SDK ApiSecret" />
+                                    </a-form-item>
+                                    <a-form-item label="SDK SceneId">
+                                        <a-input v-model="liveStore.localConfig.config.cloudSdkSceneId" placeholder="供应商场景/服务 ID" />
+                                    </a-form-item>
+                                    <a-form-item label="内置播放器">
+                                        <a-switch v-model="liveStore.localConfig.config.cloudSdkUseInlinePlayer" />
+                                    </a-form-item>
+                                    <a-form-item label="SDK 全局参数(JSON)">
+                                        <a-textarea
+                                            v-model="liveStore.localConfig.config.cloudSdkGlobalParams"
+                                            :auto-size="{ minRows: 4, maxRows: 10 }"
+                                            placeholder='例如: {"avatarId":"xxx","vcn":"voice_xxx"}'
+                                        />
+                                    </a-form-item>
+                                </template>
+                            </template>
                         </div>
                         
                         <a-form-item label="口型驱动模型">

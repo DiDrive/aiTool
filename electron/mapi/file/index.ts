@@ -998,11 +998,14 @@ const download = async (
     if (!fs.existsSync(fullPathDir)) {
         fs.mkdirSync(fullPathDir, {recursive: true});
     }
+    const userAgent = String(option.userAgent || "").trim();
+    const headers: Record<string, string> = {};
+    if (!electron.ipcRenderer && userAgent && /^[\x00-\xFF]+$/.test(userAgent)) {
+        headers["User-Agent"] = userAgent;
+    }
     const res = await fetch(url, {
         method: "GET",
-        headers: {
-            "User-Agent": option.userAgent,
-        },
+        ...(Object.keys(headers).length > 0 ? {headers} : {}),
     });
     if (!res.ok) {
         throw new Error(`DownloadError:${url}`);

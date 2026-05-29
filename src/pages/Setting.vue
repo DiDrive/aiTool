@@ -3,6 +3,7 @@ import {onBeforeUnmount, onMounted, ref} from "vue";
 import {t} from "../lang";
 import {TabContentScroller} from "../lib/ui";
 import SettingBasic from "../components/Setting/SettingBasic.vue";
+import SettingCloudTemplate from "../components/Setting/SettingCloudTemplate.vue";
 import SettingEnv from "../components/Setting/SettingEnv.vue";
 import SettingAbout from "../components/Setting/SettingAbout.vue";
 import {LiveBlackWordContent} from "./Live/config/blackWord";
@@ -62,6 +63,12 @@ onBeforeUnmount(() => {
                 <div class="text-base">
                     <icon-tool/>
                     {{ t("setting.dataConfig") }}
+                </div>
+            </div>
+            <div data-section="cloud" class="p-2 rounded-lg mb-4 cursor-pointer">
+                <div class="text-base">
+                    <icon-cloud/>
+                    云端能力
                 </div>
             </div>
             <div data-section="env" class="p-2 rounded-lg mb-4 cursor-pointer">
@@ -125,6 +132,13 @@ onBeforeUnmount(() => {
                                 :param="SoundGenerateTextFormItems.map(i => ({name: i.name, label: i.label}))"
                                 :default-prompt="SoundGenerateTextPrompt"/>
                         </div>
+                    </div>
+                </div>
+                <div class="border-b border-solid border-gray-200 my-6"></div>
+                <div data-section="cloud" class="scroll-mt-4">
+                    <div class="text-base font-bold mb-4">云端能力</div>
+                    <div>
+                        <SettingCloudTemplate/>
                     </div>
                 </div>
                 <div class="border-b border-solid border-gray-200 my-6"></div>

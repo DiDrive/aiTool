@@ -12,6 +12,7 @@ import misc from "./misc/main";
 import updater from "./updater/main";
 import server from "./server/main";
 import live from "./live/main";
+import runninghub from "./runninghub/main";
 
 const $mapi = {
     app,
@@ -28,6 +29,7 @@ const $mapi = {
     updater,
     server,
     live,
+    runninghub,
 };
 
 export const MAPI = {

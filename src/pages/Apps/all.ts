@@ -3,19 +3,21 @@ import {t} from "../../lang";
 import LongTextTts from "./LongTextTts/LongTextTts.vue";
 import SubtitleTts from "./SubtitleTts/SubtitleTts.vue";
 import SoundReplace from "./SoundReplace/SoundReplace.vue";
+import CloudAudio from "../Cloud/CloudAudio.vue";
+import CloudVoiceClone from "../Cloud/CloudVoiceClone.vue";
 
 import VideoGenFlow from "./VideoGenFlow/VideoGenFlow.vue";
+import CloudVideo from "../Cloud/CloudVideo.vue";
+import CloudLipSync from "../Cloud/CloudLipSync.vue";
+import CloudDigitalHuman from "../Cloud/CloudDigitalHuman.vue";
 
 import LongTextTtsIcon from "./LongTextTts/assets/icon.svg";
 import SubtitleTtsIcon from "./SubtitleTts/assets/icon.svg";
 import SoundReplaceIcon from "./SoundReplace/assets/icon.svg";
 
 import VideoGenFlowIcon from "./VideoGenFlow/assets/icon.svg";
-
-import TextToImage from "./TextToImage/TextToImage.vue";
+import CloudImage from "../Cloud/CloudImage.vue";
 import TextToImageIcon from "./TextToImage/assets/icon.svg";
-import ImageToImage from "./ImageToImage/ImageToImage.vue";
-import ImageToImageIcon from "./ImageToImage/assets/icon.svg";
 
 import FeedbackIcon from "./../../assets/image/feedback.svg";
 
@@ -41,6 +43,20 @@ export const SoundApps = [
         icon: SoundReplaceIcon,
         component: SoundReplace,
     },
+    {
+        name: "CloudAudio",
+        title: "云端生音频",
+        description: "按模板提交云端音频生成任务",
+        icon: SubtitleTtsIcon,
+        component: CloudAudio,
+    },
+    {
+        name: "CloudVoiceClone",
+        title: "云端克隆音色",
+        description: "按模板提交云端音色克隆任务",
+        icon: SoundReplaceIcon,
+        component: CloudVoiceClone,
+    },
 ];
 
 export const VideoApps = [
@@ -51,24 +67,40 @@ export const VideoApps = [
         icon: VideoGenFlowIcon,
         component: VideoGenFlow,
     },
+    {
+        name: "CloudVideo",
+        title: "云端生视频",
+        description: "按模板提交云端视频生成任务",
+        icon: VideoGenFlowIcon,
+        component: CloudVideo,
+    },
+    {
+        name: "CloudLipSync",
+        title: "云端对口型",
+        description: "按模板提交云端对口型任务",
+        icon: VideoGenFlowIcon,
+        component: CloudLipSync,
+    },
+    {
+        name: "CloudDigitalHuman",
+        title: "云端普通数字人",
+        description: "按模板预生成数字人视频",
+        icon: VideoGenFlowIcon,
+        component: CloudDigitalHuman,
+    },
 ];
 
 export const ToolApps = [
     {
-        name: "TextToImage",
-        title: t("model.txt2img"),
-        description: t("desc.txt2img"),
+        name: "CloudImage",
+        title: "云端生图",
+        description: "按模板提交云端生图任务",
         icon: TextToImageIcon,
-        component: TextToImage,
+        component: CloudImage,
     },
-    {
-        name: "ImageToImage",
-        title: t("model.img2img"),
-        description: t("desc.img2img"),
-        icon: ImageToImageIcon,
-        component: ImageToImage,
-    }
 ];
+
+export const ImageApps = ToolApps;
 
 export const AllApps = [
     ...(SoundApps.map(app => ({

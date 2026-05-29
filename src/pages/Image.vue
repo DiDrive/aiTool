@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import {computed, onMounted, ref} from "vue";
-import {t} from "../lang";
 import Router from "../router";
 import {ImageApps} from "./Apps/all";
 
 const tab = ref("");
+const defaultTab = ImageApps[0]?.name || "";
 
 onMounted(() => {
-    tab.value = (Router.currentRoute.value.query.tab as string) || "TextToImage";
+    const queryTab = (Router.currentRoute.value.query.tab as string) || "";
+    tab.value = ImageApps.some(app => app.name === queryTab) ? queryTab : defaultTab;
 });
 
 const dynamicComponent = computed(() => {
@@ -16,7 +17,7 @@ const dynamicComponent = computed(() => {
             return app.component;
         }
     }
-    return null;
+    return ImageApps[0]?.component || null;
 });
 </script>
 
