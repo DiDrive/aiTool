@@ -4,6 +4,7 @@ import {
     CloudTemplateCapability,
     CloudTemplateRecord,
     CloudTemplateService,
+    templateSupportsCapability,
 } from "../../service/CloudTemplateService";
 
 const props = withDefaults(
@@ -32,7 +33,7 @@ const filteredRecords = computed(() => {
     if (!props.capability) {
         return records.value;
     }
-    return records.value.filter(item => item.content.capability === props.capability);
+    return records.value.filter(item => templateSupportsCapability(item, props.capability as CloudTemplateCapability));
 });
 
 const refresh = async () => {

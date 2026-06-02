@@ -488,6 +488,48 @@ ipcMain.handle("live:talkCloudStream", async (event, options: {
     );
 });
 
+ipcMain.handle("live:syncCloudSceneClip", async (event, options: {
+    provider?: "custom" | "runninghub" | "heygem";
+    apiBaseUrl: string;
+    apiKey?: string;
+    sceneId?: string;
+    clipPath?: string;
+    requestBody?: Record<string, any>;
+    webappId?: string;
+    nodeInfoList?: Array<Record<string, any>>;
+    webhookUrl?: string;
+    instanceType?: string;
+}) => {
+    const provider = normalizeProvider(options.provider);
+    if (provider === "runninghub") {
+        return await runningHubPost(
+            options.apiBaseUrl || "https://www.runninghub.ai",
+            "task/openapi/ai-app/run",
+            {
+                apiKey: options.apiKey || "",
+                webappId: options.webappId || "",
+                nodeInfoList: Array.isArray(options.nodeInfoList) ? options.nodeInfoList : [],
+                webhookUrl: options.webhookUrl || undefined,
+                instanceType: options.instanceType || undefined,
+            },
+            options.apiKey
+        );
+    }
+    const requestBody =
+        options.requestBody && typeof options.requestBody === "object"
+            ? options.requestBody
+            : {
+                  sceneId: options.sceneId || "default",
+                  data: {},
+              };
+    return await cloudPost(
+        options.apiBaseUrl,
+        normalizeApiPath(options.clipPath || "", "scene/clip"),
+        requestBody,
+        options.apiKey
+    );
+});
+
 export default {
     
 };

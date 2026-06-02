@@ -29,6 +29,14 @@ const onDbClick = async () => {
     await window.$mapi.app.windowMax();
 };
 
+const doWindowMin = async () => {
+    await window.$mapi.app.windowMin();
+};
+
+const doWindowMax = async () => {
+    await window.$mapi.app.windowMax();
+};
+
 onBeforeMount(async () => {
     isOsx.value = window.$mapi.app.isPlatform("osx");
 });
@@ -62,13 +70,13 @@ onMounted(() => {
             <div v-if="!isOsx" class="p-1 leading-4">
                 <div
                     class="inline-block w-6 h-6 leading-6 cursor-pointer hover:text-primary mr-1"
-                    @click="$mapi.app.windowMin()"
+                    @click="doWindowMin"
                 >
                     <i class="iconfont text-sm icon-min"></i>
                 </div>
                 <div
                     class="inline-block w-6 h-6 leading-6 cursor-pointer hover:text-primary mr-1"
-                    @click="$mapi.app.windowMax()"
+                    @click="doWindowMax"
                 >
                     <i class="iconfont text-sm icon-max"></i>
                 </div>
@@ -78,11 +86,11 @@ onMounted(() => {
             </div>
         </div>
         <div class="window-body bg-[#f5f7fb]">
-            <div class="page-container flex">
+            <div class="page-container flex overflow-hidden">
                 <div class="w-16 flex-shrink-0 h-full text-white" style="background-color: var(--color-bg-page-nav)">
                     <PageNav />
                 </div>
-                <div class="flex-grow overflow-y-auto">
+                <div class="min-w-0 flex-grow h-full overflow-hidden">
                     <router-view></router-view>
                 </div>
                 <div class="flex-shrink-0 h-full border-l border-white/70 bg-white/55 backdrop-blur">

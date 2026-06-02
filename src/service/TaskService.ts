@@ -19,7 +19,9 @@ export type TaskBiz =
     | "ImageToImage"
     | "VideoGenFlow"
     // runninghub apps
-    | "RunningHubTask";
+    | "RunningHubTask"
+    // direct model APIs
+    | "DirectApiTask";
 
 export type TaskJobResultStepStatus = undefined | "queue" | "pending" | "running" | "success" | "fail";
 

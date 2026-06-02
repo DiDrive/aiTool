@@ -3,7 +3,7 @@ import {onBeforeUnmount, onMounted, ref} from "vue";
 import {t} from "../lang";
 import {TabContentScroller} from "../lib/ui";
 import SettingBasic from "../components/Setting/SettingBasic.vue";
-import SettingCloudTemplate from "../components/Setting/SettingCloudTemplate.vue";
+import SettingDigitalHumanIdentity from "../components/Setting/SettingDigitalHumanIdentity.vue";
 import SettingEnv from "../components/Setting/SettingEnv.vue";
 import SettingAbout from "../components/Setting/SettingAbout.vue";
 import {LiveBlackWordContent} from "./Live/config/blackWord";
@@ -68,7 +68,7 @@ onBeforeUnmount(() => {
             <div data-section="cloud" class="p-2 rounded-lg mb-4 cursor-pointer">
                 <div class="text-base">
                     <icon-cloud/>
-                    云端能力
+                    数字人资产
                 </div>
             </div>
             <div data-section="env" class="p-2 rounded-lg mb-4 cursor-pointer">
@@ -136,9 +136,12 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="border-b border-solid border-gray-200 my-6"></div>
                 <div data-section="cloud" class="scroll-mt-4">
-                    <div class="text-base font-bold mb-4">云端能力</div>
-                    <div>
-                        <SettingCloudTemplate/>
+                    <div class="text-base font-bold mb-4">数字人资产</div>
+                    <div class="space-y-6">
+                        <div class="rounded-xl border border-solid border-gray-200 p-4 text-sm text-gray-500">
+                            平台接入、模型和云端能力模板已统一迁移到左侧“模型”入口。
+                        </div>
+                        <SettingDigitalHumanIdentity/>
                     </div>
                 </div>
                 <div class="border-b border-solid border-gray-200 my-6"></div>

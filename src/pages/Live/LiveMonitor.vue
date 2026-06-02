@@ -3,14 +3,17 @@ import {computed, onMounted, onUnmounted, ref} from "vue";
 import {useLiveStore, liveModels, liveCloudProviders} from "../../store/modules/live";
 import {Dialog} from "../../lib/dialog";
 import {t} from "../../lang";
+import AudioPlayer from "../../components/common/AudioPlayer.vue";
 import VideoPlayer from "../../components/common/VideoPlayer.vue";
 import XfyunSdkPreview from "../../components/live/XfyunSdkPreview.vue";
 import {EnumServerStatus} from "../../types/Server";
+import { DigitalHumanScenePackRecord, DigitalHumanScenePackService } from "../../service/DigitalHumanScenePackService";
 
 const liveStore = useLiveStore();
 
 // UI state
 const isSettingsVisible = ref(true);
+const scenePackRecords = ref<DigitalHumanScenePackRecord[]>([]);
 
 // Computed properties for status
 const statusText = computed(() => {
@@ -108,6 +111,75 @@ const hasPreviewVideo = computed(() => {
     }
     return false;
 });
+const currentSceneRuntime = computed(() => liveStore.scenePackRuntime);
+const selectedScenePackId = computed({
+    get() {
+        return Number(liveStore.localConfig.config.scenePackId || 0);
+    },
+    set(val: number) {
+        liveStore.localConfig.config.scenePackId = Number(val || 0);
+    },
+});
+const previewFallbackType = computed(() => {
+    if (currentSceneRuntime.value.currentClipVideo) {
+        return "video";
+    }
+    if (currentSceneRuntime.value.currentClipAudio) {
+        return "audio";
+    }
+    if (currentSceneRuntime.value.currentClipCoverImage) {
+        return "image";
+    }
+    return "none";
+});
+const showScenePackPreview = computed(() => {
+    if (!Number(currentSceneRuntime.value.selectedScenePackId || 0)) {
+        return false;
+    }
+    if (hasPreviewVideo.value) {
+        return false;
+    }
+    return previewFallbackType.value !== "none";
+});
+const engineModeLabel = computed(() => {
+    return liveStore.localConfig.config.engineMode === "cloud" ? "云端 API 渲染" : "本地引擎渲染";
+});
+const streamModeLabel = computed(() => {
+    return liveStore.localConfig.config.streamMode === "virtualCam" ? "伴侣 / OBS 接入" : "RTMP 推流";
+});
+const currentPreviewTitle = computed(() => {
+    return currentSceneRuntime.value.currentClipTitle || liveStore.liveStatus.talkTitle || "待机中...";
+});
+const runningHubNodeTemplatePlaceholder =
+    '例如: [{"nodeId":"122","fieldName":"video","fieldValue":"{{clip.videoUrl}}"},{"nodeId":"123","fieldName":"audio","fieldValue":"{{clip.audioUrl}}"},{"nodeId":"124","fieldName":"avatarId","fieldValue":"{{binding.avatarId}}"}]';
+const cloudClipRequestTemplatePlaceholder =
+    '例如: {"sceneId":"{{runtime.scenePackId}}","data":{"avatarId":"{{binding.avatarId}}","videoUrl":"{{clip.videoUrl}}","audioUrl":"{{clip.audioUrl}}","text":"{{clip.text}}"}}';
+const cloudClipTemplateExamples = ["{{clip.videoUrl}}", "{{clip.audioUrl}}", "{{clip.text}}", "{{binding.avatarId}}"].join("、");
+
+const loadScenePacks = async () => {
+    scenePackRecords.value = await DigitalHumanScenePackService.list();
+};
+
+const doActivateScenePack = async (scenePackId: number) => {
+    const nextId = Number(scenePackId || 0);
+    if (!nextId) {
+        liveStore.resetScenePackRuntime();
+        await liveStore.saveLocalConfig();
+        return;
+    }
+    const ok = await liveStore.activateScenePack(nextId);
+    if (ok) {
+        Dialog.tipSuccess("已切换直播编排方案");
+    }
+};
+
+const doPlaySceneClip = async (type: "welcome" | "talk" | "product" | "transition") => {
+    await liveStore.playScenePackClipType(type);
+};
+
+const doReturnIdle = async () => {
+    await liveStore.returnToIdleClip();
+};
 
 const ensureLocalEngineReady = () => {
     if (liveStore.localConfig.config.engineMode !== "local") {
@@ -179,6 +251,9 @@ const doStart = async () => {
             }
             liveStore.status = "running";
             await liveStore.queryCloudStreamStatus();
+            await liveStore.syncScenePackExecution({
+                silent: true,
+            });
         } catch (e: any) {
             Dialog.tipError("推流启动失败: " + (e.message || e));
             liveStore.status = "error";
@@ -282,6 +357,7 @@ const doManualReply = () => {
 
 onMounted(async () => {
     await liveStore.init();
+    await loadScenePacks();
 });
 
 onUnmounted(() => {
@@ -290,31 +366,75 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="p-5 h-full flex flex-col">
-        <div class="mb-4 flex items-center">
-            <div class="text-3xl font-bold flex-grow">直播控制台</div>
-            <div class="flex items-center space-x-3">
-                <div class="px-3 py-1 rounded-full text-sm font-bold flex items-center" :class="statusColor">
-                    <span class="w-2 h-2 rounded-full mr-2" :class="isRunning ? 'bg-green-500 animate-pulse' : (isStopped ? 'bg-gray-400' : 'bg-current')"></span>
-                    {{ statusText }}
+    <div class="h-full overflow-y-auto px-5 py-5">
+        <div class="mx-auto flex max-w-[1680px] flex-col gap-4">
+            <div class="rounded-[24px] border border-slate-200 bg-white px-6 py-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <div class="text-[32px] font-semibold leading-none text-slate-900">直播控制台</div>
+                        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                            <span class="rounded-full bg-slate-100 px-3 py-1">{{ engineModeLabel }}</span>
+                            <span class="rounded-full bg-slate-100 px-3 py-1">{{ streamModeLabel }}</span>
+                            <span class="rounded-full bg-slate-100 px-3 py-1">
+                                {{ isSettingsVisible ? "当前查看配置面板" : "当前查看弹幕面板" }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="px-3 py-1 rounded-full text-sm font-bold flex items-center" :class="statusColor">
+                            <span class="w-2 h-2 rounded-full mr-2" :class="isRunning ? 'bg-green-500 animate-pulse' : (isStopped ? 'bg-gray-400' : 'bg-current')"></span>
+                            {{ statusText }}
+                        </div>
+                        <a-button type="primary" status="success" v-if="isStopped || liveStore.status === 'error'" @click="doStart" :loading="isStarting">
+                            <template #icon><icon-play-circle /></template>
+                            开始直播
+                        </a-button>
+                        <a-button type="primary" status="danger" v-else-if="isRunning || isStarting" @click="doStop" :disabled="isStarting" :loading="isStarting">
+                            <template #icon><icon-stop /></template>
+                            {{ isStarting ? "启动中..." : "停止直播" }}
+                        </a-button>
+                    </div>
                 </div>
-                
-                <a-button type="primary" status="success" v-if="isStopped || liveStore.status === 'error'" @click="doStart" :loading="isStarting">
-                    <template #icon><icon-play-circle /></template>
-                    开始直播
-                </a-button>
-                <a-button type="primary" status="danger" v-else-if="isRunning || isStarting" @click="doStop" :disabled="isStarting" :loading="isStarting">
-                    <template #icon><icon-stop /></template>
-                    {{ isStarting ? "启动中..." : "停止直播" }}
-                </a-button>
             </div>
-        </div>
 
-        <div class="flex-grow flex gap-4 overflow-hidden">
-            <!-- 左侧：画面预览与控制 -->
-            <div class="w-2/3 flex flex-col gap-4">
-                <!-- 视频预览区 -->
-                <div class="bg-black rounded-xl flex-grow relative overflow-hidden flex items-center justify-center border border-gray-200 shadow-sm">
+            <div class="grid grid-cols-4 gap-3 max-[1180px]:grid-cols-2 max-[640px]:grid-cols-1">
+                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+                    <div class="text-xs text-slate-500">当前播报</div>
+                    <div class="mt-2 truncate text-base font-semibold text-blue-600" :title="currentPreviewTitle">
+                        {{ currentPreviewTitle }}
+                    </div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+                    <div class="text-xs text-slate-500">视频生成 FPS</div>
+                    <div class="mt-2 text-2xl font-semibold text-slate-900">{{ liveStore.liveStatus.runtime.avatarVideoFps || 0 }}</div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+                    <div class="text-xs text-slate-500">推流状态</div>
+                    <div class="mt-2 text-sm font-semibold" :class="streamTransportOk ? 'text-green-600' : 'text-slate-400'">
+                        {{ streamTransportText }}
+                    </div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+                    <div class="text-xs text-slate-500">排队任务数</div>
+                    <div class="mt-2 text-2xl font-semibold text-slate-900">{{ liveStore.replyQueue.length }}</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-[minmax(0,1fr)_340px] gap-4 max-[1400px]:grid-cols-1">
+                <div class="flex min-h-0 flex-col gap-4">
+                    <div class="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                        <div class="mb-3 flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-900">预览画面</div>
+                                <div class="mt-1 text-xs text-slate-500">
+                                    优先显示真实直播预览；没有预览流时，回退显示当前编排片段。
+                                </div>
+                            </div>
+                            <div v-if="showScenePackPreview" class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                                编排预演：{{ currentSceneRuntime.currentClipTitle || "待机片" }}
+                            </div>
+                        </div>
+                        <div class="bg-black rounded-[20px] relative overflow-hidden flex items-center justify-center border border-slate-200 shadow-sm min-h-[420px]">
                     <div v-if="!isRunning" class="text-gray-500 flex flex-col items-center z-10">
                         <icon-video-camera class="text-6xl mb-4 opacity-50" />
                         <span class="text-lg">等待开播...</span>
@@ -359,6 +479,36 @@ onUnmounted(() => {
                         :controls="false"
                         class="absolute inset-0 w-full h-full object-contain z-10"
                     />
+
+                    <div
+                        v-else-if="showScenePackPreview && previewFallbackType === 'video'"
+                        class="absolute inset-0 w-full h-full z-10"
+                    >
+                        <VideoPlayer
+                            :url="currentSceneRuntime.currentClipVideo"
+                            :autoplay="true"
+                            :loop="currentSceneRuntime.currentClipType === 'idle'"
+                            :controls="true"
+                            class="absolute inset-0 w-full h-full object-contain"
+                        />
+                    </div>
+                    <div
+                        v-else-if="showScenePackPreview && previewFallbackType === 'audio'"
+                        class="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10 bg-black/80 px-8"
+                    >
+                        <div class="text-white text-lg font-semibold">
+                            当前片段：{{ currentSceneRuntime.currentClipTitle || "音频片段" }}
+                        </div>
+                        <div class="w-full max-w-xl rounded-2xl bg-white p-3">
+                            <AudioPlayer :url="currentSceneRuntime.currentClipAudio" show-wave compact />
+                        </div>
+                    </div>
+                    <div
+                        v-else-if="showScenePackPreview && previewFallbackType === 'image'"
+                        class="absolute inset-0 z-10 flex items-center justify-center bg-black/60"
+                    >
+                        <img :src="currentSceneRuntime.currentClipCoverImage" class="max-h-full max-w-full object-contain" />
+                    </div>
 
                     <div
                         v-if="isRunning && liveStore.localConfig.config.engineMode === 'cloud' && !useCloudSdkPreview && !cloudPreviewUrl"
@@ -413,293 +563,400 @@ onUnmounted(() => {
                     <div v-if="isRunning" class="absolute top-4 right-4 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold animate-pulse z-20 pointer-events-none">
                         LIVE
                     </div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-900">数字人直播编排执行</div>
+                                <div class="mt-1 text-xs text-slate-500">
+                                    选择编排方案后，可手动切到欢迎片、讲解片、商品片，并按规则自动回到待机片。
+                                </div>
+                            </div>
+                            <a-button size="small" @click="loadScenePacks">
+                                <template #icon><icon-refresh /></template>
+                                刷新方案
+                            </a-button>
+                        </div>
+                        <div class="mt-4 grid grid-cols-[minmax(260px,340px)_minmax(0,1fr)] gap-4 max-[1120px]:grid-cols-1">
+                            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                <div class="text-xs text-slate-500 mb-2">编排方案</div>
+                                <a-select v-model="selectedScenePackId" placeholder="请选择编排方案" @change="doActivateScenePack">
+                                    <a-option :value="0">不使用编排方案</a-option>
+                                    <a-option v-for="item in scenePackRecords" :key="item.id" :value="item.id || 0">
+                                        {{ item.title }}
+                                    </a-option>
+                                </a-select>
+                                <div class="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-500">
+                                    <div class="break-all">当前方案：{{ currentSceneRuntime.selectedScenePackTitle || "-" }}</div>
+                                    <div class="break-all">当前身份：{{ currentSceneRuntime.identityTitle || "-" }}</div>
+                                    <div class="break-all">执行配置：{{ currentSceneRuntime.executionConfigTitle || "-" }}</div>
+                                    <div class="break-all">默认待机片：{{ currentSceneRuntime.idleClipTitle || "-" }}</div>
+                                </div>
+                            </div>
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                <div class="text-xs text-slate-500 mb-2">片段切换</div>
+                                <div class="flex flex-wrap gap-2">
+                                    <a-button size="small" type="outline" :disabled="!currentSceneRuntime.selectedScenePackId" @click="doPlaySceneClip('welcome')">欢迎片</a-button>
+                                    <a-button size="small" type="outline" :disabled="!currentSceneRuntime.selectedScenePackId" @click="doPlaySceneClip('talk')">讲解片</a-button>
+                                    <a-button size="small" type="outline" :disabled="!currentSceneRuntime.selectedScenePackId" @click="doPlaySceneClip('product')">商品片</a-button>
+                                    <a-button size="small" type="outline" :disabled="!currentSceneRuntime.selectedScenePackId" @click="doPlaySceneClip('transition')">过渡片</a-button>
+                                    <a-button size="small" status="success" :disabled="!currentSceneRuntime.idleClipId" @click="doReturnIdle">回待机</a-button>
+                                </div>
+                                <div class="mt-3 grid grid-cols-2 gap-3 text-xs text-slate-500 max-[720px]:grid-cols-1">
+                                    <div class="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                                        <div>当前片段：{{ currentSceneRuntime.currentClipTitle || "-" }}</div>
+                                        <div class="mt-1">片段类型：{{ currentSceneRuntime.currentClipType || "-" }}</div>
+                                    </div>
+                                    <div class="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                                        <div>自动回待机：{{ currentSceneRuntime.autoReturnToIdle ? "开启" : "关闭" }}</div>
+                                        <div class="mt-1">回待机 {{ currentSceneRuntime.idlePaddingMs }}ms / 讲解 {{ currentSceneRuntime.talkPaddingMs }}ms</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- 实时状态数据 -->
-                <div class="bg-white rounded-xl shadow border p-4 grid grid-cols-4 gap-4 h-28 flex-shrink-0">
-                    <div>
-                        <div class="text-gray-500 text-xs mb-1">当前播报</div>
-                        <div class="font-bold truncate text-blue-600" :title="liveStore.liveStatus.talkTitle || '无'">
-                            {{ liveStore.liveStatus.talkTitle || "待机中..." }}
+                <div class="flex min-h-0 flex-col gap-4">
+                    <div class="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                        <div class="text-sm font-semibold text-slate-900">运行概览</div>
+                        <div class="mt-4 space-y-3">
+                            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                <div class="text-xs text-slate-500">当前状态</div>
+                                <div class="mt-2 text-base font-semibold text-slate-900">{{ statusText }}</div>
+                            </div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                <div class="text-xs text-slate-500">直播模式</div>
+                                <div class="mt-2 text-base font-semibold text-slate-900">{{ engineModeLabel }}</div>
+                            </div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                <div class="text-xs text-slate-500">推流方式</div>
+                                <div class="mt-2 text-base font-semibold text-slate-900">{{ streamModeLabel }}</div>
+                            </div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                <div class="text-xs text-slate-500">当前片段</div>
+                                <div class="mt-2 break-all text-sm font-semibold text-slate-900">
+                                    {{ currentSceneRuntime.currentClipTitle || currentSceneRuntime.idleClipTitle || "未选择" }}
+                                </div>
+                            </div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                <div class="text-xs text-slate-500">执行配置</div>
+                                <div class="mt-2 break-all text-sm font-semibold text-slate-900">
+                                    {{ currentSceneRuntime.executionConfigTitle || "未绑定，仍走下方兼容配置" }}
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div>
-                        <div class="text-gray-500 text-xs mb-1">视频生成 FPS</div>
-                        <div class="font-bold text-xl">{{ liveStore.liveStatus.runtime.avatarVideoFps || 0 }}</div>
-                    </div>
-                    <div>
-                        <div class="text-gray-500 text-xs mb-1">推流状态</div>
-                        <div class="font-bold">
-                            <span v-if="streamTransportOk" class="text-green-500">{{ streamTransportText }}</span>
-                            <span v-else class="text-gray-400">{{ streamTransportText }}</span>
+                    <div class="rounded-[24px] border border-amber-200 bg-amber-50 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                        <div class="text-sm font-semibold text-slate-900">模式说明</div>
+                        <div class="mt-3 space-y-3 text-sm text-slate-600">
+                            <div class="rounded-2xl bg-white/80 px-4 py-3">
+                                <div class="font-semibold text-slate-900">云端模式</div>
+                                <div class="mt-1">
+                                    不需要你本地部署数字人服务，应用直接请求 `RunningHub / Heygem / 自定义云端接口`。
+                                </div>
+                            </div>
+                            <div class="rounded-2xl bg-white/80 px-4 py-3">
+                                <div class="font-semibold text-slate-900">本地模式</div>
+                                <div class="mt-1">
+                                    也是调接口，但调的是你电脑上的本地直播引擎接口；如果本机没有运行 `live` 服务，这个模式就不能用。
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div>
-                        <div class="text-gray-500 text-xs mb-1">排队任务数</div>
-                        <div class="font-bold text-xl">{{ liveStore.replyQueue.length }}</div>
                     </div>
                 </div>
             </div>
 
-            <!-- 右侧：设置与弹幕 -->
-            <div class="w-1/3 flex flex-col gap-4 bg-white rounded-xl shadow border p-4 overflow-hidden">
-                <div class="flex items-center justify-between border-b pb-2 mb-2">
-                    <div class="font-bold text-lg">弹幕监控与设置</div>
-                    <a-button type="text" size="small" @click="isSettingsVisible = !isSettingsVisible">
-                        <template #icon>
-                            <icon-settings v-if="!isSettingsVisible"/>
-                            <icon-message v-else/>
-                        </template>
-                        {{ isSettingsVisible ? '查看弹幕' : '配置参数' }}
-                    </a-button>
+            <div class="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div>
+                        <div class="text-sm font-semibold text-slate-900">配置与弹幕</div>
+                        <div class="mt-1 text-xs text-slate-500">
+                            这里改成整行工作区，避免与右侧全局任务栏叠加后把表单和弹幕压成竖排。
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <a-button type="outline" size="small" :status="isSettingsVisible ? 'normal' : 'primary'" @click="isSettingsVisible = true">配置参数</a-button>
+                        <a-button type="outline" size="small" :status="!isSettingsVisible ? 'normal' : 'primary'" @click="isSettingsVisible = false">查看弹幕</a-button>
+                    </div>
                 </div>
 
-                <!-- 设置面板 -->
-                <div v-if="isSettingsVisible" class="flex-grow overflow-y-auto pr-2 custom-scrollbar">
+                <div v-if="isSettingsVisible" class="mt-4 max-h-[720px] overflow-y-auto pr-2 custom-scrollbar">
                     <a-form :model="liveStore.localConfig.config" layout="vertical">
-                        <div class="font-bold text-gray-700 mb-2 mt-2 bg-gray-50 p-2 rounded">核心渲染引擎</div>
-                        <a-form-item label="数字人渲染模式">
-                            <a-radio-group v-model="liveStore.localConfig.config.engineMode" type="button">
-                                <a-radio value="cloud">
-                                    云端渲染 (推荐)
-                                </a-radio>
-                                <a-radio value="local">
-                                    本地显卡渲染
-                                </a-radio>
-                            </a-radio-group>
-                            <template #extra>
-                                <div class="text-xs text-gray-400 mt-1">
-                                    {{ liveStore.localConfig.config.engineMode === 'cloud' ? '使用数智印象云端算力，不消耗本地显卡资源，适合轻薄本。' : '使用本机显卡进行口型合成与推流，需要至少 RTX 3060 以上独立显卡。' }}
-                                </div>
-                            </template>
-                        </a-form-item>
-                        <div v-if="liveStore.localConfig.config.engineMode === 'cloud'">
-                            <a-form-item label="云端供应商">
-                                <a-select v-model="liveStore.localConfig.config.cloudProvider">
-                                    <a-option v-for="provider in liveCloudProviders" :key="provider.value" :value="provider.value">
-                                        {{ provider.title }}
-                                    </a-option>
-                                </a-select>
-                            </a-form-item>
+                        <div class="grid grid-cols-2 gap-4 max-[1120px]:grid-cols-1">
+                            <div class="rounded-2xl bg-slate-50 p-4">
+                                <div class="font-bold text-gray-700 mb-3">核心渲染引擎</div>
+                                <a-form-item label="数字人渲染模式">
+                                    <a-radio-group v-model="liveStore.localConfig.config.engineMode" type="button">
+                                        <a-radio value="cloud">
+                                            云端渲染 (推荐)
+                                        </a-radio>
+                                        <a-radio value="local">
+                                            本地引擎渲染
+                                        </a-radio>
+                                    </a-radio-group>
+                                    <template #extra>
+                                        <div class="text-xs text-gray-400 mt-1">
+                                            {{ liveStore.localConfig.config.engineMode === 'cloud' ? '通过云端接口发起开播、播报和状态查询，不依赖本机显卡。' : '通过本机运行的直播引擎接口渲染与推流，不等于第三方云 API。' }}
+                                        </div>
+                                    </template>
+                                </a-form-item>
 
-                            <template v-if="isRunningHubProvider">
-                                <a-form-item label="RunningHub Base URL">
-                                    <a-input v-model="liveStore.localConfig.config.runningHubBaseUrl" placeholder="默认: https://www.runninghub.ai" />
-                                </a-form-item>
-                                <a-form-item label="RunningHub API Key">
-                                    <a-input-password v-model="liveStore.localConfig.config.runningHubApiKey" placeholder="RunningHub 控制台 API Key" />
-                                </a-form-item>
-                                <a-form-item label="RunningHub WebApp ID">
-                                    <a-input v-model="liveStore.localConfig.config.runningHubWebappId" placeholder="AI App 的 webappId" />
-                                </a-form-item>
-                                <a-form-item label="RunningHub 节点参数(JSON)">
-                                    <a-textarea
-                                        v-model="liveStore.localConfig.config.runningHubNodeInfoListJson"
-                                        :auto-size="{ minRows: 5, maxRows: 12 }"
-                                        placeholder='例如: [{"nodeId":"122","fieldName":"prompt","fieldValue":"你的提示词"}]'
-                                    />
-                                </a-form-item>
-                                <a-form-item label="RunningHub Webhook URL">
-                                    <a-input v-model="liveStore.localConfig.config.runningHubWebhookUrl" placeholder="可选：任务完成回调地址" />
-                                </a-form-item>
-                                <a-form-item label="RunningHub 机器规格">
-                                    <a-select v-model="liveStore.localConfig.config.runningHubInstanceType">
-                                        <a-option value="default">default (24GB)</a-option>
-                                        <a-option value="plus">plus (48GB)</a-option>
+                                <div
+                                    class="mb-4 rounded-2xl border px-4 py-3 text-sm"
+                                    :class="liveStore.localConfig.config.engineMode === 'cloud' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-orange-200 bg-orange-50 text-orange-700'"
+                                >
+                                    <div class="font-semibold text-slate-900">
+                                        {{ liveStore.localConfig.config.engineMode === 'cloud' ? '当前选择云端模式' : '当前选择本地模式' }}
+                                    </div>
+                                    <div class="mt-1">
+                                        {{ liveStore.localConfig.config.engineMode === 'cloud'
+                                            ? '适合你这种没有本地部署的情况，应用会直接请求云端数字人服务。'
+                                            : '需要你本机先启动支持 live 能力的 AI_Live_Server，本页才会真正可用。' }}
+                                    </div>
+                                </div>
+
+                                <div v-if="liveStore.localConfig.config.engineMode === 'cloud' && currentSceneRuntime.executionConfigId" class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                                    <div class="font-semibold text-slate-900">已绑定直播执行配置</div>
+                                    <div class="mt-1">
+                                        当前编排将优先复用 `{{ currentSceneRuntime.executionConfigTitle || '已选执行配置' }}`` 中绑定的云端模板；下方 RH / 云接口参数仅作为兼容兜底。
+                                    </div>
+                                </div>
+
+                                <div v-if="liveStore.localConfig.config.engineMode === 'cloud'">
+                                    <a-form-item label="云端供应商">
+                                        <a-select v-model="liveStore.localConfig.config.cloudProvider">
+                                            <a-option v-for="provider in liveCloudProviders" :key="provider.value" :value="provider.value">
+                                                {{ provider.title }}
+                                            </a-option>
+                                        </a-select>
+                                    </a-form-item>
+
+                                    <template v-if="isRunningHubProvider">
+                                        <a-form-item label="RunningHub Base URL">
+                                            <a-input v-model="liveStore.localConfig.config.runningHubBaseUrl" placeholder="默认: https://www.runninghub.ai" />
+                                        </a-form-item>
+                                        <a-form-item label="RunningHub API Key">
+                                            <a-input-password v-model="liveStore.localConfig.config.runningHubApiKey" placeholder="RunningHub 控制台 API Key" />
+                                        </a-form-item>
+                                        <a-form-item label="RunningHub WebApp ID">
+                                            <a-input v-model="liveStore.localConfig.config.runningHubWebappId" placeholder="AI App 的 webappId" />
+                                        </a-form-item>
+                                        <a-form-item label="RunningHub 节点参数(JSON 模板)">
+                                            <a-textarea
+                                                v-model="liveStore.localConfig.config.runningHubNodeInfoListJson"
+                                                :auto-size="{ minRows: 5, maxRows: 12 }"
+                                                :placeholder="runningHubNodeTemplatePlaceholder"
+                                            />
+                                            <template #extra>
+                                                <div class="text-xs text-gray-400 mt-1">
+                                                    RH 的 AI App / Workflow 仍建议配置一次节点模板，但现在支持引用 `clip`、`identity`、`binding` 变量自动映射当前编排片段。
+                                                </div>
+                                            </template>
+                                        </a-form-item>
+                                        <a-form-item label="RunningHub Webhook URL">
+                                            <a-input v-model="liveStore.localConfig.config.runningHubWebhookUrl" placeholder="可选：任务完成回调地址" />
+                                        </a-form-item>
+                                        <a-form-item label="RunningHub 机器规格">
+                                            <a-select v-model="liveStore.localConfig.config.runningHubInstanceType">
+                                                <a-option value="default">default (24GB)</a-option>
+                                                <a-option value="plus">plus (48GB)</a-option>
+                                            </a-select>
+                                        </a-form-item>
+                                    </template>
+
+                                    <template v-else>
+                                        <a-form-item label="云端 API 地址">
+                                            <a-input v-model="liveStore.localConfig.config.cloudApiBaseUrl" placeholder="例如: https://api.example.com/live" />
+                                        </a-form-item>
+                                        <a-form-item label="云端 API Key">
+                                            <a-input-password v-model="liveStore.localConfig.config.cloudApiKey" placeholder="可选：Bearer Token" />
+                                        </a-form-item>
+                                        <a-form-item label="云端场景ID">
+                                            <a-input v-model="liveStore.localConfig.config.cloudSceneId" placeholder="默认: default" />
+                                        </a-form-item>
+                                        <a-form-item label="开播接口路径">
+                                            <a-input v-model="liveStore.localConfig.config.cloudStartPath" placeholder="默认: scene/start" />
+                                        </a-form-item>
+                                        <a-form-item label="停播接口路径">
+                                            <a-input v-model="liveStore.localConfig.config.cloudStopPath" placeholder="默认: scene/stop" />
+                                        </a-form-item>
+                                        <a-form-item label="状态接口路径">
+                                            <a-input v-model="liveStore.localConfig.config.cloudStatusPath" placeholder="默认: scene/status" />
+                                        </a-form-item>
+                                        <a-form-item label="状态接口回退路径">
+                                            <a-input v-model="liveStore.localConfig.config.cloudStatusFallbackPath" placeholder="默认: status" />
+                                        </a-form-item>
+                                        <a-form-item label="播报接口路径">
+                                            <a-input v-model="liveStore.localConfig.config.cloudTalkPath" placeholder="默认: scene/talk" />
+                                        </a-form-item>
+                                        <a-form-item label="片段执行接口路径">
+                                            <a-input v-model="liveStore.localConfig.config.cloudClipPath" placeholder="默认: scene/clip" />
+                                        </a-form-item>
+                                        <a-form-item label="片段执行请求(JSON 模板)">
+                                            <a-textarea
+                                                v-model="liveStore.localConfig.config.cloudClipRequestJson"
+                                                :auto-size="{ minRows: 5, maxRows: 12 }"
+                                                :placeholder="cloudClipRequestTemplatePlaceholder"
+                                            />
+                                            <template #extra>
+                                                <div class="text-xs text-gray-400 mt-1">
+                                                    给 HeyGem / 自定义云接口使用。支持 {{ cloudClipTemplateExamples }} 等变量。
+                                                </div>
+                                            </template>
+                                        </a-form-item>
+                                        <a-form-item label="预览地址字段路径">
+                                            <a-input v-model="liveStore.localConfig.config.cloudPreviewFieldPath" placeholder="可选，支持 a.b.c 或 a|b|c" />
+                                        </a-form-item>
+                                        <a-form-item label="状态字段路径">
+                                            <a-input v-model="liveStore.localConfig.config.cloudStatusFieldPath" placeholder="可选，支持 a.b.c 或 a|b|c" />
+                                        </a-form-item>
+                                        <a-form-item label="启用浏览器 SDK 预览">
+                                            <a-switch v-model="liveStore.localConfig.config.cloudSdkEnabled" />
+                                        </a-form-item>
+                                        <template v-if="liveStore.localConfig.config.cloudSdkEnabled">
+                                            <a-form-item label="SDK 脚本地址">
+                                                <a-input v-model="liveStore.localConfig.config.cloudSdkScriptUrl" placeholder="例如: http://127.0.0.1:8000/avatar-sdk-web.js" />
+                                            </a-form-item>
+                                            <a-form-item label="SDK 全局对象名">
+                                                <a-input v-model="liveStore.localConfig.config.cloudSdkGlobalName" placeholder="默认: AvatarPlatform" />
+                                            </a-form-item>
+                                            <a-form-item label="SDK AppId">
+                                                <a-input v-model="liveStore.localConfig.config.cloudSdkAppId" placeholder="供应商 SDK AppId" />
+                                            </a-form-item>
+                                            <a-form-item label="SDK ApiKey">
+                                                <a-input v-model="liveStore.localConfig.config.cloudSdkApiKey" placeholder="供应商 SDK ApiKey" />
+                                            </a-form-item>
+                                            <a-form-item label="SDK ApiSecret">
+                                                <a-input-password v-model="liveStore.localConfig.config.cloudSdkApiSecret" placeholder="供应商 SDK ApiSecret" />
+                                            </a-form-item>
+                                            <a-form-item label="SDK SceneId">
+                                                <a-input v-model="liveStore.localConfig.config.cloudSdkSceneId" placeholder="供应商场景/服务 ID" />
+                                            </a-form-item>
+                                            <a-form-item label="内置播放器">
+                                                <a-switch v-model="liveStore.localConfig.config.cloudSdkUseInlinePlayer" />
+                                            </a-form-item>
+                                            <a-form-item label="SDK 全局参数(JSON)">
+                                                <a-textarea
+                                                    v-model="liveStore.localConfig.config.cloudSdkGlobalParams"
+                                                    :auto-size="{ minRows: 4, maxRows: 10 }"
+                                                    placeholder='例如: {"avatarId":"xxx","vcn":"voice_xxx"}'
+                                                />
+                                            </a-form-item>
+                                        </template>
+                                    </template>
+                                </div>
+
+                                <a-form-item label="口型驱动模型">
+                                    <a-select v-model="liveStore.localConfig.model" placeholder="请选择口型驱动模型">
+                                        <a-option v-for="m in liveModels" :key="m.value" :value="m.value">
+                                            {{ m.title }}
+                                        </a-option>
                                     </a-select>
                                 </a-form-item>
-                                <a-form-item label="RunningHub 接入说明">
-                                    <div class="text-xs text-gray-500 leading-5">
-                                        当前按 AI App 任务模式接入：支持启动任务、轮询状态和读取输出文件；实时播报接口暂未启用。
-                                    </div>
-                                </a-form-item>
-                            </template>
+                            </div>
 
-                            <template v-else>
-                                <a-form-item label="云端 API 地址">
-                                    <a-input v-model="liveStore.localConfig.config.cloudApiBaseUrl" placeholder="例如: https://api.example.com/live" />
+                            <div class="rounded-2xl bg-slate-50 p-4">
+                                <div class="font-bold text-gray-700 mb-3">推流与话术配置</div>
+                                <a-form-item label="推流模式">
+                                    <a-radio-group v-model="liveStore.localConfig.config.streamMode" type="button">
+                                        <a-radio value="rtmp">RTMP 直播平台推流</a-radio>
+                                        <a-radio value="virtualCam">本地直播伴侣/OBS接入</a-radio>
+                                    </a-radio-group>
+                                    <template #extra>
+                                        <div class="text-xs text-gray-400 mt-1">
+                                            {{ liveStore.localConfig.config.streamMode === 'virtualCam' ? '在直播伴侣/OBS 中添加媒体源，地址填 udp://127.0.0.1:12345 即可。' : '直接推送到第三方平台的 RTMP 地址。' }}
+                                        </div>
+                                    </template>
                                 </a-form-item>
-                                <a-form-item label="云端 API Key">
-                                    <a-input-password v-model="liveStore.localConfig.config.cloudApiKey" placeholder="可选：Bearer Token" />
-                                </a-form-item>
-                                <a-form-item label="云端场景ID">
-                                    <a-input v-model="liveStore.localConfig.config.cloudSceneId" placeholder="默认: default" />
-                                </a-form-item>
-                                <a-form-item label="开播接口路径">
-                                    <a-input v-model="liveStore.localConfig.config.cloudStartPath" placeholder="默认: scene/start" />
-                                </a-form-item>
-                                <a-form-item label="停播接口路径">
-                                    <a-input v-model="liveStore.localConfig.config.cloudStopPath" placeholder="默认: scene/stop" />
-                                </a-form-item>
-                                <a-form-item label="状态接口路径">
-                                    <a-input v-model="liveStore.localConfig.config.cloudStatusPath" placeholder="默认: scene/status" />
-                                </a-form-item>
-                                <a-form-item label="状态接口回退路径">
-                                    <a-input v-model="liveStore.localConfig.config.cloudStatusFallbackPath" placeholder="默认: status" />
-                                </a-form-item>
-                                <a-form-item label="播报接口路径">
-                                    <a-input v-model="liveStore.localConfig.config.cloudTalkPath" placeholder="默认: scene/talk" />
-                                </a-form-item>
-                                <a-form-item label="预览地址字段路径">
-                                    <a-input v-model="liveStore.localConfig.config.cloudPreviewFieldPath" placeholder="可选，支持 a.b.c 或 a|b|c" />
-                                </a-form-item>
-                                <a-form-item label="状态字段路径">
-                                    <a-input v-model="liveStore.localConfig.config.cloudStatusFieldPath" placeholder="可选，支持 a.b.c 或 a|b|c" />
-                                </a-form-item>
-                                <a-form-item label="启用浏览器 SDK 预览">
-                                    <a-switch v-model="liveStore.localConfig.config.cloudSdkEnabled" />
-                                </a-form-item>
-                                <template v-if="liveStore.localConfig.config.cloudSdkEnabled">
-                                    <a-form-item label="SDK 脚本地址">
-                                        <a-input v-model="liveStore.localConfig.config.cloudSdkScriptUrl" placeholder="例如: http://127.0.0.1:8000/avatar-sdk-web.js" />
+                                <div v-if="liveStore.localConfig.config.streamMode !== 'virtualCam'">
+                                    <a-form-item label="RTMP 推流服务器地址" required>
+                                        <a-input v-model="liveStore.localConfig.config.rtmpUrl" placeholder="例如: rtmp://192.168.110.238:1935" />
                                     </a-form-item>
-                                    <a-form-item label="SDK 全局对象名">
-                                        <a-input v-model="liveStore.localConfig.config.cloudSdkGlobalName" placeholder="默认: AvatarPlatform" />
+                                    <a-form-item label="推流码 (串流密钥)" required>
+                                        <a-input v-model="liveStore.localConfig.config.rtmpKey" placeholder="例如: livehime" />
                                     </a-form-item>
-                                    <a-form-item label="SDK AppId">
-                                        <a-input v-model="liveStore.localConfig.config.cloudSdkAppId" placeholder="供应商 SDK AppId" />
-                                    </a-form-item>
-                                    <a-form-item label="SDK ApiKey">
-                                        <a-input v-model="liveStore.localConfig.config.cloudSdkApiKey" placeholder="供应商 SDK ApiKey" />
-                                    </a-form-item>
-                                    <a-form-item label="SDK ApiSecret">
-                                        <a-input-password v-model="liveStore.localConfig.config.cloudSdkApiSecret" placeholder="供应商 SDK ApiSecret" />
-                                    </a-form-item>
-                                    <a-form-item label="SDK SceneId">
-                                        <a-input v-model="liveStore.localConfig.config.cloudSdkSceneId" placeholder="供应商场景/服务 ID" />
-                                    </a-form-item>
-                                    <a-form-item label="内置播放器">
-                                        <a-switch v-model="liveStore.localConfig.config.cloudSdkUseInlinePlayer" />
-                                    </a-form-item>
-                                    <a-form-item label="SDK 全局参数(JSON)">
-                                        <a-textarea
-                                            v-model="liveStore.localConfig.config.cloudSdkGlobalParams"
-                                            :auto-size="{ minRows: 4, maxRows: 10 }"
-                                            placeholder='例如: {"avatarId":"xxx","vcn":"voice_xxx"}'
-                                        />
-                                    </a-form-item>
-                                </template>
-                            </template>
-                        </div>
-                        
-                        <a-form-item label="口型驱动模型">
-                            <a-select v-model="liveStore.localConfig.model" placeholder="请选择口型驱动模型">
-                                <a-option v-for="m in liveModels" :key="m.value" :value="m.value">
-                                    {{ m.title }}
-                                </a-option>
-                            </a-select>
-                        </a-form-item>
-
-                        <div class="font-bold text-gray-700 mb-2 mt-2 bg-gray-50 p-2 rounded">推流配置</div>
-                        <a-form-item label="推流模式">
-                            <a-radio-group v-model="liveStore.localConfig.config.streamMode" type="button">
-                                <a-radio value="rtmp">RTMP 直播平台推流</a-radio>
-                                <a-radio value="virtualCam">本地直播伴侣/OBS接入 (推荐)</a-radio>
-                            </a-radio-group>
-                            <template #extra>
-                                <div class="text-xs text-gray-400 mt-1">
-                                    {{ liveStore.localConfig.config.streamMode === 'virtualCam' ? '选择此模式后，在直播伴侣/OBS中添加【媒体源】，取消勾选本地文件，输入 udp://127.0.0.1:12345 即可获取画面。' : '直接将画面推送到第三方平台的推流地址。' }}
                                 </div>
-                            </template>
-                        </a-form-item>
-
-                        <div v-if="liveStore.localConfig.config.streamMode !== 'virtualCam'">
-                            <a-form-item label="RTMP 推流服务器地址" required>
-                                <a-input v-model="liveStore.localConfig.config.rtmpUrl" placeholder="例如: rtmp://192.168.110.238:1935" />
-                            </a-form-item>
-                            <a-form-item label="推流码 (串流密钥)" required>
-                                <a-input v-model="liveStore.localConfig.config.rtmpKey" placeholder="例如: livehime" />
-                            </a-form-item>
-                        </div>
-                        <a-form-item label="直播间地址 (用于抓取弹幕)">
-                            <a-input v-model="liveStore.localConfig.config.liveMonitorUrl" placeholder="例如抖音/B站的网页直播间链接" />
-                        </a-form-item>
-                        <a-form-item label="弹幕抓取平台">
-                            <a-select v-model="liveStore.localConfig.config.liveMonitorType">
-                                <a-option value="douyin">抖音 (Douyin)</a-option>
-                                <a-option value="bilibili">哔哩哔哩 (Bilibili)</a-option>
-                                <a-option value="kuaishou">快手 (Kuaishou)</a-option>
-                            </a-select>
-                        </a-form-item>
-                        <a-form-item label="AI 回复方式">
-                            <a-select v-model="liveStore.localConfig.config.replyMode">
-                                <a-option value="voice">仅语音播报</a-option>
-                                <a-option value="text">仅打字回复 (公屏)</a-option>
-                                <a-option value="both">语音和打字</a-option>
-                                <a-option value="random">随机 (50%打字 / 50%语音)</a-option>
-                            </a-select>
-                        </a-form-item>
-                        <a-form-item label="礼物/点赞感谢模式">
-                            <a-select v-model="liveStore.localConfig.config.thanksMode">
-                                <a-option value="local">本地极速话术库 (推荐, 响应快)</a-option>
-                                <a-option value="llm">AI大模型生成 (文案丰富, 有延迟)</a-option>
-                            </a-select>
-                        </a-form-item>
-
-                        <div class="font-bold text-gray-700 mb-2 mt-4 bg-gray-50 p-2 rounded">话术策略</div>
-                        <a-form-item label="循环话术模式">
-                            <a-radio-group v-model="liveStore.localConfig.config.flowTalkMode" type="button">
-                                <a-radio value="order">顺序播放</a-radio>
-                                <a-radio value="random">随机播放</a-radio>
-                            </a-radio-group>
-                        </a-form-item>
-                        <div class="flex gap-2">
-                            <a-form-item label="话术间隔(最小秒)" class="flex-1">
-                                <a-input-number v-model="liveStore.localConfig.config.flowTalkDelayMin" :min="1" />
-                            </a-form-item>
-                            <a-form-item label="话术间隔(最大秒)" class="flex-1">
-                                <a-input-number v-model="liveStore.localConfig.config.flowTalkDelayMax" :min="1" />
-                            </a-form-item>
-                        </div>
-                        
-                        <div class="mt-4 pt-4 border-t border-gray-100 flex gap-2">
-                            <a-button type="primary" @click="doSaveSettings" class="flex-1">保存设置</a-button>
-                            <a-button @click="doOpenMonitor" class="flex-1">测试弹幕抓取</a-button>
+                                <a-form-item label="直播间地址 (用于抓取弹幕)">
+                                    <a-input v-model="liveStore.localConfig.config.liveMonitorUrl" placeholder="例如抖音/B站的网页直播间链接" />
+                                </a-form-item>
+                                <a-form-item label="弹幕抓取平台">
+                                    <a-select v-model="liveStore.localConfig.config.liveMonitorType">
+                                        <a-option value="douyin">抖音 (Douyin)</a-option>
+                                        <a-option value="bilibili">哔哩哔哩 (Bilibili)</a-option>
+                                        <a-option value="kuaishou">快手 (Kuaishou)</a-option>
+                                    </a-select>
+                                </a-form-item>
+                                <a-form-item label="AI 回复方式">
+                                    <a-select v-model="liveStore.localConfig.config.replyMode">
+                                        <a-option value="voice">仅语音播报</a-option>
+                                        <a-option value="text">仅打字回复 (公屏)</a-option>
+                                        <a-option value="both">语音和打字</a-option>
+                                        <a-option value="random">随机 (50%打字 / 50%语音)</a-option>
+                                    </a-select>
+                                </a-form-item>
+                                <a-form-item label="礼物/点赞感谢模式">
+                                    <a-select v-model="liveStore.localConfig.config.thanksMode">
+                                        <a-option value="local">本地极速话术库 (推荐, 响应快)</a-option>
+                                        <a-option value="llm">AI大模型生成 (文案丰富, 有延迟)</a-option>
+                                    </a-select>
+                                </a-form-item>
+                                <a-form-item label="循环话术模式">
+                                    <a-radio-group v-model="liveStore.localConfig.config.flowTalkMode" type="button">
+                                        <a-radio value="order">顺序播放</a-radio>
+                                        <a-radio value="random">随机播放</a-radio>
+                                    </a-radio-group>
+                                </a-form-item>
+                                <div class="grid grid-cols-2 gap-3 max-[720px]:grid-cols-1">
+                                    <a-form-item label="话术间隔(最小秒)">
+                                        <a-input-number v-model="liveStore.localConfig.config.flowTalkDelayMin" :min="1" style="width: 100%" />
+                                    </a-form-item>
+                                    <a-form-item label="话术间隔(最大秒)">
+                                        <a-input-number v-model="liveStore.localConfig.config.flowTalkDelayMax" :min="1" style="width: 100%" />
+                                    </a-form-item>
+                                </div>
+                                <div class="mt-4 pt-4 border-t border-gray-200 flex gap-2">
+                                    <a-button type="primary" @click="doSaveSettings" class="flex-1">保存设置</a-button>
+                                    <a-button @click="doOpenMonitor" class="flex-1">测试弹幕抓取</a-button>
+                                </div>
+                            </div>
                         </div>
                     </a-form>
                 </div>
 
-                <!-- 弹幕面板 -->
-                <div v-else class="flex-grow flex flex-col overflow-hidden">
-                    <div class="flex-grow bg-gray-50 rounded p-2 overflow-y-auto custom-scrollbar flex flex-col gap-2">
-                        <!-- 弹幕列表占位 -->
+                <div v-else class="mt-4 flex min-h-[480px] flex-col overflow-hidden">
+                    <div class="flex-grow bg-gray-50 rounded-2xl p-3 overflow-y-auto custom-scrollbar flex flex-col gap-2">
                         <div class="text-center text-gray-400 text-xs py-4" v-if="!isRunning && liveStore.recentEvents.length === 0">
                             直播未开启，暂无弹幕数据
                         </div>
                         <div class="text-center text-gray-400 text-xs py-4" v-else-if="liveStore.recentEvents.length === 0">
                             等待弹幕接入...
                         </div>
-                        
-                        <!-- 真实弹幕列表渲染 -->
-                        <div v-for="event in liveStore.recentEvents" :key="event.id" class="bg-white p-2 rounded shadow-sm text-sm break-words">
+                        <div v-for="event in liveStore.recentEvents" :key="event.id" class="bg-white p-3 rounded-xl shadow-sm text-sm break-words">
                             <span class="text-gray-400 text-xs mr-1">[{{ new Date(event.time).toLocaleTimeString() }}]</span>
-                            
                             <template v-if="event.type === 'Enter'">
                                 <span class="text-gray-500">欢迎 <span class="text-blue-500 font-bold">{{ event.username }}</span> 进入直播间</span>
                             </template>
-                            
                             <template v-else-if="event.type === 'Like'">
                                 <span class="text-pink-500 font-bold">{{ event.username }}</span> <span class="text-gray-500">点赞了直播间</span>
                             </template>
-                            
                             <template v-else-if="event.type === 'Gift'">
                                 <span class="text-orange-500 font-bold">{{ event.username }}</span> <span class="text-gray-500">送出了 🎁 {{ event.content || '礼物' }}</span>
                             </template>
-                            
                             <template v-else-if="event.type === 'Comment'">
                                 <span class="text-blue-500 font-bold">{{ event.username }}:</span> <span class="text-gray-800">{{ event.content }}</span>
                             </template>
-                            
                             <template v-else-if="event.type === 'AI_Reply'">
-                                <span class="text-purple-500 font-bold">🤖 AI回复 {{ event.username }}:</span> <span class="text-gray-800 font-bold">{{ event.content }}</span>
+                                <span class="text-purple-500 font-bold">AI回复 {{ event.username }}:</span> <span class="text-gray-800 font-bold">{{ event.content }}</span>
                             </template>
-                            
                             <template v-else>
                                 <span class="text-gray-500">{{ event.type }} - {{ JSON.stringify(event.data) }}</span>
                             </template>
                         </div>
                     </div>
-                    <div class="mt-2 flex gap-2">
+                    <div class="mt-3 flex gap-2">
                         <a-input v-model="manualReplyText" placeholder="手动发送弹幕回复..." @keyup.enter="doManualReply" />
                         <a-button type="primary" @click="doManualReply" :disabled="!manualReplyText">发送</a-button>
                     </div>

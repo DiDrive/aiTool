@@ -11,7 +11,12 @@ import {SubtitleTts, SubtitleTtsCleaner} from "../pages/Apps/SubtitleTts/task";
 import {LongTextTts, LongTextTtsCleaner} from "../pages/Apps/LongTextTts/task";
 import {TextToImage, TextToImageCleaner} from "../pages/Apps/TextToImage/task";
 import {ImageToImage, ImageToImageCleaner} from "../pages/Apps/ImageToImage/task";
-import {RunningHubTask, RunningHubTaskCleaner} from "../pages/Apps/RunningHubStudio/task";
+import {
+    DirectApiTask,
+    DirectApiTaskCleaner,
+    RunningHubTask,
+    RunningHubTaskCleaner,
+} from "../pages/Apps/RunningHubStudio/task";
 
 const taskStore = useTaskStore();
 const serverStore = useServerStore();
@@ -30,6 +35,7 @@ export const tasks = {
     TextToImage,
     ImageToImage,
     RunningHubTask,
+    DirectApiTask,
 };
 
 export const taskCleaners = {
@@ -41,6 +47,7 @@ export const taskCleaners = {
     TextToImage: TextToImageCleaner,
     ImageToImage: ImageToImageCleaner,
     RunningHubTask: RunningHubTaskCleaner,
+    DirectApiTask: DirectApiTaskCleaner,
 };
 
 export const TaskManager = {

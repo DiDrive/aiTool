@@ -54,7 +54,7 @@ const typeName = (type: string) => {
                     <template #icon>
                         <icon-command/>
                     </template>
-                    {{ $t("setting.llm") }}
+                    模型与平台
                 </a-button>
                 <a-button v-if="serverStore.records.length > 0" class="ml-1" @click="remoteAddDialog?.show()">
                     <template #icon>

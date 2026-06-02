@@ -1,8 +1,5 @@
 import {t} from "../../lang";
 
-import LongTextTts from "./LongTextTts/LongTextTts.vue";
-import SubtitleTts from "./SubtitleTts/SubtitleTts.vue";
-import SoundReplace from "./SoundReplace/SoundReplace.vue";
 import CloudAudio from "../Cloud/CloudAudio.vue";
 import CloudVoiceClone from "../Cloud/CloudVoiceClone.vue";
 
@@ -10,39 +7,22 @@ import VideoGenFlow from "./VideoGenFlow/VideoGenFlow.vue";
 import CloudVideo from "../Cloud/CloudVideo.vue";
 import CloudLipSync from "../Cloud/CloudLipSync.vue";
 import CloudDigitalHuman from "../Cloud/CloudDigitalHuman.vue";
+import CloudDigitalHumanClips from "../Cloud/CloudDigitalHumanClips.vue";
+import CloudDigitalHumanExecConfig from "../Cloud/CloudDigitalHumanExecConfig.vue";
+import CloudDigitalHumanScenePack from "../Cloud/CloudDigitalHumanScenePack.vue";
 
-import LongTextTtsIcon from "./LongTextTts/assets/icon.svg";
 import SubtitleTtsIcon from "./SubtitleTts/assets/icon.svg";
 import SoundReplaceIcon from "./SoundReplace/assets/icon.svg";
 
 import VideoGenFlowIcon from "./VideoGenFlow/assets/icon.svg";
 import CloudImage from "../Cloud/CloudImage.vue";
+import ToolGptImage2 from "../Cloud/ToolGptImage2.vue";
+import ToolSeedance from "../Cloud/ToolSeedance.vue";
 import TextToImageIcon from "./TextToImage/assets/icon.svg";
 
 import FeedbackIcon from "./../../assets/image/feedback.svg";
 
 export const SoundApps = [
-    {
-        name: "LongTextTts",
-        title: t("task.longTextToAudio"),
-        description: t("desc.longTextToAudio"),
-        icon: LongTextTtsIcon,
-        component: LongTextTts,
-    },
-    {
-        name: "SubtitleTts",
-        title: t("task.subtitleToAudio"),
-        description: t("desc.subtitleToAudio"),
-        icon: SubtitleTtsIcon,
-        component: SubtitleTts,
-    },
-    {
-        name: "SoundReplace",
-        title: t("voice.replace"),
-        description: t("desc.videoVoiceReplace"),
-        icon: SoundReplaceIcon,
-        component: SoundReplace,
-    },
     {
         name: "CloudAudio",
         title: "云端生音频",
@@ -88,9 +68,44 @@ export const VideoApps = [
         icon: VideoGenFlowIcon,
         component: CloudDigitalHuman,
     },
+    {
+        name: "CloudDigitalHumanClips",
+        title: "数字人直播片段",
+        description: "管理已保存的直播片段素材",
+        icon: VideoGenFlowIcon,
+        component: CloudDigitalHumanClips,
+    },
+    {
+        name: "CloudDigitalHumanExecConfig",
+        title: "直播执行配置",
+        description: "绑定直播各执行位所使用的云端模板",
+        icon: VideoGenFlowIcon,
+        component: CloudDigitalHumanExecConfig,
+    },
+    {
+        name: "CloudDigitalHumanScenePack",
+        title: "数字人直播编排",
+        description: "管理待机片、讲解片和切换方案",
+        icon: VideoGenFlowIcon,
+        component: CloudDigitalHumanScenePack,
+    },
 ];
 
 export const ToolApps = [
+    {
+        name: "ToolSeedance",
+        title: "Seedance",
+        description: "ExchangeToken Seedance 视频生成",
+        icon: VideoGenFlowIcon,
+        component: ToolSeedance,
+    },
+    {
+        name: "ToolGptImage2",
+        title: "GPT Image 2",
+        description: "ExchangeToken OpenAI 兼容生图",
+        icon: TextToImageIcon,
+        component: ToolGptImage2,
+    },
     {
         name: "CloudImage",
         title: "云端生图",

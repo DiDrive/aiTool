@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useTaskChangeRefresh } from "../../hooks/task";
 import { TaskRecord, TaskService } from "../../service/TaskService";
 import CloudTaskSidebarItem from "./CloudTaskSidebarItem.vue";
@@ -12,6 +12,14 @@ const collapsed = ref(false);
 const capabilityFilter = ref<CapabilityFilter>("all");
 const statusFilter = ref<StatusFilter>("all");
 const records = ref<TaskRecord[]>([]);
+const sidebarWidth = ref(400);
+const isResizing = ref(false);
+let resizeStartX = 0;
+let resizeStartWidth = 400;
+
+const SIDEBAR_MIN_WIDTH = 360;
+const SIDEBAR_MAX_WIDTH = 640;
+const SIDEBAR_DEFAULT_WIDTH = 400;
 
 const capabilityTabs = [
     { label: "全部", value: "all" },
@@ -53,7 +61,11 @@ const resolveDisplayStatus = (record: TaskRecord): DisplayStatus => {
 };
 
 const refresh = async () => {
-    records.value = await TaskService.list("RunningHubTask");
+    const [runningHubRecords, directApiRecords] = await Promise.all([
+        TaskService.list("RunningHubTask"),
+        TaskService.list("DirectApiTask"),
+    ]);
+    records.value = [...runningHubRecords, ...directApiRecords].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 };
 
 const filteredRecords = computed(() => {
@@ -95,10 +107,49 @@ const savePrefs = async () => {
         collapsed: collapsed.value,
         capabilityFilter: capabilityFilter.value,
         statusFilter: statusFilter.value,
+        sidebarWidth: sidebarWidth.value,
     });
 };
 
+const clampSidebarWidth = (width: number) => {
+    return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, Math.round(width)));
+};
+
+const stopResize = () => {
+    if (!isResizing.value) {
+        return;
+    }
+    isResizing.value = false;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    savePrefs();
+};
+
+const onResizeMove = (event: MouseEvent) => {
+    if (!isResizing.value) {
+        return;
+    }
+    const delta = resizeStartX - event.clientX;
+    sidebarWidth.value = clampSidebarWidth(resizeStartWidth + delta);
+};
+
+const startResize = (event: MouseEvent) => {
+    if (collapsed.value) {
+        return;
+    }
+    isResizing.value = true;
+    resizeStartX = event.clientX;
+    resizeStartWidth = sidebarWidth.value;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    event.preventDefault();
+};
+
 useTaskChangeRefresh("RunningHubTask", () => {
+    refresh();
+});
+
+useTaskChangeRefresh("DirectApiTask", () => {
     refresh();
 });
 
@@ -110,24 +161,50 @@ watch(collapsed, () => {
     savePrefs();
 });
 
+watch(sidebarWidth, value => {
+    if (!collapsed.value) {
+        sidebarWidth.value = clampSidebarWidth(value);
+    }
+});
+
 onMounted(async () => {
     const saved = await window.$mapi.storage.get("cloudTaskSidebar", "state", {
         collapsed: false,
         capabilityFilter: "all",
         statusFilter: "all",
+        sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
     });
     collapsed.value = !!saved?.collapsed;
     capabilityFilter.value = saved?.capabilityFilter || "all";
     statusFilter.value = saved?.statusFilter || "all";
+    sidebarWidth.value = clampSidebarWidth(Number(saved?.sidebarWidth || SIDEBAR_DEFAULT_WIDTH));
+    window.addEventListener("mousemove", onResizeMove);
+    window.addEventListener("mouseup", stopResize);
     await refresh();
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener("mousemove", onResizeMove);
+    window.removeEventListener("mouseup", stopResize);
+    stopResize();
 });
 </script>
 
 <template>
     <div
-        class="h-full border-l border-white/70 bg-[#f6f8fc] transition-all duration-200"
-        :class="collapsed ? 'w-14' : 'w-[380px]'"
+        class="relative h-full border-l border-white/70 bg-[#f6f8fc] transition-all duration-200"
+        :style="{ width: collapsed ? '56px' : `${sidebarWidth}px` }"
     >
+        <div
+            v-if="!collapsed"
+            class="absolute left-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize z-20 group"
+            @mousedown="startResize"
+        >
+            <div
+                class="mx-auto h-full w-[3px] rounded-full bg-transparent transition-colors"
+                :class="isResizing ? 'bg-blue-300' : 'group-hover:bg-slate-200'"
+            />
+        </div>
         <div v-if="collapsed" class="h-full flex flex-col items-center py-3">
             <a-button type="text" class="!text-gray-500" @click="collapsed = false">
                 <icon-left />

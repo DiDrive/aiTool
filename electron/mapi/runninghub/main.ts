@@ -3,6 +3,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 
 const DEFAULT_BASE_URL = "https://www.runninghub.cn";
+const DEFAULT_DIRECT_API_TIMEOUT_MS = 300000;
 
 const normalizeApiBaseUrl = (url?: string) => {
     return String(url || DEFAULT_BASE_URL).trim().replace(/\/+$/, "") || DEFAULT_BASE_URL;
@@ -16,6 +17,35 @@ const normalizeApiPath = (apiPath?: string, fallbackPath = "") => {
     return value.replace(/^\/+/, "");
 };
 
+const buildApiUrl = (apiBaseUrl: string, apiPath: string) => {
+    const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
+    let pathValue = apiPath.replace(/^\/+/, "");
+    if (/\/v1$/i.test(baseUrl) && /^v1\//i.test(pathValue)) {
+        pathValue = pathValue.replace(/^v1\//i, "");
+    }
+    return `${baseUrl}/${pathValue}`;
+};
+
+const responseMessageOf = (json: any, fallback: string) => {
+    return String(
+        json?.error?.message ||
+            json?.errorMessage ||
+            json?.msg ||
+            json?.message ||
+            fallback ||
+            ""
+    );
+};
+
+const attachDiagnostics = (json: any, diagnostics: Record<string, any>) => {
+    const result = json && typeof json === "object" ? json : {};
+    result._diagnostics = {
+        ...(result._diagnostics || {}),
+        ...diagnostics,
+    };
+    return result;
+};
+
 const normalizeStatus = (status: any) => {
     return String(status || "").trim().toUpperCase();
 };
@@ -25,19 +55,21 @@ const requestJson = async (
     apiPath: string,
     body: Record<string, any>,
     apiKey?: string,
-    timeoutMs = 30000
+    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS
 ) => {
     const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
+    const requestUrl = buildApiUrl(baseUrl, apiPath);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const res = await fetch(`${baseUrl}/${apiPath.replace(/^\/+/, "")}`, {
+        const requestBody = await normalizeJsonBodyLocalFiles(body || {});
+        const res = await fetch(requestUrl, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             },
-            body: JSON.stringify(body || {}),
+            body: JSON.stringify(requestBody),
             signal: controller.signal,
         });
         const text = await res.text();
@@ -58,9 +90,257 @@ const requestJson = async (
             json.code = res.ok ? 0 : res.status;
         }
         if (typeof json.msg === "undefined" && typeof json.errorMessage === "undefined") {
-            json.msg = res.ok ? "" : `HTTP ${res.status}`;
+            json.msg = responseMessageOf(json, res.ok ? "" : `HTTP ${res.status}`);
         }
-        return json;
+        return attachDiagnostics(json, {
+            requestUrl,
+            method: "POST",
+            requestFormat: "json",
+            httpStatus: res.status,
+            ok: res.ok,
+        });
+    } catch (e: any) {
+        return attachDiagnostics(
+            {
+                code: -1,
+                msg: String(e?.message || e || "请求发送失败"),
+                data: {},
+            },
+            {
+                requestUrl,
+                method: "POST",
+                requestFormat: "json",
+                error: String(e?.stack || e?.message || e || ""),
+            }
+        );
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
+const isLocalFilePath = (value: string) => {
+    const raw = String(value || "").trim();
+    return /^file:\/\//i.test(raw) || /^[a-zA-Z]:[\\/]/.test(raw);
+};
+
+const isImageOrAudioFile = (filePath: string) => {
+    return /(\.png|\.jpe?g|\.webp|\.gif|\.bmp|\.tiff?|\.wav|\.mp3)$/i.test(filePath);
+};
+
+const toLocalFilePath = (value: string) => {
+    return String(value || "").trim().replace(/^file:\/\//i, "");
+};
+
+const mimeFromFile = (filePath: string) => {
+    const ext = path.extname(filePath).toLowerCase().replace(/^\./, "");
+    const map: Record<string, string> = {
+        png: "image/png",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        webp: "image/webp",
+        gif: "image/gif",
+        bmp: "image/bmp",
+        tiff: "image/tiff",
+        tif: "image/tiff",
+        mp4: "video/mp4",
+        mov: "video/quicktime",
+        wav: "audio/wav",
+        mp3: "audio/mpeg",
+    };
+    return map[ext] || "application/octet-stream";
+};
+
+const localFileToDataUrl = async (value: string) => {
+    const filePath = toLocalFilePath(value);
+    const buffer = await readFile(filePath);
+    return `data:${mimeFromFile(filePath)};base64,${buffer.toString("base64")}`;
+};
+
+const normalizeJsonBodyLocalFiles = async (value: any): Promise<any> => {
+    if (Array.isArray(value)) {
+        return await Promise.all(value.map(item => normalizeJsonBodyLocalFiles(item)));
+    }
+    if (value && typeof value === "object") {
+        const result: Record<string, any> = {};
+        for (const [key, child] of Object.entries(value)) {
+            result[key] = await normalizeJsonBodyLocalFiles(child);
+        }
+        return result;
+    }
+    if (typeof value === "string" && isLocalFilePath(value) && isImageOrAudioFile(value)) {
+        return await localFileToDataUrl(value);
+    }
+    return value;
+};
+
+const maybeJsonArray = (value: any) => {
+    if (!Array.isArray(value) && typeof value === "string" && /^\s*\[/.test(value)) {
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [value];
+        } catch (e) {
+            return [value];
+        }
+    }
+    return Array.isArray(value) ? value : [value];
+};
+
+const appendFormValue = async (form: FormData, key: string, value: any) => {
+    if (value === null || typeof value === "undefined" || value === "") {
+        return;
+    }
+    for (const item of maybeJsonArray(value)) {
+        if (item === null || typeof item === "undefined" || item === "") {
+            continue;
+        }
+        if (typeof item === "string" && isLocalFilePath(item)) {
+            const filePath = toLocalFilePath(item);
+            const buffer = await readFile(filePath);
+            form.append(key, new Blob([buffer], { type: mimeFromFile(filePath) }), path.basename(filePath));
+            continue;
+        }
+        if (typeof item === "object") {
+            form.append(key, JSON.stringify(item));
+            continue;
+        }
+        form.append(key, String(item));
+    }
+};
+
+const requestFormData = async (
+    apiBaseUrl: string,
+    apiPath: string,
+    body: Record<string, any>,
+    apiKey?: string,
+    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS
+) => {
+    const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
+    const requestUrl = buildApiUrl(baseUrl, apiPath);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const form = new FormData();
+        for (const [key, value] of Object.entries(body || {})) {
+            await appendFormValue(form, key, value);
+        }
+        const res = await fetch(requestUrl, {
+            method: "POST",
+            headers: {
+                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            },
+            body: form,
+            signal: controller.signal,
+        });
+        const text = await res.text();
+        try {
+            const json = text ? JSON.parse(text) : {};
+            if (typeof json.code === "undefined" && typeof json.status === "undefined") {
+                json.code = res.ok ? 0 : res.status;
+            }
+            if (typeof json.msg === "undefined" && typeof json.errorMessage === "undefined") {
+                json.msg = responseMessageOf(json, res.ok ? "" : `HTTP ${res.status}`);
+            }
+            return attachDiagnostics(json, {
+                requestUrl,
+                method: "POST",
+                requestFormat: "form-data",
+                httpStatus: res.status,
+                ok: res.ok,
+            });
+        } catch (e) {
+            return attachDiagnostics(
+                {
+                    code: res.ok ? 0 : res.status,
+                    msg: text || `HTTP ${res.status}`,
+                    data: {},
+                },
+                {
+                    requestUrl,
+                    method: "POST",
+                    requestFormat: "form-data",
+                    httpStatus: res.status,
+                    ok: res.ok,
+                }
+            );
+        }
+    } catch (e: any) {
+        return attachDiagnostics(
+            {
+                code: -1,
+                msg: String(e?.message || e || "请求发送失败"),
+                data: {},
+            },
+            {
+                requestUrl,
+                method: "POST",
+                requestFormat: "form-data",
+                error: String(e?.stack || e?.message || e || ""),
+            }
+        );
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
+const requestGetJson = async (
+    apiBaseUrl: string,
+    apiPath: string,
+    apiKey?: string,
+    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS
+) => {
+    const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
+    const requestUrl = buildApiUrl(baseUrl, apiPath);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(requestUrl, {
+            method: "GET",
+            headers: {
+                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            },
+            signal: controller.signal,
+        });
+        const text = await res.text();
+        let json: any = {};
+        try {
+            json = text ? JSON.parse(text) : {};
+        } catch (e) {
+            json = {
+                code: res.ok ? 0 : res.status,
+                msg: text || `HTTP ${res.status}`,
+                data: {},
+            };
+        }
+        if (typeof json !== "object" || !json) {
+            json = {};
+        }
+        if (typeof json.code === "undefined" && typeof json.status === "undefined") {
+            json.code = res.ok ? 0 : res.status;
+        }
+        if (typeof json.msg === "undefined" && typeof json.errorMessage === "undefined") {
+            json.msg = responseMessageOf(json, res.ok ? "" : `HTTP ${res.status}`);
+        }
+        return attachDiagnostics(json, {
+            requestUrl,
+            method: "GET",
+            requestFormat: "json",
+            httpStatus: res.status,
+            ok: res.ok,
+        });
+    } catch (e: any) {
+        return attachDiagnostics(
+            {
+                code: -1,
+                msg: String(e?.message || e || "请求发送失败"),
+                data: {},
+            },
+            {
+                requestUrl,
+                method: "GET",
+                requestFormat: "json",
+                error: String(e?.stack || e?.message || e || ""),
+            }
+        );
     } finally {
         clearTimeout(timeout);
     }
@@ -115,6 +395,35 @@ const normalizeResults = (value: any) => {
     return [];
 };
 
+const normalizeDirectTaskResults = (value: any) => {
+    const content = value?.content || {};
+    const contentVideoUrl = String(content?.video_url || "").trim();
+    const contentImageUrl = String(content?.image_url || "").trim();
+    const outputText = String(content?.text || "").trim();
+    const imageDataResults = Array.isArray(value?.data)
+        ? value.data
+              .map((item: any) => {
+                  const url = String(item?.url || "").trim();
+                  const b64 = String(item?.b64_json || "").trim();
+                  if (url) {
+                      return { url, outputType: "image", fileUrl: url };
+                  }
+                  if (b64) {
+                      return { text: b64, outputType: "image_base64", fileUrl: "" };
+                  }
+                  return null;
+              })
+              .filter(Boolean)
+        : [];
+    const fromContent = [
+        ...(contentVideoUrl ? [{ url: contentVideoUrl, outputType: "video", fileUrl: contentVideoUrl }] : []),
+        ...(contentImageUrl ? [{ url: contentImageUrl, outputType: "image", fileUrl: contentImageUrl }] : []),
+        ...(outputText ? [{ text: outputText, outputType: "text", fileUrl: "" }] : []),
+        ...imageDataResults,
+    ];
+    return fromContent.length > 0 ? fromContent : normalizeResults(value?.results);
+};
+
 ipcMain.handle("runninghub:uploadFile", async (event, options: {
     apiBaseUrl?: string;
     apiKey: string;
@@ -132,12 +441,13 @@ ipcMain.handle("runninghub:uploadFile", async (event, options: {
 ipcMain.handle("runninghub:runTask", async (event, options: {
     apiBaseUrl?: string;
     apiKey: string;
-    connectorType: "ai-app" | "workflow" | "model-api";
+    connectorType: "ai-app" | "workflow" | "model-api" | "custom-api";
     submitPath?: string;
     webappId?: string | number;
     workflowId?: string;
     nodeInfoList?: Array<Record<string, any>>;
     requestBody?: Record<string, any>;
+    requestFormat?: "json" | "form-data";
     webhookUrl?: string;
     instanceType?: string;
     accessPassword?: string;
@@ -195,6 +505,14 @@ ipcMain.handle("runninghub:runTask", async (event, options: {
             options.apiKey
         );
     }
+    if (options.requestFormat === "form-data") {
+        return await requestFormData(
+            options.apiBaseUrl || DEFAULT_BASE_URL,
+            normalizeApiPath(options.submitPath, ""),
+            options.requestBody || {},
+            options.apiKey
+        );
+    }
     return await requestJson(
         options.apiBaseUrl || DEFAULT_BASE_URL,
         normalizeApiPath(options.submitPath, ""),
@@ -206,29 +524,37 @@ ipcMain.handle("runninghub:runTask", async (event, options: {
 ipcMain.handle("runninghub:queryTask", async (event, options: {
     apiBaseUrl?: string;
     apiKey: string;
-    connectorType: "ai-app" | "workflow" | "model-api";
+    connectorType: "ai-app" | "workflow" | "model-api" | "custom-api";
     queryPath?: string;
     taskId: string;
 }) => {
     const baseUrl = options.apiBaseUrl || DEFAULT_BASE_URL;
     const queryPath = normalizeApiPath(options.queryPath, "openapi/v2/query");
-    const directResult = await requestJson(
-        baseUrl,
-        queryPath,
-        {
-            taskId: options.taskId,
-        },
-        options.apiKey
-    );
-    if (typeof directResult?.status !== "undefined" || Array.isArray(directResult?.results) || directResult?.taskId) {
+    const hasTaskPathPlaceholder = /\{id\}|\{taskId\}|:id|:taskId/i.test(queryPath);
+    const resolvedQueryPath = hasTaskPathPlaceholder
+        ? queryPath
+              .replace(/\{id\}|\{taskId\}/gi, encodeURIComponent(options.taskId))
+              .replace(/:id|:taskId/gi, encodeURIComponent(options.taskId))
+        : queryPath;
+    const directResult = hasTaskPathPlaceholder
+        ? await requestGetJson(baseUrl, resolvedQueryPath, options.apiKey)
+        : await requestJson(
+              baseUrl,
+              resolvedQueryPath,
+              {
+                  taskId: options.taskId,
+              },
+              options.apiKey
+          );
+    if (typeof directResult?.status !== "undefined" || Array.isArray(directResult?.results) || Array.isArray(directResult?.data) || directResult?.taskId || directResult?.id) {
         return {
-            code: directResult?.status === "FAILED" ? 500 : 0,
+            code: normalizeStatus(directResult?.status) === "FAILED" ? 500 : 0,
             msg: directResult?.errorMessage || directResult?.msg || "",
             data: {
-                taskId: directResult?.taskId || options.taskId,
-                status: normalizeStatus(directResult?.status),
+                taskId: directResult?.taskId || directResult?.id || options.taskId,
+                status: normalizeStatus(directResult?.status || (Array.isArray(directResult?.data) ? "succeeded" : "")),
                 rawStatus: directResult?.status || "",
-                results: normalizeResults(directResult?.results),
+                results: normalizeDirectTaskResults(directResult),
                 clientId: directResult?.clientId || "",
                 promptTips: directResult?.promptTips || "",
                 usage: directResult?.usage || {},
@@ -282,7 +608,7 @@ ipcMain.handle("runninghub:queryTask", async (event, options: {
 ipcMain.handle("runninghub:cancelTask", async (event, options: {
     apiBaseUrl?: string;
     apiKey: string;
-    connectorType: "ai-app" | "workflow" | "model-api";
+    connectorType: "ai-app" | "workflow" | "model-api" | "custom-api";
     cancelPath?: string;
     taskId: string;
 }) => {

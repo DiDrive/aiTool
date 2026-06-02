@@ -13,6 +13,7 @@ export type CloudTemplateType = "workflow" | "ai-app" | "model-api" | "custom-ap
 
 export type CloudTemplateContent = {
     capability: CloudTemplateCapability;
+    capabilities?: CloudTemplateCapability[];
     templateType: CloudTemplateType;
     providerType: CloudProviderType;
     providerProfileId?: number;
@@ -33,6 +34,7 @@ export type CloudTemplateContent = {
     usePersonalQueue?: boolean;
     nodeInfoTemplateJson?: string;
     requestBodyTemplateJson?: string;
+    requestFormat?: "json" | "form-data";
     inputSchemaJson?: string;
     fieldMappingJson?: string;
 };
@@ -47,8 +49,12 @@ export type CloudTemplateInputSchemaField = {
         | "switch"
         | "select"
         | "image"
+        | "images"
         | "audio"
+        | "audios"
         | "video"
+        | "videos"
+        | "files"
         | "file";
     required?: boolean;
     placeholder?: string;
@@ -66,15 +72,50 @@ export type CloudTemplateRecord = {
     content: CloudTemplateContent;
 };
 
+export const normalizeCloudTemplateCapabilities = (
+    capability?: CloudTemplateCapability | CloudTemplateCapability[] | string,
+    capabilities?: CloudTemplateCapability[] | string[]
+) => {
+    const values = [
+        ...(Array.isArray(capabilities) ? capabilities : []),
+        ...(Array.isArray(capability) ? capability : capability ? [capability] : []),
+    ]
+        .map(item => String(item || "").trim())
+        .filter(Boolean) as CloudTemplateCapability[];
+    return Array.from(new Set(values));
+};
+
+export const getTemplateCapabilities = (record?: CloudTemplateRecord | null) => {
+    const values = normalizeCloudTemplateCapabilities(record?.content?.capability, record?.content?.capabilities);
+    return values.length > 0 ? values : (["video"] as CloudTemplateCapability[]);
+};
+
+export const getTemplatePrimaryCapability = (record?: CloudTemplateRecord | null): CloudTemplateCapability => {
+    return getTemplateCapabilities(record)[0] ?? "video";
+};
+
+export const templateSupportsCapability = (
+    record: CloudTemplateRecord | null | undefined,
+    capability: CloudTemplateCapability
+) => {
+    return getTemplateCapabilities(record).includes(capability);
+};
+
 const decode = (record: StorageRecord | null): CloudTemplateRecord | null => {
     if (!record) {
         return null;
     }
+    const capabilities = normalizeCloudTemplateCapabilities(
+        record.content?.capability,
+        record.content?.capabilities
+    );
+    const primaryCapability = capabilities[0] || "video";
     return {
         id: record.id,
         title: record.title || "",
         content: {
-            capability: record.content?.capability || "video",
+            capability: primaryCapability,
+            capabilities,
             templateType: record.content?.templateType || "workflow",
             providerType: record.content?.providerType || "runninghub",
             providerProfileId: record.content?.providerProfileId || 0,
@@ -97,6 +138,7 @@ const decode = (record: StorageRecord | null): CloudTemplateRecord | null => {
                 typeof record.content?.usePersonalQueue === "boolean" ? record.content.usePersonalQueue : false,
             nodeInfoTemplateJson: record.content?.nodeInfoTemplateJson || "",
             requestBodyTemplateJson: record.content?.requestBodyTemplateJson || "",
+            requestFormat: record.content?.requestFormat || "json",
             inputSchemaJson: record.content?.inputSchemaJson || "[]",
             fieldMappingJson: record.content?.fieldMappingJson || "",
         },
@@ -116,19 +158,25 @@ export const CloudTemplateService = {
     },
     async listByCapability(capability: CloudTemplateCapability): Promise<CloudTemplateRecord[]> {
         const records = await this.list();
-        return records.filter(record => record.content.capability === capability);
+        return records.filter(record => templateSupportsCapability(record, capability));
     },
     async save(record: CloudTemplateRecord) {
+        const capabilities = getTemplateCapabilities(record);
+        const content = {
+            ...record.content,
+            capability: capabilities[0] || "video",
+            capabilities,
+        };
         if (!record.id) {
             await StorageService.add("CloudTemplate", {
                 title: record.title,
-                content: record.content,
+                content,
             });
             return;
         }
         await StorageService.update(record.id, {
             title: record.title,
-            content: record.content,
+            content,
         });
     },
     async delete(record: CloudTemplateRecord) {

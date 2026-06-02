@@ -8,7 +8,7 @@ export type RunningHubCapability =
     | "voice-clone"
     | "digital-human";
 
-export type RunningHubConnectorType = "ai-app" | "workflow" | "model-api";
+export type RunningHubConnectorType = "ai-app" | "workflow" | "model-api" | "custom-api";
 
 export type RunningHubModelConfigType = {
     capability: RunningHubCapability;
@@ -28,6 +28,7 @@ export type RunningHubModelConfigType = {
     workflowId?: string;
     nodeInfoListJson?: string;
     requestBodyJson?: string;
+    requestFormat?: "json" | "form-data";
     webhookUrl?: string;
     instanceType?: string;
     accessPassword?: string;
@@ -59,6 +60,9 @@ export type RunningHubJobResultType = {
         clientId?: string;
         submittedBody?: Record<string, any>;
         submittedNodeInfoList?: Array<Record<string, any>>;
+        requestUrl?: string;
+        responseDiagnostics?: Record<string, any>;
+        responsePreview?: string;
     };
     Query: {
         status: TaskJobResultStepStatus;

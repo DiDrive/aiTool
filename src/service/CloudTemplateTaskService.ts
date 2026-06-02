@@ -8,6 +8,7 @@ import {
     CloudTemplateCapability,
     CloudTemplateRecord,
     CloudTemplateService,
+    getTemplatePrimaryCapability,
 } from "./CloudTemplateService";
 import { TaskRecord } from "./TaskService";
 import { RunningHubModelConfigType } from "../pages/Apps/RunningHubStudio/type";
@@ -18,11 +19,15 @@ const escapeForJsonString = (value: any) => {
     return JSON.stringify(String(value ?? "")).slice(1, -1);
 };
 
+const escapeRegExp = (value: string) => {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
 const replacePlaceholders = (content: string, variables: Record<string, string>) => {
     let result = String(content || "");
     for (const [key, value] of Object.entries(variables)) {
         const safe = escapeForJsonString(value);
-        result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "g"), safe);
+        result = result.replace(new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, "g"), safe);
     }
     return result;
 };
@@ -54,6 +59,28 @@ export const parseTemplateInputSchema = (raw: string): CloudTemplateInputSchemaF
     }
 };
 
+const appendFlatVariables = (target: Record<string, string>, prefix: string, value: any) => {
+    if (value === null || typeof value === "undefined") {
+        target[prefix] = "";
+        return;
+    }
+    if (Array.isArray(value)) {
+        target[prefix] = JSON.stringify(value);
+        value.forEach((item, index) => {
+            appendFlatVariables(target, `${prefix}.${index}`, item);
+        });
+        return;
+    }
+    if (typeof value === "object") {
+        target[prefix] = JSON.stringify(value);
+        for (const [key, child] of Object.entries(value)) {
+            appendFlatVariables(target, `${prefix}.${key}`, child);
+        }
+        return;
+    }
+    target[prefix] = String(value);
+};
+
 const buildVariables = (input: CloudTemplateInput) => {
     const result: Record<string, string> = {};
     for (const [key, value] of Object.entries(input || {})) {
@@ -62,7 +89,7 @@ const buildVariables = (input: CloudTemplateInput) => {
             continue;
         }
         if (typeof value === "object") {
-            result[key] = JSON.stringify(value);
+            appendFlatVariables(result, key, value);
             continue;
         }
         result[key] = String(value);
@@ -94,6 +121,9 @@ const buildConnectorType = (template: CloudTemplateRecord) => {
     if (template.content.templateType === "ai-app") {
         return "ai-app";
     }
+    if (template.content.templateType === "custom-api") {
+        return "custom-api";
+    }
     return "model-api";
 };
 
@@ -104,8 +134,10 @@ const buildModelConfig = async (
 ): Promise<RunningHubModelConfigType> => {
     const variables = buildVariables(input);
     const connectorType = buildConnectorType(template);
+    const selectedCapability = (String(input.selectedCapability || "").trim() as CloudTemplateCapability) || "";
+    const capability = selectedCapability || getTemplatePrimaryCapability(template);
     return {
-        capability: template.content.capability,
+        capability,
         connectorType,
         providerType: providerProfile.content.providerType,
         providerProfileId: providerProfile.id,
@@ -131,7 +163,8 @@ const buildModelConfig = async (
         workflowJson: replacePlaceholders(template.content.workflowJson || "", variables),
         nodeInfoListJson: replacePlaceholders(template.content.nodeInfoTemplateJson || "[]", variables),
         requestBodyJson: replacePlaceholders(template.content.requestBodyTemplateJson || "{}", variables),
-        saveAsVideoTemplate: template.content.capability === "digital-human",
+        requestFormat: template.content.requestFormat || "json",
+        saveAsVideoTemplate: capability === "digital-human",
     };
 };
 

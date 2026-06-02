@@ -5,7 +5,12 @@ export type StorageBiz =
     | "LiveEvent"
     | "LiveTalk"
     | "CloudTemplate"
-    | "CloudProviderProfile";
+    | "CloudProviderProfile"
+    | "DirectApiPlatform"
+    | "DigitalHumanIdentity"
+    | "DigitalHumanClip"
+    | "DigitalHumanScenePack"
+    | "DigitalHumanLiveExecutionConfig";
 
 export type StorageRecord = {
     id?: number;

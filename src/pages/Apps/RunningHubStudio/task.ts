@@ -145,7 +145,7 @@ const createPreparedPayload = async (modelConfig: RunningHubModelConfigType) => 
     if (connectorType === "workflow" && !String(modelConfig.workflowId || "").trim() && !String(modelConfig.workflowJson || "").trim()) {
         throw new Error("工作流模式需要填写 Workflow ID 或 Workflow JSON");
     }
-    if (connectorType === "model-api" && !String(modelConfig.submitPath || "").trim()) {
+    if ((connectorType === "model-api" || connectorType === "custom-api") && !String(modelConfig.submitPath || "").trim()) {
         throw new Error("标准模型 API 模式需要填写提交路径");
     }
     const uploaded = await maybeUploadNodeAssets(
@@ -167,10 +167,67 @@ const errorMessageOf = (e: any, fallback: string) => {
     return String(e?.message || e || fallback).trim() || fallback;
 };
 
+const safeJsonPreview = (value: any, maxLength = 1200) => {
+    try {
+        const text = JSON.stringify(value, (key, child) => {
+            if (key === "apiKey") {
+                return child ? "***" : "";
+            }
+            if (typeof child === "string" && child.length > 160) {
+                return `${child.slice(0, 120)}...(length=${child.length})`;
+            }
+            return child;
+        });
+        return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+    } catch (e) {
+        return String(value || "");
+    }
+};
+
+const responseMessageOf = (res: any, fallback: string) => {
+    return String(
+        res?.error?.message ||
+            res?.errorMessage ||
+            res?.msg ||
+            res?.message ||
+            fallback
+    );
+};
+
 const extractRemoteResultUrls = (remoteResults: any[]) => {
     return (Array.isArray(remoteResults) ? remoteResults : [])
         .map(item => String(item?.url || item?.fileUrl || "").trim())
         .filter(Boolean);
+};
+
+const normalizeDirectApiResults = (res: any) => {
+    const dataList = Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res?.data?.data)
+          ? res.data.data
+          : [];
+    if (dataList.length > 0) {
+        return dataList
+            .map((item: any) => {
+                const url = String(item?.url || item?.fileUrl || "").trim();
+                const b64 = String(item?.b64_json || "").trim();
+                if (url) {
+                    return { url, fileUrl: url, outputType: "image" };
+                }
+                if (b64) {
+                    return { text: b64, outputType: "image_base64", fileUrl: "" };
+                }
+                return null;
+            })
+            .filter(Boolean);
+    }
+    const content = res?.content || res?.data?.content || {};
+    const results = [
+        content?.video_url ? { url: content.video_url, fileUrl: content.video_url, outputType: "video" } : null,
+        content?.image_url ? { url: content.image_url, fileUrl: content.image_url, outputType: "image" } : null,
+        content?.audio_url ? { url: content.audio_url, fileUrl: content.audio_url, outputType: "audio" } : null,
+    ].filter(Boolean);
+    return results;
 };
 
 const buildResultPayload = async (
@@ -329,6 +386,7 @@ export const RunningHubTask: TaskBiz = {
                     workflowId: modelConfig.workflowId,
                     nodeInfoList: jobResult.Submit.submittedNodeInfoList || [],
                     requestBody: jobResult.Submit.submittedBody || {},
+                    requestFormat: modelConfig.requestFormat || "json",
                     webhookUrl: modelConfig.webhookUrl,
                     instanceType: modelConfig.instanceType,
                     accessPassword: modelConfig.accessPassword,
@@ -337,10 +395,37 @@ export const RunningHubTask: TaskBiz = {
                     usePersonalQueue: modelConfig.usePersonalQueue,
                     workflow: modelConfig.workflowJson,
                 });
+                jobResult.Submit.requestUrl = String(res?._diagnostics?.requestUrl || "");
+                jobResult.Submit.responseDiagnostics = res?._diagnostics || {};
+                jobResult.Submit.responsePreview = safeJsonPreview(res);
                 if (res?.code) {
-                    throw new Error(res?.msg || "RunningHub 任务提交失败");
+                    throw new Error(responseMessageOf(res, "任务提交失败"));
                 }
-                const taskId = String(res?.data?.taskId || res?.taskId || "");
+                const taskId = String(res?.data?.taskId || res?.taskId || res?.data?.id || res?.id || "");
+                const syncResults = normalizeDirectApiResults(res);
+                if (!taskId && syncResults.length > 0) {
+                    jobResult.Submit.status = "success";
+                    jobResult.Query.status = "success";
+                    jobResult.Query.taskStatus = "SUCCESS";
+                    jobResult.Query.results = syncResults as any;
+                    jobResult.Query.usage = res?.usage || res?.data?.usage || {};
+                    jobResult.End.status = "success";
+                    jobResult.End.localFiles = [];
+                    jobResult.step = "End";
+                    await TaskService.update(bizId, {
+                        status: "success",
+                        statusMsg: "",
+                        jobResult,
+                    });
+                    return "success";
+                }
+                if (modelConfig.connectorType === "custom-api") {
+                    const msg = responseMessageOf(
+                        res,
+                        `Direct API 已返回，但没有可识别的产出结果。URL: ${jobResult.Submit.requestUrl || "-"}`
+                    );
+                    throw new Error(msg);
+                }
                 if (!taskId) {
                     throw new Error("RunningHub 未返回 taskId");
                 }
@@ -405,7 +490,7 @@ export const RunningHubTask: TaskBiz = {
         jobResult.Query.usage = res?.data?.usage || {};
         jobResult.Query.promptTips = res?.data?.promptTips || "";
         await TaskService.update(bizId, { jobResult });
-        if (status === "SUCCESS") {
+        if (status === "SUCCESS" || status === "SUCCEEDED") {
             const localFiles: string[] = [];
             const downloadErrors: string[] = [];
             for (const item of jobResult.Query.results || []) {
@@ -490,3 +575,6 @@ export const RunningHubTask: TaskBiz = {
         });
     },
 };
+
+export const DirectApiTask = RunningHubTask;
+export const DirectApiTaskCleaner = RunningHubTaskCleaner;

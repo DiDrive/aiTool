@@ -7,6 +7,15 @@ import { ObjectUtil } from "../../lib/util";
 import { StorageService } from "../../service/StorageService";
 import { VideoTemplateService } from "../../service/VideoTemplateService";
 import { VideoActionService } from "../../service/VideoActionService";
+import { CloudProviderProfileService, CloudProviderType } from "../../service/CloudProviderProfileService";
+import { CloudTemplateRecord, CloudTemplateService } from "../../service/CloudTemplateService";
+import { DigitalHumanClipRecord, DigitalHumanClipService } from "../../service/DigitalHumanClipService";
+import { DigitalHumanIdentityRecord, DigitalHumanIdentityService } from "../../service/DigitalHumanIdentityService";
+import {
+    DigitalHumanLiveExecutionConfigRecord,
+    DigitalHumanLiveExecutionConfigService,
+} from "../../service/DigitalHumanLiveExecutionConfigService";
+import { DigitalHumanScenePackRecord, DigitalHumanScenePackService } from "../../service/DigitalHumanScenePackService";
 import { LiveStatusType } from "../../types/Live";
 import { EnumServerStatus, ServerRecord } from "../../types/Server";
 import store from "../index";
@@ -169,6 +178,8 @@ export const liveStore = defineStore("live", {
                 cloudStatusPath: "scene/status",
                 cloudStatusFallbackPath: "status",
                 cloudTalkPath: "scene/talk",
+                cloudClipPath: "scene/clip",
+                cloudClipRequestJson: "{}",
                 cloudPreviewFieldPath: "",
                 cloudStatusFieldPath: "",
                 runningHubBaseUrl: "https://www.runninghub.ai",
@@ -186,6 +197,7 @@ export const liveStore = defineStore("live", {
                 cloudSdkSceneId: "",
                 cloudSdkUseInlinePlayer: true,
                 cloudSdkGlobalParams: "{}",
+                scenePackId: 0,
             },
         },
         status: "stopped" as LiveStatusType,
@@ -218,6 +230,45 @@ export const liveStore = defineStore("live", {
         cloudLastStartAt: 0,
         cloudTaskId: "",
         cloudTaskProvider: "",
+        scenePackRuntime: {
+            selectedScenePackId: 0,
+            selectedScenePackTitle: "",
+            identityId: 0,
+            identityTitle: "",
+            executionConfigId: 0,
+            executionConfigTitle: "",
+            currentClipId: 0,
+            currentClipTitle: "",
+            currentClipType: "",
+            currentClipVideo: "",
+            currentClipAudio: "",
+            currentClipCoverImage: "",
+            currentClipText: "",
+            currentClipDurationSeconds: 0,
+            idleClipId: 0,
+            idleClipTitle: "",
+            idleClipVideo: "",
+            idleClipAudio: "",
+            autoReturnToIdle: true,
+            idlePaddingMs: 800,
+            talkPaddingMs: 400,
+            productInsertMode: "auto" as "auto" | "manual" | "disabled",
+            overlayPosition: "right" as "left" | "right" | "bottom" | "full",
+            defaultDisplayMode: "normal",
+            queues: {
+                welcome: [] as number[],
+                talk: [] as number[],
+                product: [] as number[],
+                transition: [] as number[],
+            },
+            cursors: {
+                welcome: 0,
+                talk: 0,
+                product: 0,
+                transition: 0,
+            },
+            returnTimer: undefined as any,
+        },
     }),
     actions: {
         async init() {
@@ -291,6 +342,10 @@ export const liveStore = defineStore("live", {
                 localConfig.config?.cloudStatusFallbackPath || this.localConfig.config.cloudStatusFallbackPath || "status";
             this.localConfig.config.cloudTalkPath =
                 localConfig.config?.cloudTalkPath || this.localConfig.config.cloudTalkPath || "scene/talk";
+            this.localConfig.config.cloudClipPath =
+                localConfig.config?.cloudClipPath || this.localConfig.config.cloudClipPath || "scene/clip";
+            this.localConfig.config.cloudClipRequestJson =
+                localConfig.config?.cloudClipRequestJson || this.localConfig.config.cloudClipRequestJson || "{}";
             this.localConfig.config.cloudPreviewFieldPath =
                 localConfig.config?.cloudPreviewFieldPath || this.localConfig.config.cloudPreviewFieldPath || "";
             this.localConfig.config.cloudStatusFieldPath =
@@ -325,13 +380,319 @@ export const liveStore = defineStore("live", {
                 localConfig.config?.cloudSdkUseInlinePlayer ?? this.localConfig.config.cloudSdkUseInlinePlayer ?? true;
             this.localConfig.config.cloudSdkGlobalParams =
                 localConfig.config?.cloudSdkGlobalParams || this.localConfig.config.cloudSdkGlobalParams || "{}";
+            this.localConfig.config.scenePackId =
+                Number(localConfig.config?.scenePackId || this.localConfig.config.scenePackId || 0);
             this.localConfig.config.streamMode =
                 localConfig.config?.streamMode || this.localConfig.config.streamMode || "rtmp";
             if (!this.engineActionListenerBound) {
                 window.addEventListener("live-engine-action", this.onEngineActionBroadcast as EventListener);
                 this.engineActionListenerBound = true;
             }
+            if (Number(this.localConfig.config.scenePackId || 0) > 0) {
+                await this.activateScenePack(Number(this.localConfig.config.scenePackId || 0), {
+                    persist: false,
+                });
+            }
             await this.statusUpdate();
+        },
+        clearScenePackReturnTimer() {
+            if (this.scenePackRuntime.returnTimer) {
+                clearTimeout(this.scenePackRuntime.returnTimer);
+                this.scenePackRuntime.returnTimer = undefined;
+            }
+        },
+        resetScenePackRuntime() {
+            this.clearScenePackReturnTimer();
+            this.scenePackRuntime.selectedScenePackId = 0;
+            this.scenePackRuntime.selectedScenePackTitle = "";
+            this.scenePackRuntime.identityId = 0;
+            this.scenePackRuntime.identityTitle = "";
+            this.scenePackRuntime.executionConfigId = 0;
+            this.scenePackRuntime.executionConfigTitle = "";
+            this.scenePackRuntime.currentClipId = 0;
+            this.scenePackRuntime.currentClipTitle = "";
+            this.scenePackRuntime.currentClipType = "";
+            this.scenePackRuntime.currentClipVideo = "";
+            this.scenePackRuntime.currentClipAudio = "";
+            this.scenePackRuntime.currentClipCoverImage = "";
+            this.scenePackRuntime.currentClipText = "";
+            this.scenePackRuntime.currentClipDurationSeconds = 0;
+            this.scenePackRuntime.idleClipId = 0;
+            this.scenePackRuntime.idleClipTitle = "";
+            this.scenePackRuntime.idleClipVideo = "";
+            this.scenePackRuntime.idleClipAudio = "";
+            this.scenePackRuntime.autoReturnToIdle = true;
+            this.scenePackRuntime.idlePaddingMs = 800;
+            this.scenePackRuntime.talkPaddingMs = 400;
+            this.scenePackRuntime.productInsertMode = "auto";
+            this.scenePackRuntime.overlayPosition = "right";
+            this.scenePackRuntime.defaultDisplayMode = "normal";
+            this.scenePackRuntime.queues.welcome = [];
+            this.scenePackRuntime.queues.talk = [];
+            this.scenePackRuntime.queues.product = [];
+            this.scenePackRuntime.queues.transition = [];
+            this.scenePackRuntime.cursors.welcome = 0;
+            this.scenePackRuntime.cursors.talk = 0;
+            this.scenePackRuntime.cursors.product = 0;
+            this.scenePackRuntime.cursors.transition = 0;
+        },
+        scenePackSequenceMode(type: "welcome" | "talk" | "product" | "transition") {
+            if (type === "talk" || type === "welcome") {
+                return this.localConfig.config.flowTalkMode || "order";
+            }
+            return this.localConfig.config.flowVideoMode || "order";
+        },
+        pickSceneClipId(type: "welcome" | "talk" | "product" | "transition") {
+            const queue = this.scenePackRuntime.queues[type] || [];
+            if (!queue.length) {
+                return 0;
+            }
+            if (this.scenePackSequenceMode(type) === "random") {
+                const index = Math.floor(Math.random() * queue.length);
+                return Number(queue[index] || 0);
+            }
+            const cursor = Number(this.scenePackRuntime.cursors[type] || 0) % queue.length;
+            const clipId = Number(queue[cursor] || 0);
+            this.scenePackRuntime.cursors[type] = (cursor + 1) % queue.length;
+            return clipId;
+        },
+        applySceneClip(record: DigitalHumanClipRecord) {
+            this.scenePackRuntime.currentClipId = Number(record.id || 0);
+            this.scenePackRuntime.currentClipTitle = record.title || "";
+            this.scenePackRuntime.currentClipType = record.content.clipType || "";
+            this.scenePackRuntime.currentClipVideo = record.content.videoUrl || "";
+            this.scenePackRuntime.currentClipAudio = record.content.audioUrl || "";
+            this.scenePackRuntime.currentClipCoverImage = record.content.coverImage || "";
+            this.scenePackRuntime.currentClipText = record.content.text || "";
+            this.scenePackRuntime.currentClipDurationSeconds = Number(record.content.durationSeconds || 0);
+            this.liveStatus.talkTitle = record.title || "";
+            this.liveStatus.talkContent = record.content.text || "";
+            this.liveStatus.videoTitle =
+                record.content.clipType === "idle"
+                    ? "待机循环中"
+                    : record.title || "编排片段执行中";
+        },
+        scenePackCurrentVideoUrl() {
+            return String(this.scenePackRuntime.currentClipVideo || this.scenePackRuntime.idleClipVideo || "").trim();
+        },
+        scenePackCurrentAudioUrl() {
+            return String(this.scenePackRuntime.currentClipAudio || this.scenePackRuntime.idleClipAudio || "").trim();
+        },
+        hasScenePackPlaybackVideo() {
+            return !!this.scenePackCurrentVideoUrl();
+        },
+        hasScenePackSelected() {
+            return Number(this.scenePackRuntime.selectedScenePackId || 0) > 0;
+        },
+        effectiveLocalVideoEnabled() {
+            return !!this.localConfig.video.enable || (this.localConfig.config.engineMode === "local" && this.hasScenePackPlaybackVideo());
+        },
+        buildScenePackFlowOverrides() {
+            if (this.localConfig.config.engineMode !== "local" || !this.hasScenePackSelected()) {
+                return null;
+            }
+            const videoUrl = this.scenePackCurrentVideoUrl();
+            const text = String(this.scenePackRuntime.currentClipText || "").trim();
+            return {
+                flowVideos: videoUrl
+                    ? [
+                          {
+                              id: `ScenePackClipVideo${this.scenePackRuntime.currentClipId || this.scenePackRuntime.idleClipId || 0}`,
+                              title: this.scenePackRuntime.currentClipTitle || this.scenePackRuntime.idleClipTitle || "编排片段",
+                              video: videoUrl,
+                          },
+                      ]
+                    : [],
+                flowTalks:
+                    !videoUrl && text
+                        ? [
+                              {
+                                  id: `ScenePackClipTalk${this.scenePackRuntime.currentClipId || 0}`,
+                                  title: this.scenePackRuntime.currentClipTitle || "编排话术",
+                                  talks: [{ value: text }],
+                                  video: "",
+                              },
+                          ]
+                        : [],
+            };
+        },
+        async syncLocalSceneExecution(option: { silent?: boolean } = {}) {
+            const configPost = {
+                id: SCENE_ID,
+                config: {
+                    flowVideoMode: this.localConfig.config.flowVideoMode,
+                    flowTalkMode: this.localConfig.config.flowTalkMode,
+                    flowTalkDelayMin: this.localConfig.config.flowTalkDelayMin,
+                    flowTalkDelayMax: this.localConfig.config.flowTalkDelayMax,
+                },
+                data: await this.buildData(),
+            };
+            const res = await this.apiRequest("scene/update", {
+                scene: ObjectUtil.clone(configPost),
+            });
+            if (res.code) {
+                if (!option.silent) {
+                    Dialog.tipError(t("error.updateFailed") + ":" + res.msg);
+                }
+                return false;
+            }
+            const textOnlyTalk =
+                !this.scenePackCurrentVideoUrl() &&
+                !!String(this.scenePackRuntime.currentClipText || "").trim() &&
+                this.scenePackRuntime.currentClipType !== "idle";
+            if (textOnlyTalk) {
+                await this.talk(String(this.scenePackRuntime.currentClipText || "").trim(), {
+                    silent: true,
+                });
+            }
+            return true;
+        },
+        async syncCloudSceneExecution(option: { silent?: boolean } = {}) {
+            if (!this.hasCloudApiConfigured()) {
+                return true;
+            }
+            const clipHasVideo = !!this.scenePackCurrentVideoUrl();
+            const clipHasAudio = !!this.scenePackCurrentAudioUrl();
+            const textOnlyTalk =
+                !clipHasVideo &&
+                !clipHasAudio &&
+                !!String(this.scenePackRuntime.currentClipText || "").trim() &&
+                this.scenePackRuntime.currentClipType !== "idle";
+            if (this.isRunningHubProvider() || clipHasVideo || clipHasAudio || this.getCloudProvider() === "heygem") {
+                return await this.submitCloudSceneClipExecution(option);
+            }
+            const hasClipBridgeTemplate =
+                !!String(this.localConfig.config.cloudClipPath || "").trim() ||
+                !!String(this.localConfig.config.cloudClipRequestJson || "").trim();
+            if (hasClipBridgeTemplate && !textOnlyTalk) {
+                return await this.submitCloudSceneClipExecution(option);
+            }
+            if (textOnlyTalk) {
+                return await this.talkCloud(String(this.scenePackRuntime.currentClipText || "").trim(), {
+                    silent: option.silent ?? true,
+                });
+            }
+            return true;
+        },
+        async syncScenePackExecution(option: { silent?: boolean } = {}) {
+            if (this.status !== "running") {
+                return true;
+            }
+            if (!this.hasScenePackSelected()) {
+                return true;
+            }
+            if (this.localConfig.config.engineMode === "local") {
+                return await this.syncLocalSceneExecution(option);
+            }
+            return await this.syncCloudSceneExecution(option);
+        },
+        scheduleScenePackReturnToIdle(delayMs: number) {
+            this.clearScenePackReturnTimer();
+            this.scenePackRuntime.returnTimer = setTimeout(async () => {
+                await this.returnToIdleClip({
+                    silent: true,
+                });
+            }, Math.max(0, delayMs));
+        },
+        async setCurrentSceneClip(clipId: number, option: { scheduleReturn?: boolean; silent?: boolean } = {}) {
+            const record = await DigitalHumanClipService.get(Number(clipId || 0));
+            if (!record?.id) {
+                if (!option.silent) {
+                    Dialog.tipError("片段不存在或已被删除");
+                }
+                return false;
+            }
+            this.clearScenePackReturnTimer();
+            this.applySceneClip(record);
+            const shouldScheduleReturn =
+                option.scheduleReturn !== false &&
+                this.scenePackRuntime.autoReturnToIdle &&
+                Number(this.scenePackRuntime.idleClipId || 0) > 0 &&
+                record.content.clipType !== "idle";
+            if (shouldScheduleReturn) {
+                const durationMs = Math.max(0, Number(record.content.durationSeconds || 0) * 1000);
+                const paddingMs =
+                    record.content.clipType === "product"
+                        ? Number(this.scenePackRuntime.idlePaddingMs || 0)
+                        : Number(this.scenePackRuntime.talkPaddingMs || 0);
+                this.scheduleScenePackReturnToIdle((durationMs || 5000) + paddingMs);
+            }
+            await this.syncScenePackExecution({
+                silent: true,
+            });
+            return true;
+        },
+        async returnToIdleClip(option: { silent?: boolean } = {}) {
+            if (!Number(this.scenePackRuntime.idleClipId || 0)) {
+                if (!option.silent) {
+                    Dialog.tipError("当前编排方案未配置待机片");
+                }
+                return false;
+            }
+            return await this.setCurrentSceneClip(Number(this.scenePackRuntime.idleClipId || 0), {
+                scheduleReturn: false,
+                silent: option.silent,
+            });
+        },
+        async playScenePackClipType(type: "welcome" | "talk" | "product" | "transition") {
+            if (!Number(this.scenePackRuntime.selectedScenePackId || 0)) {
+                Dialog.tipError("请先选择直播编排方案");
+                return false;
+            }
+            const clipId = this.pickSceneClipId(type);
+            if (!clipId) {
+                Dialog.tipError(`当前方案未配置${type === "welcome" ? "欢迎片" : type === "talk" ? "讲解片" : type === "product" ? "商品片" : "过渡片"}`);
+                return false;
+            }
+            return await this.setCurrentSceneClip(clipId);
+        },
+        async activateScenePack(scenePackId: number, option: { persist?: boolean } = {}) {
+            const record = await DigitalHumanScenePackService.get(Number(scenePackId || 0));
+            if (!record?.id) {
+                this.resetScenePackRuntime();
+                if (option.persist !== false) {
+                    this.localConfig.config.scenePackId = 0;
+                    await this.saveLocalConfig();
+                }
+                return false;
+            }
+            this.clearScenePackReturnTimer();
+            this.scenePackRuntime.selectedScenePackId = Number(record.id || 0);
+            this.scenePackRuntime.selectedScenePackTitle = record.title || "";
+            this.scenePackRuntime.identityId = Number(record.content.identityId || 0);
+            this.scenePackRuntime.identityTitle = record.content.identityTitle || "";
+            this.scenePackRuntime.executionConfigId = Number(record.content.executionConfigId || 0);
+            this.scenePackRuntime.executionConfigTitle = record.content.executionConfigTitle || "";
+            this.scenePackRuntime.idleClipId = Number(record.content.idleClipId || 0);
+            this.scenePackRuntime.autoReturnToIdle =
+                typeof record.content.autoReturnToIdle === "boolean" ? record.content.autoReturnToIdle : true;
+            this.scenePackRuntime.idlePaddingMs = Number(record.content.idlePaddingMs || 0);
+            this.scenePackRuntime.talkPaddingMs = Number(record.content.talkPaddingMs || 0);
+            this.scenePackRuntime.productInsertMode = (record.content.productInsertMode || "auto") as any;
+            this.scenePackRuntime.overlayPosition = (record.content.overlayPosition || "right") as any;
+            this.scenePackRuntime.defaultDisplayMode = (record.content.defaultDisplayMode || "normal") as any;
+            this.scenePackRuntime.queues.welcome = [...(record.content.welcomeClipIds || [])];
+            this.scenePackRuntime.queues.talk = [...(record.content.talkClipIds || [])];
+            this.scenePackRuntime.queues.product = [...(record.content.productClipIds || [])];
+            this.scenePackRuntime.queues.transition = [...(record.content.transitionClipIds || [])];
+            this.scenePackRuntime.cursors.welcome = 0;
+            this.scenePackRuntime.cursors.talk = 0;
+            this.scenePackRuntime.cursors.product = 0;
+            this.scenePackRuntime.cursors.transition = 0;
+            this.localConfig.config.scenePackId = Number(record.id || 0);
+            if (option.persist !== false) {
+                await this.saveLocalConfig();
+            }
+            if (Number(this.scenePackRuntime.idleClipId || 0) > 0) {
+                await this.returnToIdleClip({
+                    silent: true,
+                });
+            }
+            const idleRecord = await DigitalHumanClipService.get(Number(this.scenePackRuntime.idleClipId || 0));
+            this.scenePackRuntime.idleClipTitle = idleRecord?.title || "";
+            this.scenePackRuntime.idleClipVideo = idleRecord?.content.videoUrl || "";
+            this.scenePackRuntime.idleClipAudio = idleRecord?.content.audioUrl || "";
+            return true;
         },
         onEngineActionBroadcast(event: any) {
             const data = event?.detail || {};
@@ -402,45 +763,58 @@ export const liveStore = defineStore("live", {
                 }
             }
             const liveKnowledge = await StorageService.list("LiveKnowledge");
+            const scenePackSelected = this.hasScenePackSelected();
             const flowTalks = liveKnowledge.filter(s => s.content.type === "flowTalk" && s.content.enable);
-            if (!flowTalks.length) {
+            if (!flowTalks.length && !scenePackSelected) {
                 return {
                     ok: false,
                     msg: "本地渲染不可用：未配置循环话术，请先在直播知识库启用至少一条循环话术",
                 };
             }
-            for (const item of flowTalks) {
-                if (item.content?.url) {
-                    const exists = await $mapi.file.exists(item.content.url);
-                    if (!exists) {
-                        return {
-                            ok: false,
-                            msg: "本地渲染不可用：循环话术关联素材文件不存在，请在直播知识库修复素材路径",
-                        };
+            if (!scenePackSelected) {
+                for (const item of flowTalks) {
+                    if (item.content?.url) {
+                        const exists = await $mapi.file.exists(item.content.url);
+                        if (!exists) {
+                            return {
+                                ok: false,
+                                msg: "本地渲染不可用：循环话术关联素材文件不存在，请在直播知识库修复素材路径",
+                            };
+                        }
                     }
                 }
             }
-            if (this.localConfig.video.enable) {
+            if (this.effectiveLocalVideoEnabled()) {
                 const flowVideos = liveKnowledge.filter(s => s.content.type === "flowVideo" && s.content.enable);
-                if (!flowVideos.length) {
+                if (!flowVideos.length && !scenePackSelected) {
                     return {
                         ok: false,
                         msg: "本地渲染不可用：未启用循环视频素材，请先在直播知识库配置循环视频",
                     };
                 }
-                for (const item of flowVideos) {
-                    if (!item.content?.url) {
-                        return {
-                            ok: false,
-                            msg: "本地渲染不可用：循环视频素材路径为空，请在直播知识库补全素材路径",
-                        };
-                    }
-                    const exists = await $mapi.file.exists(item.content.url);
+                if (scenePackSelected && this.scenePackCurrentVideoUrl()) {
+                    const exists = await $mapi.file.exists(this.scenePackCurrentVideoUrl());
                     if (!exists) {
                         return {
                             ok: false,
-                            msg: "本地渲染不可用：循环视频素材文件不存在，请检查素材路径后重试",
+                            msg: "本地渲染不可用：当前编排片段视频不存在，请检查数字人直播片段素材路径",
                         };
+                    }
+                } else {
+                    for (const item of flowVideos) {
+                        if (!item.content?.url) {
+                            return {
+                                ok: false,
+                                msg: "本地渲染不可用：循环视频素材路径为空，请在直播知识库补全素材路径",
+                            };
+                        }
+                        const exists = await $mapi.file.exists(item.content.url);
+                        if (!exists) {
+                            return {
+                                ok: false,
+                                msg: "本地渲染不可用：循环视频素材文件不存在，请检查素材路径后重试",
+                            };
+                        }
                     }
                 }
             }
@@ -539,11 +913,311 @@ export const liveStore = defineStore("live", {
                 throw new Error("RunningHub 节点参数 JSON 格式不正确");
             }
         },
+        parseCloudClipRequestJson() {
+            const raw = String(this.localConfig.config.cloudClipRequestJson || "").trim();
+            if (!raw) {
+                return {};
+            }
+            try {
+                const parsed = JSON.parse(raw);
+                return parsed && typeof parsed === "object" ? parsed : {};
+            } catch (e) {
+                throw new Error("云端片段执行请求 JSON 格式不正确");
+            }
+        },
         currentCloudApiKey() {
             if (this.isRunningHubProvider()) {
                 return String(this.localConfig.config.runningHubApiKey || "").trim();
             }
             return String(this.localConfig.config.cloudApiKey || "").trim();
+        },
+        currentIdentityBinding(provider: "runninghub" | "heygem" | "custom", identity: DigitalHumanIdentityRecord | null) {
+            const bindings = identity?.content?.bindings || {};
+            if (provider === "runninghub") {
+                return bindings.runninghub || {};
+            }
+            if (provider === "heygem") {
+                return bindings.heygem || {};
+            }
+            return bindings.custom || {};
+        },
+        normalizeLiveProviderType(providerType?: CloudProviderType | string) {
+            const value = String(providerType || "").trim().toLowerCase();
+            if (value === "runninghub") {
+                return "runninghub" as "runninghub" | "heygem" | "custom";
+            }
+            if (value === "heygem") {
+                return "heygem" as "runninghub" | "heygem" | "custom";
+            }
+            return "custom" as "runninghub" | "heygem" | "custom";
+        },
+        sceneExecutionSlotByClipType(clipType?: string) {
+            const value = String(clipType || "").trim();
+            if (value === "idle") return "idle";
+            if (value === "welcome") return "welcome";
+            if (value === "talk") return "talk";
+            if (value === "product" || value === "holding") return "product";
+            if (value === "transition") return "transition";
+            return "default";
+        },
+        async resolveSceneExecutionTemplateBinding(option: { clipType?: string } = {}) {
+            const executionConfigId = Number(this.scenePackRuntime.executionConfigId || 0);
+            if (!executionConfigId) {
+                return null;
+            }
+            const executionConfig = await DigitalHumanLiveExecutionConfigService.get(executionConfigId);
+            if (!executionConfig?.id) {
+                return null;
+            }
+            const slot = this.sceneExecutionSlotByClipType(option.clipType || this.scenePackRuntime.currentClipType || "idle");
+            const slotKey = `${slot}TemplateId`;
+            const templateId = Number((executionConfig.content as any)[slotKey] || executionConfig.content.defaultTemplateId || 0);
+            if (!templateId) {
+                return {
+                    executionConfig,
+                    template: null,
+                    providerProfile: null,
+                    slot,
+                };
+            }
+            const template = await CloudTemplateService.get(templateId);
+            const providerProfile = template?.content?.providerProfileId
+                ? await CloudProviderProfileService.get(Number(template.content.providerProfileId || 0))
+                : null;
+            return {
+                executionConfig,
+                template,
+                providerProfile,
+                slot,
+            };
+        },
+        parseJsonTemplateContent(raw: string, fallback: any, errorMsg: string) {
+            const text = String(raw || "").trim();
+            if (!text) {
+                return fallback;
+            }
+            try {
+                const parsed = JSON.parse(text);
+                return typeof parsed === "undefined" ? fallback : parsed;
+            } catch (e) {
+                throw new Error(errorMsg);
+            }
+        },
+        cloudSceneTemplateLookup(expr: string, context: any) {
+            const normalized = String(expr || "").trim();
+            if (!normalized) {
+                return "";
+            }
+            if (normalized === "provider") {
+                return context.provider;
+            }
+            if (normalized === "binding") {
+                return context.binding || {};
+            }
+            if (normalized.startsWith("binding.")) {
+                return this.cloudGetByPath(context.binding || {}, normalized.slice("binding.".length));
+            }
+            if (normalized === "clip") {
+                return context.clip || {};
+            }
+            if (normalized.startsWith("clip.")) {
+                return this.cloudGetByPath(context.clip || {}, normalized.slice("clip.".length));
+            }
+            if (normalized === "identity") {
+                return context.identity || {};
+            }
+            if (normalized.startsWith("identity.")) {
+                return this.cloudGetByPath(context.identity || {}, normalized.slice("identity.".length));
+            }
+            if (normalized === "runtime") {
+                return context.runtime || {};
+            }
+            if (normalized.startsWith("runtime.")) {
+                return this.cloudGetByPath(context.runtime || {}, normalized.slice("runtime.".length));
+            }
+            return this.cloudGetByPath(context, normalized);
+        },
+        cloudApplyTemplateValue(value: any, context: any): any {
+            if (Array.isArray(value)) {
+                return value.map(item => this.cloudApplyTemplateValue(item, context));
+            }
+            if (value && typeof value === "object") {
+                const next: Record<string, any> = {};
+                for (const [key, item] of Object.entries(value)) {
+                    next[key] = this.cloudApplyTemplateValue(item, context);
+                }
+                return next;
+            }
+            if (typeof value !== "string") {
+                return value;
+            }
+            const raw = String(value);
+            const exact = raw.match(/^\{\{\s*([^{}]+?)\s*\}\}$/);
+            if (exact) {
+                const resolved = this.cloudSceneTemplateLookup(exact[1], context);
+                return typeof resolved === "undefined" ? "" : resolved;
+            }
+            return raw.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_all, expr) => {
+                const resolved = this.cloudSceneTemplateLookup(expr, context);
+                if (resolved === null || typeof resolved === "undefined") {
+                    return "";
+                }
+                if (typeof resolved === "object") {
+                    try {
+                        return JSON.stringify(resolved);
+                    } catch (e) {
+                        return "";
+                    }
+                }
+                return String(resolved);
+            });
+        },
+        async buildSceneClipExecutionContext() {
+            const sceneBinding = await this.resolveSceneExecutionTemplateBinding();
+            const provider = sceneBinding?.providerProfile
+                ? this.normalizeLiveProviderType(sceneBinding.providerProfile.content.providerType)
+                : this.getCloudProvider();
+            const providerKey = provider === "runninghub" ? "runninghub" : provider === "heygem" ? "heygem" : "custom";
+            const identityId = Number(this.scenePackRuntime.identityId || 0);
+            const identity = identityId ? await DigitalHumanIdentityService.get(identityId) : null;
+            const clip = {
+                id: Number(this.scenePackRuntime.currentClipId || 0),
+                title: this.scenePackRuntime.currentClipTitle || this.scenePackRuntime.idleClipTitle || "",
+                type: this.scenePackRuntime.currentClipType || "idle",
+                text: String(this.scenePackRuntime.currentClipText || "").trim(),
+                videoUrl: this.scenePackCurrentVideoUrl(),
+                audioUrl: this.scenePackCurrentAudioUrl(),
+                coverImage: this.scenePackRuntime.currentClipCoverImage || "",
+                durationSeconds: Number(this.scenePackRuntime.currentClipDurationSeconds || 0),
+                displayMode: this.scenePackRuntime.defaultDisplayMode || "normal",
+                overlayPosition: this.scenePackRuntime.overlayPosition || "right",
+            };
+            const binding = this.currentIdentityBinding(providerKey, identity);
+            return {
+                provider,
+                clip,
+                binding,
+                identity: identity
+                    ? {
+                          id: Number(identity.id || 0),
+                          title: identity.title || "",
+                          ...identity.content,
+                      }
+                    : {
+                          id: 0,
+                          title: this.scenePackRuntime.identityTitle || "",
+                      },
+                runtime: {
+                    scenePackId: Number(this.scenePackRuntime.selectedScenePackId || 0),
+                    scenePackTitle: this.scenePackRuntime.selectedScenePackTitle || "",
+                    executionConfigId: Number(this.scenePackRuntime.executionConfigId || 0),
+                    executionConfigTitle: this.scenePackRuntime.executionConfigTitle || "",
+                    currentClipId: Number(this.scenePackRuntime.currentClipId || 0),
+                    currentClipTitle: this.scenePackRuntime.currentClipTitle || "",
+                    currentClipType: this.scenePackRuntime.currentClipType || "",
+                },
+                execution: {
+                    slot: sceneBinding?.slot || "default",
+                    templateId: Number(sceneBinding?.template?.id || 0),
+                    templateTitle: sceneBinding?.template?.title || "",
+                    providerProfileId: Number(sceneBinding?.providerProfile?.id || 0),
+                    providerProfileTitle: sceneBinding?.providerProfile?.title || "",
+                },
+            };
+        },
+        async buildRunningHubSceneNodeInfoList() {
+            const sceneBinding = await this.resolveSceneExecutionTemplateBinding();
+            const rawList = sceneBinding?.template?.content?.nodeInfoTemplateJson
+                ? this.parseJsonTemplateContent(sceneBinding.template.content.nodeInfoTemplateJson, [], "执行模板的节点参数 JSON 格式不正确")
+                : this.parseRunningHubNodeInfoList();
+            const context = await this.buildSceneClipExecutionContext();
+            return this.cloudApplyTemplateValue(rawList, context);
+        },
+        async buildCloudSceneBridgeRequestBody() {
+            const sceneBinding = await this.resolveSceneExecutionTemplateBinding();
+            const rawBody = sceneBinding?.template?.content?.requestBodyTemplateJson
+                ? this.parseJsonTemplateContent(sceneBinding.template.content.requestBodyTemplateJson, {}, "执行模板的请求体 JSON 格式不正确")
+                : this.parseCloudClipRequestJson();
+            const context = await this.buildSceneClipExecutionContext();
+            const applied = this.cloudApplyTemplateValue(rawBody, context);
+            if (applied && Object.keys(applied).length > 0) {
+                return applied;
+            }
+            return {
+                sceneId: this.localConfig.config.cloudSceneId || "default",
+                data: {
+                    action: "scene-clip-sync",
+                    provider: context.provider,
+                    clip: context.clip,
+                    identity: context.identity,
+                    binding: context.binding,
+                },
+            };
+        },
+        async submitCloudSceneClipExecution(option: { silent?: boolean } = {}) {
+            const sceneBinding = await this.resolveSceneExecutionTemplateBinding();
+            const provider = sceneBinding?.providerProfile
+                ? this.normalizeLiveProviderType(sceneBinding.providerProfile.content.providerType)
+                : this.getCloudProvider();
+            const resolved = sceneBinding?.providerProfile?.content?.baseUrl
+                ? {
+                      apiBaseUrl: this.normalizeCloudApiBaseUrl(sceneBinding.providerProfile.content.baseUrl || ""),
+                      autoDetected: false,
+                  }
+                : await this.resolveCloudApiBaseUrl();
+            if (!resolved.apiBaseUrl) {
+                if (!option.silent) {
+                    Dialog.tipError("云端片段执行失败：未找到可用云端 API 地址");
+                }
+                return false;
+            }
+            try {
+                const payload: any = {
+                    provider,
+                    apiBaseUrl: resolved.apiBaseUrl,
+                    apiKey: String(sceneBinding?.providerProfile?.content?.apiKey || this.currentCloudApiKey() || "").trim(),
+                    sceneId: this.localConfig.config.cloudSceneId || "default",
+                };
+                if (provider === "runninghub") {
+                    payload.webappId = sceneBinding?.template?.content?.webappId || this.localConfig.config.runningHubWebappId;
+                    payload.nodeInfoList = await this.buildRunningHubSceneNodeInfoList();
+                    payload.webhookUrl = sceneBinding?.template?.content?.webhookUrl || this.localConfig.config.runningHubWebhookUrl;
+                    payload.instanceType = sceneBinding?.template?.content?.instanceType || this.localConfig.config.runningHubInstanceType;
+                } else {
+                    payload.clipPath =
+                        sceneBinding?.template?.content?.submitPath || this.localConfig.config.cloudClipPath || "scene/clip";
+                    payload.requestBody = await this.buildCloudSceneBridgeRequestBody();
+                }
+                const result: any = await this.callLiveHandle("live:syncCloudSceneClip", payload);
+                const taskId = String(this.cloudPickFirstValue(result, ["data.taskId", "taskId"]) || "");
+                if (taskId) {
+                    this.cloudTaskId = taskId;
+                    this.cloudTaskProvider = provider;
+                }
+                const previewUrl = String(
+                    this.cloudPickFirstValue(
+                        result,
+                        provider === "runninghub"
+                            ? this.runningHubStatusPaths().previewPaths
+                            : ["data.previewUrl", "data.videoHls", "previewUrl", "videoHls"]
+                    ) || ""
+                );
+                if (previewUrl) {
+                    this.liveStatus.videoHls = previewUrl;
+                }
+                if (result?.code) {
+                    if (!option.silent) {
+                        Dialog.tipError(this.mapCloudErrorMessage(result?.code, result?.msg || "云端片段执行失败"));
+                    }
+                    return false;
+                }
+                return true;
+            } catch (e: any) {
+                if (!option.silent) {
+                    Dialog.tipError(this.mapCloudInvokeError(e, "云端片段执行失败"));
+                }
+                return false;
+            }
         },
         mapCloudInvokeError(e: any, fallback = "云端请求失败") {
             const raw = String(e?.message || e || "").trim();
@@ -759,7 +1433,18 @@ export const liveStore = defineStore("live", {
             }
             this.cloudStartInFlight = true;
             this.cloudLastStartAt = now;
-            const resolved = await this.resolveCloudApiBaseUrl();
+            const sceneBinding = await this.resolveSceneExecutionTemplateBinding({
+                clipType: this.scenePackRuntime.currentClipType || "idle",
+            });
+            const provider = sceneBinding?.providerProfile
+                ? this.normalizeLiveProviderType(sceneBinding.providerProfile.content.providerType)
+                : this.getCloudProvider();
+            const resolved = sceneBinding?.providerProfile?.content?.baseUrl
+                ? {
+                      apiBaseUrl: this.normalizeCloudApiBaseUrl(sceneBinding.providerProfile.content.baseUrl || ""),
+                      autoDetected: false,
+                  }
+                : await this.resolveCloudApiBaseUrl();
             if (!resolved.apiBaseUrl) {
                 this.statusMsg = "未找到可用云端 API 地址";
                 this.liveStatus.videoHls = "";
@@ -767,16 +1452,16 @@ export const liveStore = defineStore("live", {
                 return {
                     ok: false,
                     fallback: false,
-                    msg: this.isRunningHubProvider()
+                    msg: provider === "runninghub"
                         ? "未找到可用 RunningHub 地址，请检查 RunningHub Base URL 配置"
                         : "未找到可用云端 API 地址，请填写当前服务地址（例如 http://127.0.0.1:18000）",
                 };
             }
             try {
                 const payload: any = {
-                    provider: this.getCloudProvider(),
+                    provider,
                     apiBaseUrl: resolved.apiBaseUrl,
-                    apiKey: this.currentCloudApiKey(),
+                    apiKey: String(sceneBinding?.providerProfile?.content?.apiKey || this.currentCloudApiKey() || "").trim(),
                     sceneId: this.localConfig.config.cloudSceneId || "default",
                     startPath: this.localConfig.config.cloudStartPath,
                     streamMode: this.localConfig.config.streamMode,
@@ -785,11 +1470,11 @@ export const liveStore = defineStore("live", {
                     liveMonitorUrl: this.localConfig.config.liveMonitorUrl,
                     model: this.localConfig.model,
                 };
-                if (this.isRunningHubProvider()) {
-                    payload.webappId = this.localConfig.config.runningHubWebappId;
-                    payload.nodeInfoList = this.parseRunningHubNodeInfoList();
-                    payload.webhookUrl = this.localConfig.config.runningHubWebhookUrl;
-                    payload.instanceType = this.localConfig.config.runningHubInstanceType;
+                if (provider === "runninghub") {
+                    payload.webappId = sceneBinding?.template?.content?.webappId || this.localConfig.config.runningHubWebappId;
+                    payload.nodeInfoList = await this.buildRunningHubSceneNodeInfoList();
+                    payload.webhookUrl = sceneBinding?.template?.content?.webhookUrl || this.localConfig.config.runningHubWebhookUrl;
+                    payload.instanceType = sceneBinding?.template?.content?.instanceType || this.localConfig.config.runningHubInstanceType;
                 }
                 const result: any = await this.callLiveHandle("live:startCloudStream", {
                     ...payload,
@@ -797,7 +1482,7 @@ export const liveStore = defineStore("live", {
                 const taskId = String(this.cloudPickFirstValue(result, ["data.taskId", "taskId"]) || "");
                 if (taskId) {
                     this.cloudTaskId = taskId;
-                    this.cloudTaskProvider = this.getCloudProvider();
+                    this.cloudTaskProvider = provider;
                 }
                 if (result?.code) {
                     // Some cloud providers return transient errors while session is actually becoming ready.
@@ -821,7 +1506,7 @@ export const liveStore = defineStore("live", {
                 }
                 const previewPathList = this.cloudPathList(
                     this.localConfig.config.cloudPreviewFieldPath,
-                    this.isRunningHubProvider()
+                    provider === "runninghub"
                         ? this.runningHubStatusPaths().previewPaths
                         : ["data.scene.videoHls", "data.scene.previewUrl", "data.videoHls", "data.previewUrl", "scene.videoHls", "scene.previewUrl"]
                 );
@@ -868,6 +1553,7 @@ export const liveStore = defineStore("live", {
             this.cloudSessionExpectedRunning = false;
             this.cloudTaskId = "";
             this.cloudTaskProvider = "";
+            this.clearScenePackReturnTimer();
             return {ok: true, fallback: false};
         },
         async talkCloud(text: string, option: {silent?: boolean} = {}) {
@@ -1121,11 +1807,11 @@ export const liveStore = defineStore("live", {
                 });
             }
             const flowVideos: any[] = [];
-            if (this.localConfig.video.enable) {
+            if (this.effectiveLocalVideoEnabled()) {
                 const storageFlowVideos = (await StorageService.list("LiveKnowledge")).filter(s => {
                     return s.content.type === "flowVideo" && s.content.enable;
                 });
-                if (!(storageFlowVideos && storageFlowVideos.length > 0)) {
+                if (!(storageFlowVideos && storageFlowVideos.length > 0) && !this.hasScenePackSelected()) {
                     throw t("live.noLoopMaterialSelected");
                 }
                 for (const s of storageFlowVideos) {
@@ -1140,7 +1826,7 @@ export const liveStore = defineStore("live", {
             const storageFlowTalks = (await StorageService.list("LiveKnowledge")).filter(s => {
                 return s.content.type === "flowTalk" && s.content.enable;
             });
-            if (!(storageFlowTalks && storageFlowTalks.length > 0)) {
+            if (!(storageFlowTalks && storageFlowTalks.length > 0) && !this.hasScenePackSelected()) {
                 throw t("live.noLoopMaterialSelected");
             }
             for (const s of storageFlowTalks) {
@@ -1205,6 +1891,15 @@ export const liveStore = defineStore("live", {
                     });
                 }
             }
+            const scenePackOverrides = this.buildScenePackFlowOverrides();
+            if (scenePackOverrides) {
+                if (scenePackOverrides.flowVideos.length > 0) {
+                    flowVideos.splice(0, flowVideos.length, ...scenePackOverrides.flowVideos);
+                }
+                if (scenePackOverrides.flowTalks.length > 0) {
+                    flowTalks.splice(0, flowTalks.length, ...scenePackOverrides.flowTalks);
+                }
+            }
             return {avatars, flowVideos, flowTalks, users, systems, videoActions};
         },
         async update() {
@@ -1228,6 +1923,7 @@ export const liveStore = defineStore("live", {
             }
         },
         async start() {
+            this.clearScenePackReturnTimer();
             await this.saveLocalConfig();
             let sceneData;
             try {
@@ -1249,7 +1945,7 @@ export const liveStore = defineStore("live", {
                     enable: this.localConfig.mode === "audio",
                 },
                 video: {
-                    enable: this.localConfig.video.enable,
+                    enable: this.effectiveLocalVideoEnabled(),
                     width: this.localConfig.video.width,
                     height: this.localConfig.video.height,
                 },
@@ -1289,6 +1985,7 @@ export const liveStore = defineStore("live", {
             return true;
         },
         async stop() {
+            this.clearScenePackReturnTimer();
             this.status = "stopping";
             this.flushPendingTalkWaiters();
             const res = await this.apiRequest("scene/stop", {sceneId: SCENE_ID});

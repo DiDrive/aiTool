@@ -14,6 +14,7 @@ const props = withDefaults(
         trimEnable?: boolean;
         downloadEnable?: boolean;
         showWave?: boolean;
+        compact?: boolean;
     }>(),
     {
         url: "",
@@ -21,6 +22,7 @@ const props = withDefaults(
         trimEnable: false,
         downloadEnable: false,
         showWave: false,
+        compact: false,
     }
 );
 
@@ -66,6 +68,30 @@ const timeCurrentFormat = computed(() => {
 });
 const isAudioEmpty = computed(() => {
     return !props.url && !trimUrl.value && !recordUrl.value;
+});
+const controlHeightClass = computed(() => {
+    return props.compact ? "h-8" : "h-10";
+});
+const iconWrapClass = computed(() => {
+    return props.compact ? "w-7 h-7" : "w-8 h-8";
+});
+const iconClass = computed(() => {
+    return props.compact ? "text-xl" : "text-2xl";
+});
+const timeWrapClass = computed(() => {
+    return props.compact ? "ml-2 w-[78px] text-xs" : "ml-3 w-24 text-sm";
+});
+const sliderWrapClass = computed(() => {
+    return props.compact ? "ml-2 flex-grow" : "ml-3 flex-grow";
+});
+const actionWrapClass = computed(() => {
+    return props.compact ? "ml-2" : "ml-3";
+});
+const outerClass = computed(() => {
+    return props.compact ? "border rounded-lg py-1.5" : "border rounded-lg py-2";
+});
+const waveWrapClass = computed(() => {
+    return props.compact ? "px-2 overflow-hidden" : "px-2 overflow-hidden";
 });
 const debugInfo = computed(() => {
     return {
@@ -310,75 +336,75 @@ defineExpose({
 </script>
 
 <template>
-    <div class="border rounded-lg py-2">
+    <div :class="outerClass">
         <pre v-if="0" style="white-space: wrap; font-size: 10px">{{ JSON.stringify(debugInfo, null, 2) }}</pre>
-        <div class="px-2 overflow-hidden" :style="(isRecording || isTrimming || (showWave && !recordVisible)) && waveVisible
+        <div :class="waveWrapClass" :style="(isRecording || isTrimming || (showWave && !recordVisible)) && waveVisible
             ? 'height:40px;'
             : 'height:0;'
             ">
             <div ref="waveContainer" style="height: 40px" class="w-full overflow-hidden"></div>
         </div>
-        <div v-if="!recordVisible && waveUrl" class="h-10 px-2 flex items-center">
+        <div v-if="!recordVisible && waveUrl" class="px-2 flex items-center min-w-0" :class="controlHeightClass">
             <div>
-                <div v-if="!isPlaying" @click="doPlay" class="cursor-pointer w-8 h-8 inline-flex">
-                    <icon-play-circle class="m-auto text-gray-700 hover:text-primary text-2xl" />
+                <div v-if="!isPlaying" @click="doPlay" class="cursor-pointer inline-flex" :class="iconWrapClass">
+                    <icon-play-circle class="m-auto text-gray-700 hover:text-primary" :class="iconClass" />
                 </div>
-                <div v-if="isPlaying" @click="doPause" class="cursor-pointer w-8 h-8 inline-flex">
-                    <icon-pause-circle class="m-auto text-gray-700 hover:text-primary text-2xl" />
+                <div v-if="isPlaying" @click="doPause" class="cursor-pointer inline-flex" :class="iconWrapClass">
+                    <icon-pause-circle class="m-auto text-gray-700 hover:text-primary" :class="iconClass" />
                 </div>
             </div>
-            <div class="ml-3 text-gray-500 w-24 text-sm font-mono">
+            <div class="min-w-0 text-gray-500 font-mono whitespace-nowrap" :class="timeWrapClass">
                 {{ timeCurrentFormat + "/" + timeTotalFormat }}
             </div>
-            <div class="ml-3 flex-grow">
+            <div class="min-w-0" :class="sliderWrapClass">
                 <a-slider :model-value="timeCurrent" :max="timeTotal" @change="onSeek as any" :show-tooltip="false"
                     :step="0.001" :min="0" />
             </div>
-            <div class="ml-3">
+            <div :class="actionWrapClass">
                 <a-tooltip :content="$t('common.collapse')" mini v-if="showWave && waveVisible && !isTrimming && !isRecording">
-                    <div @click="waveVisible = false" class="cursor-pointer w-8 h-8 inline-flex">
-                        <icon-up class="m-auto text-gray-700 hover:text-primary text-2xl" />
+                    <div @click="waveVisible = false" class="cursor-pointer inline-flex" :class="iconWrapClass">
+                        <icon-up class="m-auto text-gray-700 hover:text-primary" :class="iconClass" />
                     </div>
                 </a-tooltip>
                 <a-tooltip :content="$t('voice.rerecord')" mini v-if="recordUrl && !isTrimming">
-                    <div @click="doRecordClean" class="cursor-pointer w-8 h-8 inline-flex">
-                        <i class="iconfont icon-refresh-circle m-auto text-gray-700 hover:text-primary text-2xl"></i>
+                    <div @click="doRecordClean" class="cursor-pointer inline-flex" :class="iconWrapClass">
+                        <i class="iconfont icon-refresh-circle m-auto text-gray-700 hover:text-primary" :class="iconClass"></i>
                     </div>
                 </a-tooltip>
                 <a-tooltip :content="$t('media.cropAudio')" mini v-if="!isTrimming && props.trimEnable">
-                    <div @click="doTrim" class="cursor-pointer w-8 h-8 inline-flex">
-                        <i class="iconfont icon-cut m-auto text-gray-700 hover:text-primary text-2xl"></i>
+                    <div @click="doTrim" class="cursor-pointer inline-flex" :class="iconWrapClass">
+                        <i class="iconfont icon-cut m-auto text-gray-700 hover:text-primary" :class="iconClass"></i>
                     </div>
                 </a-tooltip>
                 <a-tooltip :content="$t('media.cropConfirm')" mini v-if="isTrimming && props.trimEnable">
-                    <div @click="doTrimSave" class="cursor-pointer w-8 h-8 inline-flex">
-                        <icon-check class="m-auto text-gray-700 hover:text-primary text-2xl" />
+                    <div @click="doTrimSave" class="cursor-pointer inline-flex" :class="iconWrapClass">
+                        <icon-check class="m-auto text-gray-700 hover:text-primary" :class="iconClass" />
                     </div>
                 </a-tooltip>
                 <a-tooltip :content="$t('download.audio')" mini v-if="!isTrimming && props.downloadEnable">
-                    <div @click="doDownload" class="cursor-pointer w-8 h-8 inline-flex">
-                        <icon-download class="m-auto text-gray-700 hover:text-primary text-2xl" />
+                    <div @click="doDownload" class="cursor-pointer inline-flex" :class="iconWrapClass">
+                        <icon-download class="m-auto text-gray-700 hover:text-primary" :class="iconClass" />
                     </div>
                 </a-tooltip>
                 <a-tooltip :content="$t('voice.record')" mini v-if="props.recordEnable && !isTrimming && !recordUrl">
-                    <div @click="doRecord" class="cursor-pointer w-8 h-8 inline-flex">
-                        <i class="iconfont icon-mic m-auto text-gray-700 hover:text-primary text-2xl"></i>
+                    <div @click="doRecord" class="cursor-pointer inline-flex" :class="iconWrapClass">
+                        <i class="iconfont icon-mic m-auto text-gray-700 hover:text-primary" :class="iconClass"></i>
                     </div>
                 </a-tooltip>
             </div>
         </div>
-        <div v-if="recordEnable && recordVisible" class="h-10 px-2 flex items-center">
+        <div v-if="recordEnable && recordVisible" class="px-2 flex items-center" :class="controlHeightClass">
             <div>
-                <div v-if="!isRecording && waveUrl" @click="doRecordBack" class="cursor-pointer w-8 h-8 inline-flex">
-                    <icon-left class="m-auto text-gray-700 hover:text-primary text-2xl" />
+                <div v-if="!isRecording && waveUrl" @click="doRecordBack" class="cursor-pointer inline-flex" :class="iconWrapClass">
+                    <icon-left class="m-auto text-gray-700 hover:text-primary" :class="iconClass" />
                 </div>
                 <div v-if="recordInputDevices.length && !isRecording" @click="doRecordStart"
-                    class="cursor-pointer w-8 h-8 inline-flex">
-                    <icon-record class="m-auto text-red-700 hover:text-primary text-2xl" />
+                    class="cursor-pointer inline-flex" :class="iconWrapClass">
+                    <icon-record class="m-auto text-red-700 hover:text-primary" :class="iconClass" />
                 </div>
                 <div v-else-if="recordInputDevices.length" @click="doRecordStop"
-                    class="cursor-pointer w-8 h-8 inline-flex">
-                    <icon-record-stop class="m-auto text-gray-700 hover:text-primary text-2xl" />
+                    class="cursor-pointer inline-flex" :class="iconWrapClass">
+                    <icon-record-stop class="m-auto text-gray-700 hover:text-primary" :class="iconClass" />
                 </div>
             </div>
             <div class="ml-3">

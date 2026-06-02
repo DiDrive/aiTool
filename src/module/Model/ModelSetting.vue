@@ -10,10 +10,13 @@ import ProviderTestDialog from "./components/ProviderTestDialog.vue";
 import {getModelLogo} from "./models";
 import {useUserStore} from "../../store/modules/user";
 import {useSettingStore} from "../../store/modules/setting";
+import SettingCloudTemplate from "../../components/Setting/SettingCloudTemplate.vue";
+import SettingDirectApiPlatform from "../../components/Setting/SettingDirectApiPlatform.vue";
 
 const userStore = useUserStore();
 const setting = useSettingStore();
 const modelStore = useModelStore();
+const activeSection = ref<"llm" | "direct-api" | "cloud-template">("llm");
 const providerAdd = ref<InstanceType<typeof ProviderAddDialog> | null>(null);
 const providerEdit = ref<InstanceType<typeof ProviderEditDialog> | null>(null);
 const modelAdd = ref<InstanceType<typeof ModelAddDialog> | null>(null);
@@ -75,8 +78,25 @@ watch(
 </script>
 
 <template>
-    <div class="flex h-full">
-        <div class="w-48 border-r flex flex-col flex-shrink-0">
+    <div class="h-full flex flex-col bg-white">
+        <div class="flex-shrink-0 border-b px-3 py-2">
+            <a-radio-group v-model="activeSection" type="button">
+                <a-radio value="llm">聊天模型</a-radio>
+                <a-radio value="direct-api">直连 API 平台</a-radio>
+                <a-radio value="cloud-template">云端能力模板</a-radio>
+            </a-radio-group>
+        </div>
+
+        <div v-if="activeSection === 'direct-api'" class="flex-grow overflow-y-auto p-4">
+            <SettingDirectApiPlatform/>
+        </div>
+
+        <div v-else-if="activeSection === 'cloud-template'" class="flex-grow overflow-y-auto p-4">
+            <SettingCloudTemplate/>
+        </div>
+
+        <div v-else class="flex flex-grow min-h-0">
+            <div class="w-48 border-r flex flex-col flex-shrink-0">
             <div class="p-2">
                 <a-input :placeholder="$t('model.searchPlatform')" v-model="keywords">
                     <template #suffix>
@@ -121,7 +141,7 @@ watch(
                     </template>
                 </a-button>
             </div>
-        </div>
+            </div>
         <div class="flex-grow overflow-y-auto overflow-x-hidden">
             <div class="py-20" v-if="!provider">
                 <a-empty :description="$t('hint.selectPlatform')"/>
@@ -279,9 +299,10 @@ watch(
             </div>
         </div>
     </div>
-    <ProviderAddDialog ref="providerAdd"/>
-    <ProviderEditDialog ref="providerEdit"/>
-    <ModelAddDialog ref="modelAdd" :provider="provider"/>
-    <ModelEditDialog ref="modelEdit" :provider="provider"/>
-    <ProviderTestDialog ref="providerTest" :provider="provider"/>
+        <ProviderAddDialog ref="providerAdd"/>
+        <ProviderEditDialog ref="providerEdit"/>
+        <ModelAddDialog ref="modelAdd" :provider="provider"/>
+        <ModelEditDialog ref="modelEdit" :provider="provider"/>
+        <ProviderTestDialog ref="providerTest" :provider="provider"/>
+    </div>
 </template>

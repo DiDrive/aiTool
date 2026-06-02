@@ -8,9 +8,11 @@ import {
 } from "../../service/CloudProviderProfileService";
 import {
     CloudTemplateCapability,
+    CloudTemplateInputSchemaField,
     CloudTemplateRecord,
     CloudTemplateService,
     CloudTemplateType,
+    getTemplateCapabilities,
 } from "../../service/CloudTemplateService";
 
 const providerTypeOptions: { value: CloudProviderType; label: string }[] = [
@@ -61,6 +63,7 @@ const templateForm = ref<CloudTemplateRecord>({
     title: "",
     content: {
         capability: "video",
+        capabilities: ["video"],
         templateType: "workflow",
         providerType: "runninghub",
         providerProfileId: 0,
@@ -81,6 +84,7 @@ const templateForm = ref<CloudTemplateRecord>({
         usePersonalQueue: false,
         nodeInfoTemplateJson: "[]",
         requestBodyTemplateJson: "{}",
+        requestFormat: "json",
         inputSchemaJson: "[]",
         fieldMappingJson: "{}",
     },
@@ -92,6 +96,10 @@ const providerTypeLabel = (value?: string) => {
 
 const capabilityLabel = (value?: string) => {
     return capabilityOptions.find(item => item.value === value)?.label || value || "-";
+};
+
+const capabilityLabels = (record: CloudTemplateRecord) => {
+    return getTemplateCapabilities(record).map(item => capabilityLabel(item));
 };
 
 const templateTypeLabel = (value?: string) => {
@@ -134,6 +142,7 @@ const resetTemplateForm = () => {
         title: "",
         content: {
             capability: "video",
+            capabilities: ["video"],
             templateType: "workflow",
             providerType: "runninghub",
             providerProfileId: 0,
@@ -154,6 +163,7 @@ const resetTemplateForm = () => {
             usePersonalQueue: false,
             nodeInfoTemplateJson: "[]",
             requestBodyTemplateJson: "{}",
+            requestFormat: "json",
             inputSchemaJson: "[]",
             fieldMappingJson: "{}",
         },
@@ -167,6 +177,52 @@ const normalizeTemplateVariableName = (value: string) => {
         .trim()
         .toLowerCase();
 };
+
+const ensureUniqueFieldNames = <T extends { name: string }>(fields: T[]) => {
+    const used = new Map<string, number>();
+    return fields.map(field => {
+        const base = String(field.name || "field").trim() || "field";
+        const count = used.get(base) || 0;
+        used.set(base, count + 1);
+        if (count === 0) {
+            return {
+                ...field,
+                name: base,
+            };
+        }
+        return {
+            ...field,
+            name: `${base}_${count + 1}`,
+        };
+    });
+};
+
+const parseTemplateSchemaText = (raw: string): CloudTemplateInputSchemaField[] => {
+    try {
+        const parsed = JSON.parse(String(raw || "[]"));
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+};
+
+const duplicateSchemaFieldNames = (fields: CloudTemplateInputSchemaField[]) => {
+    const countMap = new Map<string, number>();
+    for (const field of fields) {
+        const name = String(field?.name || "").trim();
+        if (!name) {
+            continue;
+        }
+        countMap.set(name, (countMap.get(name) || 0) + 1);
+    }
+    return Array.from(countMap.entries())
+        .filter(([, count]) => count > 1)
+        .map(([name]) => name);
+};
+
+const schemaPlaceholderExample = "{{字段名}}";
+const identityAvatarPlaceholderExample = "{{identity.bindings.runninghub.avatarId}}";
+const identityReferenceVideoPlaceholderExample = "{{identity.referenceVideo}}";
 
 const inferFieldName = (item: any, index: number) => {
     const desc = normalizeTemplateVariableName(item?.description || "");
@@ -189,6 +245,9 @@ const inferFieldType = (item: any) => {
     const fieldName = String(item?.fieldName || "").trim().toLowerCase();
     const desc = String(item?.description || "").trim().toLowerCase();
     const value = item?.fieldValue;
+    if (fieldName === "images" || /多图|multiple images|image\[\]/.test(desc)) return "images";
+    if (fieldName === "audios" || /多音频|multiple audio|audio\[\]/.test(desc)) return "audios";
+    if (fieldName === "videos" || /多视频|multiple video|video\[\]/.test(desc)) return "videos";
     if (fieldName === "image" || /image|图像|图片/.test(desc)) return "image";
     if (fieldName === "audio" || /audio|音频|声音/.test(desc)) return "audio";
     if (fieldName === "video" || /video|视频/.test(desc)) return "video";
@@ -200,7 +259,7 @@ const inferFieldType = (item: any) => {
 };
 
 const normalizeDefaultValueByType = (fieldType: string, value: any) => {
-    if (fieldType === "image" || fieldType === "audio" || fieldType === "video" || fieldType === "file") {
+    if (["image", "images", "audio", "audios", "video", "videos", "file", "files"].includes(fieldType)) {
         return "";
     }
     if (fieldType === "switch") {
@@ -266,7 +325,7 @@ const autoGenerateFromAiAppExample = () => {
         Dialog.tipError("没有识别到 nodeInfoList");
         return;
     }
-    const inputSchema = nodeInfoList.map((item: any, index: number) => {
+    const inputSchema = ensureUniqueFieldNames(nodeInfoList.map((item: any, index: number) => {
         const name = inferFieldName(item, index);
         const fieldType = inferFieldType(item);
         const defaultValue = normalizeDefaultValueByType(fieldType, item?.fieldValue);
@@ -294,7 +353,7 @@ const autoGenerateFromAiAppExample = () => {
             schemaItem.placeholder = String(item?.description || "");
         }
         return schemaItem;
-    });
+    }));
     const nodeTemplate = nodeInfoList.map((item: any, index: number) => {
         const name = inputSchema[index].name;
         return {
@@ -339,7 +398,14 @@ const openTemplateAdd = () => {
 };
 
 const openTemplateEdit = (record: CloudTemplateRecord) => {
-    templateForm.value = JSON.parse(JSON.stringify(record));
+    templateForm.value = {
+        ...JSON.parse(JSON.stringify(record)),
+        content: {
+            ...JSON.parse(JSON.stringify(record.content || {})),
+            capability: getTemplateCapabilities(record)[0] || "video",
+            capabilities: getTemplateCapabilities(record),
+        },
+    };
     templateVisible.value = true;
 };
 
@@ -409,6 +475,15 @@ const saveTemplate = async () => {
         Dialog.tipError("请选择供应商配置");
         return;
     }
+    const selectedCapabilities = Array.isArray(content.capabilities)
+        ? content.capabilities.filter(Boolean)
+        : [];
+    if (selectedCapabilities.length === 0) {
+        Dialog.tipError("请至少选择一个能力类型");
+        return;
+    }
+    content.capability = selectedCapabilities[0];
+    content.capabilities = Array.from(new Set(selectedCapabilities));
     if (content.templateType === "workflow" && !content.workflowJson) {
         Dialog.tipError("请先导入 workflow JSON");
         return;
@@ -424,6 +499,12 @@ const saveTemplate = async () => {
     const exists = await CloudTemplateService.getByTitle(templateForm.value.title);
     if (exists && exists.id !== templateForm.value.id) {
         Dialog.tipError("模板名称重复");
+        return;
+    }
+    const schemaFields = parseTemplateSchemaText(content.inputSchemaJson || "[]");
+    const duplicateNames = duplicateSchemaFieldNames(schemaFields);
+    if (duplicateNames.length > 0) {
+        Dialog.tipError(`输入字段存在重复 name：${duplicateNames.join("、")}，请修改后再保存`);
         return;
     }
     await CloudTemplateService.save(templateForm.value);
@@ -493,6 +574,12 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
                     <div class="text-gray-400 text-sm">
                         支持工作流 JSON、AI App API、标准模型 API、自定义 API，后续在生图/视频/声音页里下拉选择
                     </div>
+                    <div class="text-xs text-gray-400">
+                        数字人模板还可以直接引用 `identity.xxx`，例如
+                        <code>{{ identityAvatarPlaceholderExample }}</code>
+                        、
+                        <code>{{ identityReferenceVideoPlaceholderExample }}</code>
+                    </div>
                 </div>
                 <a-button type="primary" @click="openTemplateAdd">
                     新增模板
@@ -506,7 +593,13 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
                 >
                     <div class="flex items-center gap-2 mb-2 flex-wrap">
                         <div class="font-bold">{{ record.title }}</div>
-                        <a-tag color="arcoblue">{{ capabilityLabel(record.content.capability) }}</a-tag>
+                        <a-tag
+                            v-for="capability in capabilityLabels(record)"
+                            :key="`${record.id}-${capability}`"
+                            color="arcoblue"
+                        >
+                            {{ capability }}
+                        </a-tag>
                         <a-tag>{{ templateTypeLabel(record.content.templateType) }}</a-tag>
                         <a-tag>{{ providerTypeLabel(record.content.providerType) }}</a-tag>
                         <div class="text-gray-400 text-xs">
@@ -602,11 +695,19 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
             <a-row :gutter="12">
                 <a-col :span="12">
                     <a-form-item label="能力类型" required>
-                        <a-select v-model="templateForm.content.capability">
+                        <a-select
+                            v-model="templateForm.content.capabilities"
+                            multiple
+                            allow-search
+                            placeholder="可多选，一个模板可同时出现在多个能力页"
+                        >
                             <a-option v-for="item in capabilityOptions" :key="item.value" :value="item.value">
                                 {{ item.label }}
                             </a-option>
                         </a-select>
+                        <div class="mt-1 text-xs text-gray-500">
+                            例如同一个模板既能算 `普通数字人`，也能在 `对口型` 或 `生视频` 里显示。
+                        </div>
                     </a-form-item>
                 </a-col>
                 <a-col :span="12">
@@ -712,12 +813,12 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
                 <a-row :gutter="12">
                     <a-col :span="8">
                         <a-form-item label="提交路径" required>
-                            <a-input v-model="templateForm.content.submitPath" placeholder="例如 openapi/v2/..." />
+                            <a-input v-model="templateForm.content.submitPath" placeholder="例如 /api/v3/contents/generations/tasks 或 /v1/images/generations" />
                         </a-form-item>
                     </a-col>
                     <a-col :span="8">
                         <a-form-item label="查询路径">
-                            <a-input v-model="templateForm.content.queryPath" placeholder="例如 openapi/v2/query" />
+                            <a-input v-model="templateForm.content.queryPath" placeholder="例如 openapi/v2/query 或 /api/v3/contents/generations/tasks/{id}" />
                         </a-form-item>
                     </a-col>
                     <a-col :span="8">
@@ -726,6 +827,15 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
                         </a-form-item>
                     </a-col>
                 </a-row>
+                <a-form-item label="请求格式">
+                    <a-radio-group v-model="templateForm.content.requestFormat" type="button">
+                        <a-radio value="json">JSON</a-radio>
+                        <a-radio value="form-data">multipart/form-data</a-radio>
+                    </a-radio-group>
+                    <div class="text-xs text-gray-500 mt-1">
+                        GPT Image 2 生图使用 JSON；图片编辑使用 multipart/form-data，并可在请求体里使用 `image[]` 传多图。
+                    </div>
+                </a-form-item>
                 <a-row :gutter="12">
                     <a-col :span="8">
                         <a-form-item label="实例类型">
@@ -749,6 +859,11 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
                         :auto-size="{ minRows: 6, maxRows: 14 }"
                         placeholder='例如 {"prompt":"{{prompt}}","image":"{{imageUrl}}"}'
                     />
+                    <div class="text-xs text-gray-500 mt-1">
+                        ExchangeToken 示例：
+                        Seedance 可填 `{"model":"seedance-2.0","content":[{"type":"text","text":"{{prompt}}"}],"duration":5,"resolution":"720p"}`
+                        ，GPT Image 2 可填 `{"model":"gpt-image-2","prompt":"{{prompt}}","size":"1024x1024","quality":"high","n":1}`。
+                    </div>
                 </a-form-item>
             </div>
 
@@ -759,7 +874,9 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
                     placeholder='例如 [{"name":"prompt","label":"提示词","type":"textarea","required":true},{"name":"sourceImage","label":"源图片","type":"image","required":true}]'
                 />
                 <div class="text-xs text-gray-500 mt-1">
-                    /*业务页会按这里的字段动态渲染输入表单，`nodeInfoList`、`workflow JSON`、`请求体模板` 里再用 `{{字段名}}` 对应替换
+                    业务页会按这里的字段动态渲染输入表单，`nodeInfoList`、`workflow JSON`、`请求体模板` 里再用
+                    <code>{{ schemaPlaceholderExample }}</code>
+                    对应替换。
                 </div>
             </a-form-item>
 

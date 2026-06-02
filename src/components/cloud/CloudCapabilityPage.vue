@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import CloudTemplateSelector from "../common/CloudTemplateSelector.vue";
 import { Dialog } from "../../lib/dialog";
-import { TaskRecord, TaskService } from "../../service/TaskService";
+import { TaskService } from "../../service/TaskService";
 import { CloudTemplateTaskService } from "../../service/CloudTemplateTaskService";
+import {
+    DigitalHumanIdentityRecord,
+    DigitalHumanIdentityService,
+} from "../../service/DigitalHumanIdentityService";
 import {
     CloudTemplateCapability,
     CloudTemplateInputSchemaField,
@@ -26,17 +30,32 @@ const templateSelector = ref<InstanceType<typeof CloudTemplateSelector> | null>(
 const formData = ref({
     templateId: 0,
     title: "",
+    identityId: 0,
 });
 const selectedTemplate = ref<CloudTemplateRecord | null>(null);
 const schemaFields = ref<CloudTemplateInputSchemaField[]>([]);
 const inputValues = ref<Record<string, any>>({});
-const submitState = ref<"idle" | "building" | "submitting" | "submitted" | "error">("idle");
-const submitMessage = ref("");
-const latestTask = ref<TaskRecord | null>(null);
-let latestTaskTimer: any = null;
+const identityRecords = ref<DigitalHumanIdentityRecord[]>([]);
+const selectedIdentity = ref<DigitalHumanIdentityRecord | null>(null);
 
 const hasTemplates = computed(() => {
     return formData.value.templateId > 0;
+});
+
+const identityEnabled = computed(() => {
+    return props.capability === "digital-human";
+});
+
+const refreshIdentityRecords = async () => {
+    if (!identityEnabled.value) {
+        return;
+    }
+    identityRecords.value = await DigitalHumanIdentityService.list();
+    selectedIdentity.value = identityRecords.value.find(item => item.id === formData.value.identityId) || null;
+};
+
+onMounted(async () => {
+    await refreshIdentityRecords();
 });
 
 const normalizeFieldDefaultValue = (field: CloudTemplateInputSchemaField) => {
@@ -68,50 +87,34 @@ const buildInitialInputValues = (fields: CloudTemplateInputSchemaField[]) => {
     return nextValues;
 };
 
-const loadLatestTask = async (taskId: number | string) => {
-    const task = await TaskService.get(taskId);
-    latestTask.value = task;
-    return task;
-};
-
-const stopLatestTaskPolling = () => {
-    if (latestTaskTimer) {
-        clearInterval(latestTaskTimer);
-        latestTaskTimer = null;
-    }
-};
-
-const startLatestTaskPolling = (taskId: number | string) => {
-    stopLatestTaskPolling();
-    latestTaskTimer = setInterval(async () => {
-        const task = await loadLatestTask(taskId);
-        if (!task || task.status === "success" || task.status === "fail") {
-            stopLatestTaskPolling();
-        }
-    }, 2000);
-};
-
-onBeforeUnmount(() => {
-    stopLatestTaskPolling();
-});
-
 const onTemplateChange = (record: CloudTemplateRecord | null) => {
     selectedTemplate.value = record;
     schemaFields.value = CloudTemplateTaskService.parseInputSchema(record?.content.inputSchemaJson || "[]");
     inputValues.value = buildInitialInputValues(schemaFields.value);
 };
 
+const onIdentityChange = (value: number | string | boolean) => {
+    const id = Number(value || 0);
+    formData.value.identityId = id;
+    selectedIdentity.value = identityRecords.value.find(item => item.id === id) || null;
+};
+
 const pickFile = async (field: CloudTemplateInputSchemaField) => {
     const filterMap = {
-        image: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+        image: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff"] }],
+        images: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff"] }],
         audio: [{ name: "Audio", extensions: ["wav", "mp3", "m4a", "flac"] }],
+        audios: [{ name: "Audio", extensions: ["wav", "mp3", "m4a", "flac"] }],
         video: [{ name: "Video", extensions: ["mp4", "mov", "avi", "mkv", "webm"] }],
+        videos: [{ name: "Video", extensions: ["mp4", "mov", "avi", "mkv", "webm"] }],
         file: [],
+        files: [],
     };
     const path = await window.$mapi.file.openFile({
         filters: filterMap[field.type] || [],
+        properties: ["images", "audios", "videos", "files"].includes(field.type) ? ["multiSelections"] : [],
     });
-    if (!path || Array.isArray(path)) {
+    if (!path) {
         return;
     }
     inputValues.value[field.name] = path;
@@ -121,8 +124,25 @@ const clearFile = (field: CloudTemplateInputSchemaField) => {
     inputValues.value[field.name] = "";
 };
 
-const fileName = (value: string) => {
+const fileName = (value: string | string[]) => {
+    if (Array.isArray(value)) {
+        return value.map(item => fileName(item)).join("、");
+    }
     return String(value || "").replace(/\\/g, "/").split("/").pop() || "";
+};
+
+const fieldTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+        image: "图片",
+        images: "图片",
+        audio: "音频",
+        audios: "音频",
+        video: "视频",
+        videos: "视频",
+        file: "文件",
+        files: "文件",
+    };
+    return labels[type] || "文件";
 };
 
 const doSubmit = async () => {
@@ -141,25 +161,24 @@ const doSubmit = async () => {
         }
     }
     try {
-        submitState.value = "building";
-        submitMessage.value = "正在构建任务参数...";
         const record = await CloudTemplateTaskService.buildTaskRecord(formData.value.templateId, {
             ...inputValues.value,
             title: formData.value.title,
+            selectedCapability: props.capability,
+            identityId: formData.value.identityId || 0,
+            identity: selectedIdentity.value
+                ? {
+                      id: selectedIdentity.value.id || 0,
+                      title: selectedIdentity.value.title,
+                      ...selectedIdentity.value.content,
+                  }
+                : undefined,
         });
-        submitState.value = "submitting";
-        submitMessage.value = "正在写入本地任务队列...";
-        const taskId = await TaskService.submit(record);
-        await loadLatestTask(taskId);
-        startLatestTaskPolling(taskId);
-        submitState.value = "submitted";
-        submitMessage.value = "任务已进入本地队列";
+        await TaskService.submit(record);
         Dialog.tipSuccess("任务已提交");
         formData.value.title = "";
         inputValues.value = buildInitialInputValues(schemaFields.value);
     } catch (e: any) {
-        submitState.value = "error";
-        submitMessage.value = e?.message || String(e || "任务提交失败");
         Dialog.tipError(e?.message || String(e || "任务提交失败"));
     }
 };
@@ -203,6 +222,28 @@ const doSubmit = async () => {
                             v-model="formData.title"
                             placeholder="可选，不填则自动使用模板名和时间"
                         />
+                    </a-form-item>
+
+                    <a-form-item v-if="identityEnabled" label="数字人身份">
+                        <a-select
+                            :model-value="formData.identityId"
+                            placeholder="可选，选择后可在模板里使用 identity.xxx 变量"
+                            allow-clear
+                            @change="onIdentityChange"
+                        >
+                            <a-option
+                                v-for="identity in identityRecords"
+                                :key="identity.id"
+                                :value="identity.id || 0"
+                            >
+                                {{ identity.title }}
+                            </a-option>
+                        </a-select>
+                        <div class="mt-2 text-xs text-gray-500">
+                            身份资产在
+                            <a-link @click="router.push('/setting')">设置 -> 云端能力 -> 数字人身份</a-link>
+                            里维护，可统一保存主播参考视频、待机片、参考音频和平台侧 avatarId。
+                        </div>
                     </a-form-item>
 
                     <div v-if="selectedTemplate && schemaFields.length === 0" class="mb-4 text-sm text-gray-500">
@@ -255,11 +296,11 @@ const doSubmit = async () => {
                             </a-select>
                         </div>
                         <div
-                            v-else-if="['image', 'audio', 'video', 'file'].includes(field.type)"
+                            v-else-if="['image', 'images', 'audio', 'audios', 'video', 'videos', 'file', 'files'].includes(field.type)"
                             class="flex items-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3"
                         >
                             <a-button @click="pickFile(field)">
-                                选择{{ field.type === "image" ? "图片" : field.type === "audio" ? "音频" : field.type === "video" ? "视频" : "文件" }}
+                                选择{{ fieldTypeLabel(field.type) }}
                             </a-button>
                             <a-button
                                 v-if="inputValues[field.name]"
@@ -278,31 +319,6 @@ const doSubmit = async () => {
                 <div class="flex gap-2 pt-2">
                     <a-button type="primary" size="large" :disabled="!hasTemplates" @click="doSubmit">开始生成</a-button>
                     <a-button size="large" @click="templateSelector?.refresh()">刷新模板</a-button>
-                </div>
-
-                <div v-if="submitState !== 'idle'" class="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm">
-                    <div class="font-semibold text-gray-900 mb-1">提交状态</div>
-                    <div v-if="submitState === 'building'" class="text-gray-600">{{ submitMessage }}</div>
-                    <div v-else-if="submitState === 'submitting'" class="text-gray-600">{{ submitMessage }}</div>
-                    <div v-else-if="submitState === 'submitted'" class="text-green-600">{{ submitMessage }}</div>
-                    <div v-else-if="submitState === 'error'" class="text-red-600">{{ submitMessage }}</div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
-                        <div v-if="latestTask?.id" class="rounded-xl bg-white/80 px-3 py-2 text-xs text-gray-600">
-                            本地任务 ID：{{ latestTask.id }}
-                        </div>
-                        <div v-if="latestTask?.status" class="rounded-xl bg-white/80 px-3 py-2 text-xs text-gray-600">
-                            本地状态：{{ latestTask.status }}
-                        </div>
-                        <div v-if="latestTask?.jobResult?.Submit?.taskId" class="rounded-xl bg-white/80 px-3 py-2 text-xs text-gray-600">
-                            RH Task ID：{{ latestTask.jobResult.Submit.taskId }}
-                        </div>
-                        <div v-if="latestTask?.jobResult?.Query?.taskStatus" class="rounded-xl bg-white/80 px-3 py-2 text-xs text-gray-600">
-                            RH 状态：{{ latestTask.jobResult.Query.taskStatus }}
-                        </div>
-                    </div>
-                    <div class="mt-3 text-xs text-gray-500">
-                        全部任务、运行过程和结果请查看右侧任务结果栏。
-                    </div>
                 </div>
         </div>
     </div>
