@@ -14,8 +14,10 @@ const statusFilter = ref<StatusFilter>("all");
 const records = ref<TaskRecord[]>([]);
 const sidebarWidth = ref(400);
 const isResizing = ref(false);
+const nowMs = ref(Date.now());
 let resizeStartX = 0;
 let resizeStartWidth = 400;
+let clockTimer = 0;
 
 const SIDEBAR_MIN_WIDTH = 360;
 const SIDEBAR_MAX_WIDTH = 640;
@@ -180,12 +182,19 @@ onMounted(async () => {
     sidebarWidth.value = clampSidebarWidth(Number(saved?.sidebarWidth || SIDEBAR_DEFAULT_WIDTH));
     window.addEventListener("mousemove", onResizeMove);
     window.addEventListener("mouseup", stopResize);
+    clockTimer = window.setInterval(() => {
+        nowMs.value = Date.now();
+    }, 1000);
     await refresh();
 });
 
 onBeforeUnmount(() => {
     window.removeEventListener("mousemove", onResizeMove);
     window.removeEventListener("mouseup", stopResize);
+    if (clockTimer) {
+        window.clearInterval(clockTimer);
+        clockTimer = 0;
+    }
     stopResize();
 });
 </script>
@@ -300,6 +309,7 @@ onBeforeUnmount(() => {
                         :key="record.id"
                         :record="record"
                         :display-status="resolveDisplayStatus(record)"
+                        :now-ms="nowMs"
                     />
                 </div>
                 <m-empty v-if="filteredRecords.length === 0" class="mt-10" text="没有符合条件的任务" />

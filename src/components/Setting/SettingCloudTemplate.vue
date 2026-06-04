@@ -84,7 +84,6 @@ const templateForm = ref<CloudTemplateRecord>({
         usePersonalQueue: false,
         nodeInfoTemplateJson: "[]",
         requestBodyTemplateJson: "{}",
-        requestFormat: "json",
         inputSchemaJson: "[]",
         fieldMappingJson: "{}",
     },
@@ -163,7 +162,6 @@ const resetTemplateForm = () => {
             usePersonalQueue: false,
             nodeInfoTemplateJson: "[]",
             requestBodyTemplateJson: "{}",
-            requestFormat: "json",
             inputSchemaJson: "[]",
             fieldMappingJson: "{}",
         },
@@ -245,9 +243,6 @@ const inferFieldType = (item: any) => {
     const fieldName = String(item?.fieldName || "").trim().toLowerCase();
     const desc = String(item?.description || "").trim().toLowerCase();
     const value = item?.fieldValue;
-    if (fieldName === "images" || /多图|multiple images|image\[\]/.test(desc)) return "images";
-    if (fieldName === "audios" || /多音频|multiple audio|audio\[\]/.test(desc)) return "audios";
-    if (fieldName === "videos" || /多视频|multiple video|video\[\]/.test(desc)) return "videos";
     if (fieldName === "image" || /image|图像|图片/.test(desc)) return "image";
     if (fieldName === "audio" || /audio|音频|声音/.test(desc)) return "audio";
     if (fieldName === "video" || /video|视频/.test(desc)) return "video";
@@ -259,7 +254,7 @@ const inferFieldType = (item: any) => {
 };
 
 const normalizeDefaultValueByType = (fieldType: string, value: any) => {
-    if (["image", "images", "audio", "audios", "video", "videos", "file", "files"].includes(fieldType)) {
+    if (fieldType === "image" || fieldType === "audio" || fieldType === "video" || fieldType === "file") {
         return "";
     }
     if (fieldType === "switch") {
@@ -827,15 +822,6 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
                         </a-form-item>
                     </a-col>
                 </a-row>
-                <a-form-item label="请求格式">
-                    <a-radio-group v-model="templateForm.content.requestFormat" type="button">
-                        <a-radio value="json">JSON</a-radio>
-                        <a-radio value="form-data">multipart/form-data</a-radio>
-                    </a-radio-group>
-                    <div class="text-xs text-gray-500 mt-1">
-                        GPT Image 2 生图使用 JSON；图片编辑使用 multipart/form-data，并可在请求体里使用 `image[]` 传多图。
-                    </div>
-                </a-form-item>
                 <a-row :gutter="12">
                     <a-col :span="8">
                         <a-form-item label="实例类型">

@@ -182,7 +182,7 @@ export const liveStore = defineStore("live", {
                 cloudClipRequestJson: "{}",
                 cloudPreviewFieldPath: "",
                 cloudStatusFieldPath: "",
-                runningHubBaseUrl: "https://www.runninghub.ai",
+                runningHubBaseUrl: "https://www.runninghub.cn",
                 runningHubApiKey: "",
                 runningHubWebappId: "",
                 runningHubNodeInfoListJson: "[]",
@@ -351,7 +351,7 @@ export const liveStore = defineStore("live", {
             this.localConfig.config.cloudStatusFieldPath =
                 localConfig.config?.cloudStatusFieldPath || this.localConfig.config.cloudStatusFieldPath || "";
             this.localConfig.config.runningHubBaseUrl =
-                localConfig.config?.runningHubBaseUrl || this.localConfig.config.runningHubBaseUrl || "https://www.runninghub.ai";
+                localConfig.config?.runningHubBaseUrl || this.localConfig.config.runningHubBaseUrl || "https://www.runninghub.cn";
             this.localConfig.config.runningHubApiKey =
                 localConfig.config?.runningHubApiKey || this.localConfig.config.runningHubApiKey || "";
             this.localConfig.config.runningHubWebappId =
@@ -1235,7 +1235,7 @@ export const liveStore = defineStore("live", {
         },
         async resolveCloudApiBaseUrl() {
             if (this.isRunningHubProvider()) {
-                const baseUrl = this.normalizeCloudApiBaseUrl(this.localConfig.config.runningHubBaseUrl || "https://www.runninghub.ai");
+                const baseUrl = this.normalizeCloudApiBaseUrl(this.localConfig.config.runningHubBaseUrl || "https://www.runninghub.cn");
                 return { apiBaseUrl: baseUrl, autoDetected: false };
             }
             const configured = this.normalizeCloudApiBaseUrl(this.localConfig.config.cloudApiBaseUrl || "");

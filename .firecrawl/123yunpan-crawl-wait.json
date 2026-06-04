@@ -1,0 +1,1574 @@
+{
+  "id": "019e8d11-eed6-76dc-b411-9fd939158eaa",
+  "status": "completed",
+  "completed": 38,
+  "total": 38,
+  "creditsUsed": 38,
+  "expiresAt": "2026-06-04T12:06:36.000Z",
+  "next": null,
+  "data": [
+    {
+      "markdown": "123云盘开放平台\n\nCollect\n\n**87** Document**36154** Word\n\n[![123云盘](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)](https://123yunpan.yuque.com/123yunpan)\n\nBack to document\n\n欢迎使用123云盘开放平台\n\n您当前查看的功能为开发者权益包专属权益，开通后方可调用。\n\n• 开始使用👉：请先 [开通开发者权益包](https://www.123pan.com/member?productKey=vip&source_page=vip_button&tabKey=1)。\n\n• 获取帮助❓：如有疑问，可随时 [联系客服](https://ykf-weixin01.7moor.com/wapchat.html?accessId=0f998840-e2a7-11ee-b1ef-497292b8462b&fromUrl=&urlTitle=&language=ZHCN&customField=%7B%22user_labels%22%3A%7B%22redirect%22%3A%220%22%2C%22uid%22%3A0%7D%7D)。\n\n注：禁止调用非 OpenAPI 接口列表中的其余非公开接口。审查人员查询到后会做封号处理！！！\n\n——————————————————————————————————————————————————————\n\n好消息！123云盘开发者权益包面向会员用户开放申请内测啦！👏👏👏\n\n● 开发者权益包含：直链自定义域名、预热、视频转码、直链日志查询、静态页面托管、OpenAPI开放平台、OpenAPI开放平台上传QPS限制、IP黑名单、远程鉴权等权益\n\n● 申请内测需要满足：123云盘会员用户（含VIP、SVIP、长期VIP）\n\n● 内测申请地址👉： [123云盘开发者权益包内测版申请](https://doc.weixin.qq.com/forms/ALgASwf6AA0AY0AtQboAD4CNY3cU112Bf?page=1)\n\n部分开发者权益包服务权益介绍：\n\n●直链CDN预热：服务用户专享直链CDN预热，该功能旨在减少文件回源请求次数，显著提升冷文件的首次访问速度。\n\n●直链自定义域名：服务用户专享直链自定义域名功能。通过配置直链自定义域名功能，您可以轻松实现访问直链资源时直接显示为您专属的域名。\n\n●直链日志查询：用户可快速查询近3天直链使用情况，具体包括各直链链接的流量消耗详情；也可通过下载近30天直链离线日志（日志文件的延迟时间通常在1小时），追溯直链访问IP、访问时间等关键字段。\n\n●视频转码：对视频进行转码，输出指定分辨率（480P、720P、1080P、4K）视频M3U8链接，以适应终端对不同清晰度播放需要。\n\n●静态页面托管：将已制作好的静态资源（如：HTML、CSS、JavaScript、字体等，支持打包上传dist文件夹）存放在123云盘直链文件夹中，即可通过Internet访问和浏览这些网页内容，静态资源的分发由直链底层CDN提供支持。解决了中小型网站租用云服务器的高额成本。\n\n● OpenAPI开放平台：开发者权益包购买用户可通过开放平台无缝对接123云盘，目前已支持多种便捷功能，包括文件管理、用户管理、直链管理、离线下载等功能。\n\n​\n\n简介\n\n[概述01-29 05:22](https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt)\n\n[更新记录01-30 05:30](https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ewgaoswrngr1amb1)\n\n接入指南\n\n开发者接入\n\n第三方挂载应用接入\n\n[优秀实践2025-06-03 06:01](https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse)\n\n[💡常见问题01-30 01:38](https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ghfd4h0l6c6y6oi8)\n\nAPI列表\n\n文件管理\n\n分享管理\n\n离线下载\n\n用户管理\n\n直链\n\n图床\n\n视频转码\n\n[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_32%2Ch_32%2Fformat%2Cpng)](https://123yunpan.yuque.com/dashboard)\n\n123云盘开放平台\n\nPress space bar to start a drag.\nWhen dragging you can use the arrow keys to move the item around and escape to cancel.\nSome screen readers may require you to be in focus mode or to use your pass through key",
+      "metadata": {
+        "renderer": "webkit",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:image": "https://cdn.nlark.com/assets/88660/png/cover_3.png",
+        "og:title": "123云盘开放平台 · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "ogDescription": "123云盘开放平台",
+        "weibo:webpage:create_at": "2023-10-12 14:53:15",
+        "description": "123云盘开放平台",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "og:url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced",
+        "og:description": "123云盘开放平台",
+        "ogUrl": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced",
+        "ogTitle": "123云盘开放平台 · 123云盘",
+        "pagetype": "bookOverview",
+        "pagename": "doc_read",
+        "og:type": "webpage",
+        "weibo:webpage:update_at": "2026-04-30 18:04:38",
+        "title": "123云盘开放平台",
+        "ogImage": "https://cdn.nlark.com/assets/88660/png/cover_3.png",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc09-71f1-8a72-7f5016a06d5b",
+        "sourceURL": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced",
+        "url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "proxyUsed": "basic",
+        "cacheState": "hit",
+        "cachedAt": "2026-06-03T10:29:56.938Z",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "# 概述\n\nBack to document\n\n欢迎来到123云盘开放平台。\n\n平台致力于为广大开发者提供稳定、高效的文件存储与处理服务集成能力。借助我们提供的API与工具，您可以轻松将云端文件上传、管理、分享及智能处理等功能，集成到您的自有应用或服务中。\n\n当前平台文档处于持续更新与完善阶段，我们将及时同步最新的接口与功能信息。\n\n🔓开始使用\n\n现在开始使用变得更加简单：您只需根据需求 [购买对应的开发者权益包](https://www.123pan.com/member?productKey=svip&source_page=vip_center&tabKey=1)，即可开通API调用权限，无需等待审核，快速开启集成开发之旅。\n\n开放平台能力说明\n\n123云盘提供简单好用的云存储接口，同时满足开发者的各种需求。\n\n文件管理\n\n●全链路文件操作：上传（目录、文件）、删除、重命名、移动等\n\n●支持大文件断点续传与并行上传\n\n●查看文件详情\n\n●获取文件列表\n\n开发者工具\n\n●[直链](https://www.123pan.com/link)：基于CDN内容分发网络的文件下载服务\n\n●[图床](https://www.123pan.com/imgHome)：在线图片存储服务\n\n●[视频转码](https://www.123pan.com/VideoTranscoding)：原视频文件转码至M3U8格式的转码服务\n\n专为开发者提供的服务功能，满足开发者的日常所需。\n\n第三方挂载应用接入\n\nInfuse、网易爆米花、网易云音乐、VidHub、CloudDrive ...... 持续对接中，我们欢迎各类挂载应用的接入。\n\n​\n\n3 likes\n\n- ![ggy](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n- ![a0b](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n- ![作文](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n\n3\n\n[123云盘](https://123yunpan.yuque.com/123yunpan)\n\n01-29 05:22\n\n8677\n\nIP region浙江\n\nReport\n\n428Word\n\n[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_32%2Ch_32%2Fformat%2Cpng)](https://123yunpan.yuque.com/dashboard)\n\n123云盘开放平台\n\nOutline\n\n[开放平台能力说明](https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=en-us#BOzcv)",
+      "metadata": {
+        "ogTitle": "概述 · 123云盘",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "pagename": "doc_read",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "weibo:article:create_at": "2025-03-17 19:16:14",
+        "og:title": "概述 · 123云盘",
+        "title": "概述",
+        "og:description": "123云盘开放平台处于内测中，如果需要使用，请联系客服...",
+        "ogUrl": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=en-us",
+        "og:type": "article",
+        "renderer": "webkit",
+        "description": "123云盘开放平台处于内测中，如果需要使用，请联系客服...",
+        "pagetype": "doc_read",
+        "og:url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=en-us",
+        "ogDescription": "123云盘开放平台处于内测中，如果需要使用，请联系客服...",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "weibo:article:update_at": "2026-01-29 18:22:23",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "csp-nonce": "oOA4sCiIl6pGbOhQWErE",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc40-726b-abb4-da7221fb02c6",
+        "sourceURL": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=en-us",
+        "url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=en-us",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "proxyUsed": "basic",
+        "cacheState": "hit",
+        "cachedAt": "2026-06-03T10:36:14.961Z",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_32%2Ch_32%2Fformat%2Cpng)](https://123yunpan.yuque.com/dashboard)\n\n123云盘开放平台",
+      "metadata": {
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "pagename": "doc_read",
+        "ogUrl": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ewgaoswrngr1amb1?language=zh-cn",
+        "og:type": "article",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:title": "更新记录 · 123云盘",
+        "og:url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ewgaoswrngr1amb1?language=zh-cn",
+        "weibo:article:update_at": "2026-01-30 18:30:01",
+        "renderer": "webkit",
+        "ogTitle": "更新记录 · 123云盘",
+        "ogDescription": "更新模块更新内容更新时间文件管理",
+        "pagetype": "doc_read",
+        "og:description": "更新模块更新内容更新时间文件管理",
+        "weibo:article:create_at": "2025-03-17 19:17:41",
+        "title": "更新记录",
+        "description": "更新模块更新内容更新时间文件管理",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "csp-nonce": "0oFp7XvwqvrMJ4lAvdEt",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc40-726b-abb4-dfd647047256",
+        "sourceURL": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ewgaoswrngr1amb1?language=zh-cn",
+        "url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ewgaoswrngr1amb1?language=zh-cn",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "proxyUsed": "basic",
+        "cacheState": "hit",
+        "cachedAt": "2026-06-03T10:35:58.088Z",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "# 更新记录\n\nBack to document\n\n|     |     |     |\n| --- | --- | --- |\n| 更新模块 | 更新内容 | 更新时间 |\n| 文件管理 | 新增 文件复制接口 | 2026/01/30 |\n| 接入流程<br>开发须知 | 变更 原“全员可申请权益”升级为“开发者权益包专属权益” | 2026/01/29 |\n| 文件管理 | 新增 sha1哈希值文件上传接口 | 2026/01/23 |\n| 文件管理 | 新增 还原文件到指定目录接口 | 2025/10/10 |\n| 直链 | 新增 直链缓存刷新接口 | 2025/08/22 |\n| 文件管理 | 新增 上传V2接口 | 2025/06/23 |\n| 分享管理 | 新增 创建付费分享链接 | 2025/03/27 |\n| 所有模块 | 新增 代码示例<br>新增 部分接口<br>新增 三方挂载应用授权<br>优化 部分接口逻辑 | 2025/03/17 |\n| 视频转码 | 新增 视频转码API | 2025/01/14 |\n| 分享管理 | 新增 获取分享链接列表 | 2025/01/10 |\n| 新增 修改分享链接 |\n| 修改 创建分享链接 |\n| 文件管理 | 修改 创建文件 | 2025/01/10 |\n| 图床 | 新增 离线下载 | 2025/01/10 |\n| 新增 图床复制 |\n| 图床 | 新增 图床API | 2024/11/21 |\n| 文件管理 | 新增 获取文件列表(推荐) | 2024/06/21 |\n\n​\n\n3 likes\n\n- ![小易](https://cdn.nlark.com/yuque/0/2022/jpeg/29051777/1656880895376-avatar/c2feae42-f19a-4303-ab85-0fbb81ae4caf.jpeg?x-oss-process=image%2Fresize%2Cm_fill%2Cw_64%2Ch_64%2Fformat%2Cpng)\n- ![拿稳人心啊](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n- ![wen](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n\n3\n\n[123云盘](https://123yunpan.yuque.com/123yunpan)\n\n01-30 05:30\n\n7072\n\nIP region浙江\n\nReport\n\n265Word\n\n[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_32%2Ch_32%2Fformat%2Cpng)](https://123yunpan.yuque.com/dashboard)\n\n123云盘开放平台",
+      "metadata": {
+        "og:type": "article",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagename": "doc_read",
+        "ogDescription": "更新模块更新内容更新时间文件管理",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "weibo:article:update_at": "2026-01-30 18:30:01",
+        "og:title": "更新记录 · 123云盘",
+        "og:description": "更新模块更新内容更新时间文件管理",
+        "weibo:article:create_at": "2025-03-17 19:17:41",
+        "ogTitle": "更新记录 · 123云盘",
+        "csp-nonce": "1nYT2cIGOF1m3kCDJr2r",
+        "og:url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ewgaoswrngr1amb1",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "description": "更新模块更新内容更新时间文件管理",
+        "renderer": "webkit",
+        "ogUrl": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ewgaoswrngr1amb1",
+        "title": "更新记录",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "pagetype": "doc_read",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc40-726b-abb4-e1b0a2d8919f",
+        "sourceURL": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ewgaoswrngr1amb1",
+        "url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ewgaoswrngr1amb1",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "proxyUsed": "basic",
+        "cacheState": "hit",
+        "cachedAt": "2026-06-03T10:35:40.510Z",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "# 优秀实践\n\nBack to document\n\n以下Demo皆由热心用户提供，感谢各位的反馈。\n\n内容仅供参考，如果在调用过程中遇到疑问，可联系123官方客服~\n\n文件上传\n\n●简单Python示例：\n\n○[https://gitee.com/lyd-code/123pan-upload-python-example](https://gitee.com/lyd-code/123pan-upload-python-example)\n\n○[https://gitee.com/wojiaoyishang/123pan](https://gitee.com/wojiaoyishang/123pan)\n\n○[https://gitee.com/suda\\_code/Pan123](https://gitee.com/suda_code/Pan123)\n\n●简单NodeJS示例:\n\n○[https://gitee.com/zaidu\\_jj/123pan-upload-example](https://gitee.com/zaidu_jj/123pan-upload-example)\n\n●简单PHP示例：\n\n○[https://gitee.com/itcolss/123pan-upload-php-example](https://gitee.com/itcolss/123pan-upload-php-example)\n\n●简单Java示例：\n\n○[https://www.yuque.com/feixiangnet/open](https://www.yuque.com/feixiangnet/open)\n\n图床\n\n●图床接口实战：\n\n○[https://flowus.cn/nonzero/share/9f1e7af4-5ed3-40ba-91c8-6120c7924139?code=VX1BD6](https://flowus.cn/nonzero/share/9f1e7af4-5ed3-40ba-91c8-6120c7924139?code=VX1BD6)\n\n再次感谢以上用户的反馈，同时我们也欢迎大家，踊跃提供更多的优秀实践，收到后我们会认真评估，通过审核后，我们会赠送云盘相关福利，您可联系在线客服进行反馈~\n\n​\n\nIf you get gains，please give a like\n\n[123云盘](https://123yunpan.yuque.com/123yunpan)\n\n2025-06-03 06:01\n\n8351\n\nIP region浙江\n\nReport\n\n181Word\n\n[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_32%2Ch_32%2Fformat%2Cpng)](https://123yunpan.yuque.com/dashboard)\n\n123云盘开放平台\n\nOutline\n\n[文件上传](https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse#s5V6t)\n\n[图床](https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse#y6Gsd)",
+      "metadata": {
+        "renderer": "webkit",
+        "ogTitle": "优秀实践 · 123云盘",
+        "og:description": "以下Demo皆由热心用户提供，感谢各位的反馈。内容仅供...",
+        "weibo:article:create_at": "2025-03-17 19:17:06",
+        "pagename": "doc_read",
+        "ogUrl": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse",
+        "csp-nonce": "g0GI2InQkrKXozBYP3Gr",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "weibo:article:update_at": "2025-06-03 18:01:35",
+        "og:type": "article",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "og:url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "og:title": "优秀实践 · 123云盘",
+        "title": "优秀实践",
+        "description": "以下Demo皆由热心用户提供，感谢各位的反馈。内容仅供...",
+        "pagetype": "doc_read",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "ogDescription": "以下Demo皆由热心用户提供，感谢各位的反馈。内容仅供...",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc40-726b-abb4-e82eef5ef260",
+        "sourceURL": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse",
+        "url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "proxyUsed": "basic",
+        "cacheState": "hit",
+        "cachedAt": "2026-06-03T10:35:45.577Z",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "# 概述\n\nBack to document\n\n欢迎来到123云盘开放平台。\n\n平台致力于为广大开发者提供稳定、高效的文件存储与处理服务集成能力。借助我们提供的API与工具，您可以轻松将云端文件上传、管理、分享及智能处理等功能，集成到您的自有应用或服务中。\n\n当前平台文档处于持续更新与完善阶段，我们将及时同步最新的接口与功能信息。\n\n🔓开始使用\n\n现在开始使用变得更加简单：您只需根据需求 [购买对应的开发者权益包](https://www.123pan.com/member?productKey=svip&source_page=vip_center&tabKey=1)，即可开通API调用权限，无需等待审核，快速开启集成开发之旅。\n\n开放平台能力说明\n\n123云盘提供简单好用的云存储接口，同时满足开发者的各种需求。\n\n文件管理\n\n●全链路文件操作：上传（目录、文件）、删除、重命名、移动等\n\n●支持大文件断点续传与并行上传\n\n●查看文件详情\n\n●获取文件列表\n\n开发者工具\n\n●[直链](https://www.123pan.com/link)：基于CDN内容分发网络的文件下载服务\n\n●[图床](https://www.123pan.com/imgHome)：在线图片存储服务\n\n●[视频转码](https://www.123pan.com/VideoTranscoding)：原视频文件转码至M3U8格式的转码服务\n\n专为开发者提供的服务功能，满足开发者的日常所需。\n\n第三方挂载应用接入\n\nInfuse、网易爆米花、网易云音乐、VidHub、CloudDrive ...... 持续对接中，我们欢迎各类挂载应用的接入。\n\n​\n\n3 likes\n\n- ![ggy](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n- ![a0b](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n- ![作文](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n\n3\n\n[123云盘](https://123yunpan.yuque.com/123yunpan)\n\n01-29 05:22\n\n8675\n\nIP region浙江\n\nReport\n\n428Word\n\n[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_32%2Ch_32%2Fformat%2Cpng)](https://123yunpan.yuque.com/dashboard)\n\n123云盘开放平台\n\nOutline\n\n[开放平台能力说明](https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt#BOzcv)",
+      "metadata": {
+        "pagetype": "doc_read",
+        "ogDescription": "123云盘开放平台处于内测中，如果需要使用，请联系客服...",
+        "csp-nonce": "yEmnbzCHcfk20hTEZeci",
+        "description": "123云盘开放平台处于内测中，如果需要使用，请联系客服...",
+        "og:type": "article",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:title": "概述 · 123云盘",
+        "og:url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt",
+        "ogTitle": "概述 · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:description": "123云盘开放平台处于内测中，如果需要使用，请联系客服...",
+        "renderer": "webkit",
+        "ogUrl": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt",
+        "pagename": "doc_read",
+        "weibo:article:create_at": "2025-03-17 19:16:14",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "weibo:article:update_at": "2026-01-29 18:22:23",
+        "title": "概述",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc40-726b-abb4-efffb61a9cc3",
+        "sourceURL": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt",
+        "url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "proxyUsed": "basic",
+        "cacheState": "hit",
+        "cachedAt": "2026-06-03T10:35:39.380Z",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_32%2Ch_32%2Fformat%2Cpng)](https://123yunpan.yuque.com/dashboard)\n\n123云盘开放平台",
+      "metadata": {
+        "pagename": "doc_read",
+        "og:title": "优秀实践 · 123云盘",
+        "weibo:article:update_at": "2025-06-03 18:01:35",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "ogTitle": "优秀实践 · 123云盘",
+        "weibo:article:create_at": "2025-03-17 19:17:06",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "csp-nonce": "JMS7f8qtnnJ45Es69zom",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "ogUrl": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse?language=zh-cn",
+        "description": "以下Demo皆由热心用户提供，感谢各位的反馈。内容仅供...",
+        "og:url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse?language=zh-cn",
+        "ogDescription": "以下Demo皆由热心用户提供，感谢各位的反馈。内容仅供...",
+        "pagetype": "doc_read",
+        "og:description": "以下Demo皆由热心用户提供，感谢各位的反馈。内容仅供...",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "og:type": "article",
+        "title": "优秀实践",
+        "renderer": "webkit",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc40-726b-abb4-f0aa73dc1a75",
+        "sourceURL": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse?language=zh-cn",
+        "url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/gg705bew0t80ccse?language=zh-cn",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "proxyUsed": "basic",
+        "cacheState": "hit",
+        "cachedAt": "2026-06-03T10:36:16.892Z",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "# 💡常见问题\n\n[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_32%2Ch_32%2Fformat%2Cpng)](https://123yunpan.yuque.com/dashboard)\n\n123云盘开放平台",
+      "metadata": {
+        "og:image": "https://cdn.nlark.com/yuque/0/2025/png/1729608/1741404370085-a3f97207-c508-4844-b469-86b726798768.png",
+        "pagename": "doc_read",
+        "pagetype": "doc_read",
+        "og:title": "💡常见问题 · 123云盘",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "csp-nonce": "CrQVHma3RcXafBkwFrXL",
+        "og:url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ghfd4h0l6c6y6oi8",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "weibo:article:create_at": "2025-03-17 19:17:04",
+        "title": "💡常见问题",
+        "description": "1. 购买开发者权益包后如何查看自己的OpenAPI相...",
+        "weibo:article:update_at": "2026-01-30 14:38:50",
+        "ogUrl": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ghfd4h0l6c6y6oi8",
+        "ogTitle": "💡常见问题 · 123云盘",
+        "ogDescription": "1. 购买开发者权益包后如何查看自己的OpenAPI相...",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "renderer": "webkit",
+        "ogImage": "https://cdn.nlark.com/yuque/0/2025/png/1729608/1741404370085-a3f97207-c508-4844-b469-86b726798768.png",
+        "og:type": "article",
+        "og:description": "1. 购买开发者权益包后如何查看自己的OpenAPI相...",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc40-726b-abb4-f630e86bdedb",
+        "sourceURL": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ghfd4h0l6c6y6oi8",
+        "url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ghfd4h0l6c6y6oi8",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "proxyUsed": "basic",
+        "cacheState": "hit",
+        "cachedAt": "2026-06-03T10:35:45.577Z",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "# 概述\n\n返回文档\n\n欢迎来到123云盘开放平台。\n\n平台致力于为广大开发者提供稳定、高效的文件存储与处理服务集成能力。借助我们提供的API与工具，您可以轻松将云端文件上传、管理、分享及智能处理等功能，集成到您的自有应用或服务中。\n\n当前平台文档处于持续更新与完善阶段，我们将及时同步最新的接口与功能信息。\n\n🔓开始使用\n\n现在开始使用变得更加简单：您只需根据需求 [购买对应的开发者权益包](https://www.123pan.com/member?productKey=svip&source_page=vip_center&tabKey=1)，即可开通API调用权限，无需等待审核，快速开启集成开发之旅。\n\n开放平台能力说明\n\n123云盘提供简单好用的云存储接口，同时满足开发者的各种需求。\n\n文件管理\n\n●全链路文件操作：上传（目录、文件）、删除、重命名、移动等\n\n●支持大文件断点续传与并行上传\n\n●查看文件详情\n\n●获取文件列表\n\n开发者工具\n\n●[直链](https://www.123pan.com/link)：基于CDN内容分发网络的文件下载服务\n\n●[图床](https://www.123pan.com/imgHome)：在线图片存储服务\n\n●[视频转码](https://www.123pan.com/VideoTranscoding)：原视频文件转码至M3U8格式的转码服务\n\n专为开发者提供的服务功能，满足开发者的日常所需。\n\n第三方挂载应用接入\n\nInfuse、网易爆米花、网易云音乐、VidHub、CloudDrive ...... 持续对接中，我们欢迎各类挂载应用的接入。\n\n​\n\n3 人点赞\n\n- ![ggy](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n- ![a0b](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n- ![作文](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*khrYRYi6VN0AAAAAAAAAAAAADvuFAQ/original)\n\n3\n\n[123云盘](https://123yunpan.yuque.com/123yunpan)\n\n01-29 05:22\n\n8676\n\nIP 属地浙江\n\n举报\n\n428字\n\n[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_32%2Ch_32%2Fformat%2Cpng)](https://123yunpan.yuque.com/dashboard)\n\n123云盘开放平台\n\n大纲\n\n[开放平台能力说明](https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=zh-cn#BOzcv)",
+      "metadata": {
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "csp-nonce": "xVKGdKAZtGfVjC3hVZ5F",
+        "title": "概述",
+        "renderer": "webkit",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagetype": "doc_read",
+        "weibo:article:create_at": "2025-03-17 19:16:14",
+        "og:url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=zh-cn",
+        "ogDescription": "123云盘开放平台处于内测中，如果需要使用，请联系客服...",
+        "pagename": "doc_read",
+        "ogUrl": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=zh-cn",
+        "description": "123云盘开放平台处于内测中，如果需要使用，请联系客服...",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:description": "123云盘开放平台处于内测中，如果需要使用，请联系客服...",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:title": "概述 · 123云盘",
+        "og:type": "article",
+        "weibo:article:update_at": "2026-01-29 18:22:23",
+        "ogTitle": "概述 · 123云盘",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc40-726b-abb4-fbc7fed14924",
+        "sourceURL": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=zh-cn",
+        "url": "https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced/ppsuasz6rpioqbyt?language=zh-cn",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "proxyUsed": "basic",
+        "cacheState": "hit",
+        "cachedAt": "2026-06-03T10:35:52.404Z",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "og:type": "webpage",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogUrl": "https://123yunpan.yuque.com/login?org=123yunpan",
+        "title": "Log In · 123云盘",
+        "pagename": "new_session",
+        "ogTitle": "Log In · 123云盘",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "renderer": "webkit",
+        "og:title": "Log In · 123云盘",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "language": "en",
+        "og:url": "https://123yunpan.yuque.com/login?org=123yunpan",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "pagetype": "new_session",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fc40-726b-abb4-e6dab412d61f",
+        "sourceURL": "https://123yunpan.yuque.com/login?org=123yunpan",
+        "url": "https://123yunpan.yuque.com/login?org=123yunpan",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "c0c61df2-1d44-42b0-8ad7-358eed570db6",
+        "creditsUsed": 1
+      }
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2F123yunpan)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "title": "Log In · 123云盘",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:type": "webpage",
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2F123yunpan&org=123yunpan",
+        "og:title": "Log In · 123云盘",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2F123yunpan&org=123yunpan",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "language": "en",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagetype": "new_session",
+        "ogTitle": "Log In · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "renderer": "webkit",
+        "pagename": "new_session",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fd34-7440-8707-d3939e112714",
+        "sourceURL": "https://123yunpan.yuque.com/123yunpan",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2F123yunpan&org=123yunpan",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "d11bca26-df31-43fd-b8bd-0611d14ba16c",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems",
+      "metadata": {
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "title": "Log In · 123云盘",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:type": "webpage",
+        "pagename": "new_session",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogTitle": "Log In · 123云盘",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:title": "Log In · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "renderer": "webkit",
+        "og:url": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard",
+        "pagetype": "new_session",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogUrl": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fd53-71b0-9410-8816ef550940",
+        "sourceURL": "https://123yunpan.yuque.com/dashboard",
+        "url": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "9bef8ecd-7412-45ae-8b1d-aceac29c8296",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Den-us)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "pagetype": "new_session",
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Den-us",
+        "og:type": "webpage",
+        "ogTitle": "Log In · 123云盘",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagename": "new_session",
+        "title": "Log In · 123云盘",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "language": "en",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "renderer": "webkit",
+        "og:title": "Log In · 123云盘",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Den-us",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-ff73-77fc-9625-05d5acdaf753",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Den-us",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Den-us",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "85daa27b-e743-4fef-87c7-73a486261da3",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "#### ISO 安全认证体系\n\n语雀通过 ISO/IEC 27001:2013\n\n信息安全管理体系认证\n\n#### 公安部三级等级保护\n\n通过由公安部监制，由属地公安机关认可\n\n并颁发的国家级信息系统等级认证\n\n#### 支付宝底层安全能力\n\n依托于蚂蚁集团支付宝的底层安全能力，\n\n让文档安全无忧，让服务稳定可靠\n\n[了解更多](https://www.yuque.com/yuque/ng1qth/safety)\n\n空间特色安全能力\n\n![数据加密](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*zDxSQLClyt8AAAAAAAAAAAAADvuFAQ/original)\n\n数据加密\n\n使用双层加密技术方案对数据的保护贯穿数据安全生命周期\n\n![权限管理](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*7eBWTbAT2RkAAAAAAAAAAAAADvuFAQ/original)\n\n权限管理\n\n提供知识库、团队级的访问单独权限设置\n\n![安全水印](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*aTRDRbkiw2gAAAAAAAAAAAAADvuFAQ/original)\n\n安全水印\n\n支持 IP 白名单、安全水印等功能可对信息安全进行防护，防止外泄\n\n![防删找回](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*eITFR4B2WzQAAAAAAAAAAAAADvuFAQ/original)\n\n防删找回\n\n提供文档版本管理及回收站功能。可对误删操作安全找回\n\n[了解更多](https://www.yuque.com/yuque/ng1qth/safety)\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*J1n5Sr2qh6sAAAAAAAAAAAAAARQnAQ)\n\n一个知识构建与分享工具\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*5CiSRraBRL0AAAAAAAAAAAAADvuFAQ/original)\n\n微信扫码加入社群\n\n加入语雀社群，获得更多信息，结交雀友\n\n| About Products | Support | About |\n| --- | --- | --- |\n| - [Core competence](https://123yunpan.yuque.com/about/products)<br>- [Product information](https://www.yuque.com/about/blog)<br>- [Group use](https://www.yuque.com/yuque/rvzzxz)<br>- [Customer cases](https://www.yuque.com/about/cases)<br>- [Pricing](https://123yunpan.yuque.com/about/price) | - [Help Center](https://123yunpan.yuque.com/about/help)<br>- [Security](https://123yunpan.yuque.com/about/security)<br>- [Terms](https://123yunpan.yuque.com/terms)<br>- [Developer](https://www.yuque.com/yuque/developer)<br>- [Feedback](https://www.yuque.com/feedbacks/new) | - [About](https://www.yuque.com/yuque/ng1qth/about)<br>- [Yuque Column Blog](https://123yunpan.yuque.com/about/blog)<br>- [Media reports](https://www.yuque.com/yuque/lpa7n6)<br>- [Contact us](https://www.yuque.com/yuque/qa/ca1gxp)<br>- [Join us](https://123yunpan.yuque.com/about/careers) |\n\n© 语雀  ICP证号： [合字B2-20200098](https://tsm.miit.gov.cn/dxxzsp/)ICP备案号： [浙ICP备14032978号-13](https://beian.miit.gov.cn/)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*56CJRLF0M2oAAAAAAAAAAAAADvuFAQ/original) [浙公网安备33010602012110](https://beian.mps.gov.cn/#/query/webSearch?code=33010602013485)",
+      "metadata": {
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "pagename": "index",
+        "og:type": "webpage",
+        "ogTitle": "语雀数据安全 · 123云盘",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:url": "https://123yunpan.yuque.com/about/security",
+        "title": "Yuque Data Security · 123云盘",
+        "pagetype": "index",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "ogUrl": "https://123yunpan.yuque.com/about/security",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "og:title": "语雀数据安全 · 123云盘",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "renderer": "webkit",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-ffcb-726d-a798-aefda0efbd69",
+        "sourceURL": "https://123yunpan.yuque.com/about/security",
+        "url": "https://123yunpan.yuque.com/about/security",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "58ff525c-aa71-483e-8a75-3dd839b7e2ed",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:type": "webpage",
+        "title": "Log In · 123云盘",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "renderer": "webkit",
+        "ogUrl": "https://123yunpan.yuque.com/login",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "pagename": "new_session",
+        "ogTitle": "Log In · 123云盘",
+        "language": "en",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagetype": "new_session",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:title": "Log In · 123云盘",
+        "og:url": "https://123yunpan.yuque.com/login",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d11-fff7-76ad-9652-02d94c9bce88",
+        "sourceURL": "https://123yunpan.yuque.com/login",
+        "url": "https://123yunpan.yuque.com/login",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "10519253-a455-4c8e-9a0c-b7fb611d1afd",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1%3Flanguage%3Dzh-cn)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems",
+      "metadata": {
+        "title": "Log In · 123云盘",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1%3Flanguage%3Dzh-cn",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "pagetype": "new_session",
+        "ogTitle": "Log In · 123云盘",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagename": "new_session",
+        "og:type": "webpage",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "renderer": "webkit",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:title": "Log In · 123云盘",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1%3Flanguage%3Dzh-cn",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-00cb-717d-930c-7e842d846178",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1%3Flanguage%3Dzh-cn",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1%3Flanguage%3Dzh-cn",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "577eb17c-37f0-4ac1-87cf-ccb07698a27b",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:title": "Log In · 123云盘",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "title": "Log In · 123云盘",
+        "og:type": "webpage",
+        "pagetype": "new_session",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "language": "en",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1",
+        "pagename": "new_session",
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1",
+        "ogTitle": "Log In · 123云盘",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "renderer": "webkit",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-02b0-711b-9cda-3d3ba8777158",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fewgaoswrngr1amb1",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "0e982fee-6b3a-4cb8-945e-e0a2036f590c",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "pagetype": "new_session",
+        "ogTitle": "Log In · 123云盘",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "language": "en",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse",
+        "pagename": "new_session",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse",
+        "og:type": "webpage",
+        "title": "Log In · 123云盘",
+        "renderer": "webkit",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "og:title": "Log In · 123云盘",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-05a3-73db-936c-5bc61bfc4d4c",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "7c88c4c3-a738-4661-ad39-3b8c044b0f8b",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:type": "webpage",
+        "pagetype": "new_session",
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogTitle": "Log In · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "pagename": "new_session",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt",
+        "language": "en",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "title": "Log In · 123云盘",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "renderer": "webkit",
+        "og:title": "Log In · 123云盘",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-087d-75b4-a870-b82e37db6746",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "bc7ffa42-8f65-406a-a599-c913b40ad1c6",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fghfd4h0l6c6y6oi8)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "language": "en",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:type": "webpage",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fghfd4h0l6c6y6oi8",
+        "pagetype": "new_session",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagename": "new_session",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "title": "Log In · 123云盘",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogTitle": "Log In · 123云盘",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:title": "Log In · 123云盘",
+        "renderer": "webkit",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fghfd4h0l6c6y6oi8",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-0f76-753d-a555-8523244da17f",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fghfd4h0l6c6y6oi8",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fghfd4h0l6c6y6oi8",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "e624b05a-48e1-4288-a130-14f338432f8b",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse%3Flanguage%3Dzh-cn)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems",
+      "metadata": {
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:type": "webpage",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse%3Flanguage%3Dzh-cn",
+        "title": "Log In · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "ogTitle": "Log In · 123云盘",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "pagetype": "new_session",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "renderer": "webkit",
+        "og:title": "Log In · 123云盘",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse%3Flanguage%3Dzh-cn",
+        "pagename": "new_session",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-0b5f-769d-bbe3-ab3db89f05c0",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse%3Flanguage%3Dzh-cn",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fgg705bew0t80ccse%3Flanguage%3Dzh-cn",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "88ab0325-716b-4a08-9491-3b1d45be18a2",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Dzh-cn)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "ogTitle": "Log In · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "title": "Log In · 123云盘",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Dzh-cn",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Dzh-cn",
+        "language": "en",
+        "pagename": "new_session",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "renderer": "webkit",
+        "og:title": "Log In · 123云盘",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:type": "webpage",
+        "pagetype": "new_session",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-1180-7525-8c4a-e20d9878b5f0",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Dzh-cn",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Forg-wiki-123yunpan-muaork%2Fcr6ced%2Fppsuasz6rpioqbyt%3Flanguage%3Dzh-cn",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "74ecff0f-380d-4519-8777-1fd69c1728d9",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "文档协同\n\n知识管理\n\n为每一个人，为每一个团队，提供优秀的文档与知识库工具\n\n[个人免费使用](https://123yunpan.yuque.com/login?register_from=official_website_groups)\n\n[团队免费使用](https://123yunpan.yuque.com/r/organizations/new?create_from=official_website_groups)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*VP2nTKD0WIkAAAAAAAAAAAAADvuFAQ/original)\n\n### 每一个人，都能构建知识体系\n\n用小记收集与记录，用知识库整理与输出。从碎片化到结构化，构建知识体系\n\n### 每个团队，都会爱上异步协作\n\n以文档为中心的协作，让沟通质量更高\n\n异步交流优先，减少打扰，增添专注\n\n以文档为中心的协作，让沟通质量更高\n\n异步交流优先，减少打扰，增添专注\n\n## 专业好用的编辑器\n\n语雀自研编辑器，支持 文档、画板、工作表、数据表 四大文稿类型，具备 Markdown、代码块、LaTeX 公式、PlantUML 等专业编辑能力，同时支持本地视频、Office 文件、PDF 文件等内容的上传与在线预览，可满足多种专业岗位需求，让创作更高效。\n\n- #### 文档\n\n\n沉浸创作，愉悦分享，支持多种特色卡片\n\n- #### 画板\n\n\n自由绘制流程图、架构图、脑图、简单图形，让你的思维表达更清晰\n\n- #### 工作表 / 数据表\n\n\n类Excel的工作表助你分析数据，多视图的工作表助你呈现数据\n\n- #### 特色卡片\n\n\n支持40+ 特色卡片，让文档拥有更丰富的应用能力\n\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*KdrLQ7oQj48AAAAAAAAAAAAADvuFAQ/original)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*3CYOTIb38xAAAAAAAAAAAAAADvuFAQ/original)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*r1wnSI6tHeQAAAAAAAAAAAAADvuFAQ/original)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*81_pQ4Mt06oAAAAAAAAAAAAADvuFAQ/original)\n\n## 像书一样的知识库\n\n语雀特色的目录及大纲功能，让多篇文档结构化，形成一本本像书一样清晰易读的知识库，方便知识创作及沉淀。\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*OHrpQZDENLIAAAAAAAAAAAAADvuFAQ/original)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*qk50SrAydUgAAAAAAAAAAAAADvuFAQ/original)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*igMDQbkFvxoAAAAAAAAAAAAADvuFAQ/original)\n\n- #### 目录编排\n\n\n简单、强大的目录编辑，让知识库如书本一样清晰易读\n\n- #### 互动交流\n\n\n通过 “@” 触达他人，互动交流，碰撞想法\n\n- #### 权限管理\n\n\n支持按需调整编辑、复制、分享、下载等权限，安全尽在掌握\n\n\n全端覆盖，超强大!\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*ud9OTLKQ0ZwAAAAAAAAAAAAADvuFAQ/original)下载iOS端\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*d0DkTYbDYjEAAAAAAAAAAAAADvuFAQ/original)下载 Android 版\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*erjOR6HQO9QAAAAAAAAAAAAADvuFAQ/original)下载 iPad 版\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*QrFzRKxpnBMAAAAAAAAAAAAADvuFAQ/original)[下载 macOS 版](https://app.nlark.com/yuque-desktop/4.2.1.1333/BJ573111a41a6d47e0a380a8cac832ae49/Yuque-4.2.1.1333.dmg)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*fGmBQoG87gsAAAAAAAAAAAAADvuFAQ/original)[下载 Windows 版](https://app.nlark.com/yuque-desktop/4.2.1.1333/BJb9b3ac5707c1430cad5c839db7606e46/Yuque-4.2.1.1333.exe)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*CGYwSIriGyYAAAAAAAAAAAAADvuFAQ/original)[Chrome 插件](https://chromewebstore.google.com/detail/hnbdgfongnkfgnbpamndfiiedhapfecn?hl=zh-CN&utm_source=ext_sidebar)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*Z55iRqQyHoAAAAAAAAAAAAAADvuFAQ/original)[Edge 插件](https://microsoftedge.microsoft.com/addons/detail/%E8%AF%AD%E9%9B%80%E6%B5%8F%E8%A7%88%E5%99%A8%E6%8F%92%E4%BB%B6/mnfokalcidkmaadmfmdmhiamdnjljhgj)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*ErqkQ5yT4cAAAAAAAAAAAAAADvuFAQ/original)[组件化编辑器](https://www.yuque.com/yuque/developer/gfoax065u2v72isu)\n\n## 他们玩出了新花样!\n\n用专业好用的编辑器与知识库，释放每一个人的创造性\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*rS8XTJX0OoQAAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*kniXQrc56MkAAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*r3f1To8Zu34AAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*rUDgQ7DZgfIAAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*Ask8TJRCugkAAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*HD3USZec-uwAAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*3MznQ5iCc28AAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*4j8rQYxO-Q4AAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*QM4iQaxXC8UAAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*STGZRoFbr8YAAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*VVW6RLYdbAwAAAAAAAAAAAAADvuFAQ/original)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*04TUTqivqZgAAAAAAAAAAAAADvuFAQ/original)\n\n## 我们视 数据安全 为生命\n\n语雀依托蚂蚁集团多年安全技术沉淀，同时获得国内外多种安全资格认证，为你的知识保驾护航\n\n#### ISO 安全认证体系\n\n语雀通过ISO/IEC 2700 1:20 23 信息安全管理体系认证\n\n#### 公安部三级等级保护\n\n通过由公安部监制，由属地公安机关认可并颁发的国家级信息系统等级认证\n\n#### 支付宝底层安全能力\n\n依托于蚂蚁集团支付宝的底层安全能力，让文档安全无忧，让服务稳定可靠\n\n## 众多企业组织都选择了语雀\n\n知识型组织的团队协作工具\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*sI6mQpZ2YnoAAAAAAAAAAAAAARQnAQ)![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*sI6mQpZ2YnoAAAAAAAAAAAAAARQnAQ)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*Iz4cTZZaL7MAAAAAAAAAAAAADvuFAQ/original)\n\n向非营利公益组织、教育机构、创业团队提供免费服务\n\n完成认证后，将免费获得旗舰版空间。\n\n[查看详情介绍](https://www.yuque.com/yuque/organizations/gf443f)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*FhCOSJBrQaoAAAAAAAAAAAAADvuFAQ/original)\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*J1n5Sr2qh6sAAAAAAAAAAAAAARQnAQ)\n\n一个知识构建与分享工具\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*5CiSRraBRL0AAAAAAAAAAAAADvuFAQ/original)\n\n微信扫码加入社群\n\n加入语雀社群，获得更多信息，结交雀友\n\n| About Products | Support | About |\n| --- | --- | --- |\n| - [Core competence](https://123yunpan.yuque.com/about/products)<br>- [Product information](https://www.yuque.com/about/blog)<br>- [Group use](https://www.yuque.com/yuque/rvzzxz)<br>- [Customer cases](https://www.yuque.com/about/cases)<br>- [Pricing](https://123yunpan.yuque.com/about/price) | - [Help Center](https://123yunpan.yuque.com/about/help)<br>- [Security](https://123yunpan.yuque.com/about/security)<br>- [Terms](https://123yunpan.yuque.com/terms)<br>- [Developer](https://www.yuque.com/yuque/developer)<br>- [Feedback](https://www.yuque.com/feedbacks/new) | - [About](https://www.yuque.com/yuque/ng1qth/about)<br>- [Yuque Column Blog](https://123yunpan.yuque.com/about/blog)<br>- [Media reports](https://www.yuque.com/yuque/lpa7n6)<br>- [Contact us](https://www.yuque.com/yuque/qa/ca1gxp)<br>- [Join us](https://123yunpan.yuque.com/about/careers) |\n\n© 语雀  ICP证号： [合字B2-20200098](https://tsm.miit.gov.cn/dxxzsp/)ICP备案号： [浙ICP备14032978号-13](https://beian.miit.gov.cn/)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*56CJRLF0M2oAAAAAAAAAAAAADvuFAQ/original) [浙公网安备33010602012110](https://beian.mps.gov.cn/#/query/webSearch?code=33010602013485)",
+      "metadata": {
+        "og:title": "语雀，为每一个人提供优秀的文档和知识库工具 · 123云盘",
+        "ogUrl": "https://123yunpan.yuque.com/about",
+        "renderer": "webkit",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:url": "https://123yunpan.yuque.com/about",
+        "title": "语雀，为每一个人提供优秀的文档和知识库工具",
+        "pagetype": "index",
+        "ogTitle": "语雀，为每一个人提供优秀的文档和知识库工具 · 123云盘",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "og:type": "webpage",
+        "pagename": "index",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-231f-7228-9fa1-1dcb3bcfd993",
+        "sourceURL": "https://123yunpan.yuque.com/about",
+        "url": "https://123yunpan.yuque.com/about",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "d7d80409-d8de-4fa0-b5e0-66f98e1f48ee",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "## 123云盘\n\nVerify by email\n\n请按住滑块，拖动到最右边\n\nRetrieved by mobile phone number\n\nNext\n\nBackSMS\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "title": "找回密码 · 123云盘",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "ogTitle": "找回密码 · 123云盘",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "pagetype": "password",
+        "renderer": "webkit",
+        "pagename": "password",
+        "og:url": "https://123yunpan.yuque.com/password_reset",
+        "language": "en",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "ogUrl": "https://123yunpan.yuque.com/password_reset",
+        "og:type": "webpage",
+        "og:title": "找回密码 · 123云盘",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-236e-70ae-b38b-69b3da39580f",
+        "sourceURL": "https://123yunpan.yuque.com/password_reset",
+        "url": "https://123yunpan.yuque.com/password_reset",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "f82869eb-e78f-4026-aac8-d4a190ab6569",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*5c0bQJVIDJwAAAAAAAAAAAAAARQnAQ)![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*bpC-RqWqx-0AAAAAAAAAAAAAARQnAQ)![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*O3_3QKV5JOoAAAAAAAAAAAAAARQnAQ)\n\n# Yuque provides professional product function matrix\n\nServing various types of knowledge creation, helping efficient team collaboration\n\n## Four major document types\n\nDocument\n\nSheet\n\nBoard\n\nData Table\n\nWhile providing basic text operations, Yuque's self-developed document editor can insert tables, brain maps, PlantUML, LaTeX formulas and other content styles in the form of cards, and supports direct preview of video and PDF files to help creators create Multi-dimensional text writing and reading experience, while setting and managing document viewing permissions and historical versions.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*qjVuRacuHngAAAAAAAAAAAAAARQnAQ)\n\nWhile supporting basic data processing capabilities, Yuque Form also supports special capabilities such as chart drawing, conditional formatting, filtering and sorting, forms, views and other data processing. It can complete information collection, data processing, project management and other scenarios, and can eliminate local files. Troubles caused by confusion of version management, difficulty in data coordination, and loss of information.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*cPomTY9KVTEAAAAAAAAAAAAAARQnAQ)\n\nYuque's self-developed Board products can help creators sort out structures and organize ideas efficiently. It can be used as a card embedded in a document, or it can directly create an independent Board.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*2WaOSYfAOa8AAAAAAAAAAAAAARQnAQ)\n\nYuque's self-developed data table is a new generation of tables. Through the form capability, you can quickly distribute and collect data like a questionnaire; through the multi-view capability, you can visually present a variety of data from different styles and dimensions, so that one piece of data can be displayed in a variety of ways.\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*TGUDT5rtqwwAAAAAAAAAAAAAARQnAQ)\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*_tEORZUfA3IAAAAAAAAAAAAAARQnAQ)\n\n## Three core functions\n\nbook\n\nNote\n\nOrganization\n\nThe book is an aggregation of information content like folders or books. Based on Yuque's unique cataloging ability, it can provide powerful document arrangement and management capabilities according to different scenarios, and is especially suitable for the precipitation of structured knowledge content with high logical requirements. , Such as notes, courses, white papers, help manuals, etc.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*z7EJSYnVBmAAAAAAAAAAAAAAARQnAQ)\n\nNote is a timeline-based fragmented content recording tool. It can quickly record and automatically save various scattered content, such as a paragraph of text, a picture, to-do list, web address, file attachments, etc., and time Line display.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*veKQRbF17hEAAAAAAAAAAAAAARQnAQ)\n\nOrganization is a future-oriented document and knowledge collaboration tool provided by Yuque for enterprises or organizations. Through structured knowledge creation and efficient teamwork, it helps enterprise knowledge collaboration and creates a relaxed and smooth new work experience.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*OtXMRY6aDMUAAAAAAAAAAAAAARQnAQ)\n\n## Suitable for individuals and teams\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*RNUwSLLYRhMAAAAAAAAAAAAAARQnAQ)\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*u3WQS5XWTzsAAAAAAAAAAAAAARQnAQ)\n\n### Personal use case\n\n##### Personal notes\n\nRecording momentarily, managing information Conveniently, Accumulation knowledge deeply.\n\n##### Personal blog\n\nShare insights with the world, let knowledge create value.\n\n[Start to use](https://123yunpan.yuque.com/register)\n\n![](https://gw.alipayobjects.com/zos/bmw-prod/ebfac0c9-86db-4db4-a233-960882ba7cf6.svg)\n\n### Group usage scenarios\n\n##### Knowledge creation\n\nYuque self-developed professional editor, structured catalog management.\n\n##### Teamwork\n\nThrough real-time coordination of Yuque and asynchronous information discussion, enterprises or organizations can establish transparent and orderly team information sharing in Yuque, realize more orderly communication, and create rational and efficient team collaboration without interference.\n\n##### Security\n\nProvide secure access and detailed spatial log records such as global watermark, IP whitelist, export restriction, resignation authority recovery, etc., to make corporate information more secure。\n\n[Trial](https://123yunpan.yuque.com/r/organizations/new?mode=pro) [Learn more](https://123yunpan.yuque.com/about/organization)\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*IUHzQZbZ_E4AAAAAAAAAAAAAARQnAQ)\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*J1n5Sr2qh6sAAAAAAAAAAAAAARQnAQ)\n\n一个知识构建与分享工具\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*5CiSRraBRL0AAAAAAAAAAAAADvuFAQ/original)\n\n微信扫码加入社群\n\n加入语雀社群，获得更多信息，结交雀友\n\n| About Products | Support | About |\n| --- | --- | --- |\n| - [Core competence](https://123yunpan.yuque.com/about/products)<br>- [Product information](https://www.yuque.com/about/blog)<br>- [Group use](https://www.yuque.com/yuque/rvzzxz)<br>- [Customer cases](https://www.yuque.com/about/cases)<br>- [Pricing](https://123yunpan.yuque.com/about/price) | - [Help Center](https://123yunpan.yuque.com/about/help)<br>- [Security](https://123yunpan.yuque.com/about/security)<br>- [Terms](https://123yunpan.yuque.com/terms)<br>- [Developer](https://www.yuque.com/yuque/developer)<br>- [Feedback](https://www.yuque.com/feedbacks/new) | - [About](https://www.yuque.com/yuque/ng1qth/about)<br>- [Yuque Column Blog](https://123yunpan.yuque.com/about/blog)<br>- [Media reports](https://www.yuque.com/yuque/lpa7n6)<br>- [Contact us](https://www.yuque.com/yuque/qa/ca1gxp)<br>- [Join us](https://123yunpan.yuque.com/about/careers) |\n\n© 语雀  ICP证号： [合字B2-20200098](https://tsm.miit.gov.cn/dxxzsp/)ICP备案号： [浙ICP备14032978号-13](https://beian.miit.gov.cn/)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*56CJRLF0M2oAAAAAAAAAAAAADvuFAQ/original) [浙公网安备33010602012110](https://beian.mps.gov.cn/#/query/webSearch?code=33010602013485)",
+      "metadata": {
+        "title": "Yuque - Features",
+        "pagetype": "index",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "og:url": "https://123yunpan.yuque.com/about/products",
+        "og:title": "语雀产品功能 · 123云盘",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "ogUrl": "https://123yunpan.yuque.com/about/products",
+        "ogTitle": "语雀产品功能 · 123云盘",
+        "renderer": "webkit",
+        "pagename": "index",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:type": "webpage",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-5e58-720f-99aa-611c37f927ac",
+        "sourceURL": "https://123yunpan.yuque.com/about/products",
+        "url": "https://123yunpan.yuque.com/about/products",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "1c976d1b-0021-4318-8145-622c6f0bf89e",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2F123yunpan)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "renderer": "webkit",
+        "og:type": "webpage",
+        "pagetype": "new_session",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "language": "en",
+        "pagename": "new_session",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2F123yunpan",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2F123yunpan",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "title": "Log In · 123云盘",
+        "og:title": "Log In · 123云盘",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "ogTitle": "Log In · 123云盘",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-2dc4-7173-8cc5-68d152477058",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2F123yunpan",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2F123yunpan",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "1928eae9-f0ce-42d4-aa0b-2c0666217c20",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "常用主题： [什么是上传流量](https://www.yuque.com/go/doc/24014038)、 [能开发票吗](https://www.yuque.com/go/doc/32764224)、 [bug反馈和需求提交](https://www.yuque.com/feedbacks/new)、 [联系语雀](https://www.yuque.com/go/doc/24013999)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*oFvoSIzrvscAAAAAAAAAAAAADvuFAQ/original)\n\n[行业案例](https://www.yuque.com/about/blog)\n\n在这里可以获取更多语雀的消息，了解这个产品发生的变化\n\n[查看更多](https://www.yuque.com/about/blog)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*MI4pS5y_L4kAAAAAAAAAAAAADvuFAQ/original)\n\n[最新动态](https://www.yuque.com/yuque/changelog)\n\n所有升级和更新会更好地让你了解语雀的一点一滴\n\n[查看更多](https://www.yuque.com/yuque/changelog)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*5I8ZQ6NNeWUAAAAAAAAAAAAADvuFAQ/original)\n\n[问题反馈](https://123yunpan.yuque.com/feedbacks/new)\n\n在使用过程中，遇到任何问题或想法建议，都可以前往讨论区畅所欲言\n\n[查看更多](https://123yunpan.yuque.com/feedbacks/new)\n\n分类\n\n常见疑问\n\n基础能力\n\n知识库\n\n编辑器\n\n团队与空间\n\n小记\n\n客户端\n\n权益相关\n\n账户相关\n\n其它问题\n\n常见疑问 [查看更多](https://www.yuque.com/yuque/qa)\n\n[语雀是什么\\\\\n\\\\\n在这里可以了解的语雀的缘起、产品定位、使用场景、基本概念等内容](https://www.yuque.com/yuque/ng1qth/about)\n\n[收不到验证码\\\\\n\\\\\n若收不到验证码，可以按照以下部分进行排查](https://www.yuque.com/yuque/qa/sms-issue#dK8Lf)\n\n[如何联系语雀\\\\\n\\\\\n语雀会第一时间倾听你的需求和建议](https://www.yuque.com/yuque/qa/ca1gxp)\n\n[玩转语雀文档\\\\\n\\\\\n介绍语雀文档的基本能力和使用方式](https://www.yuque.com/yuque/ng1qth/iaxgag)\n\n[语雀中的权限设计\\\\\n\\\\\n对于语雀知识库，团队能力的等权限介绍](https://www.yuque.com/yuque/ng1qth/gxy3gk)\n\n[稻谷权益规则\\\\\n\\\\\n语雀稻谷的获取方式和兑换权益介绍](https://www.yuque.com/yuque/qa/gqcepg)\n\n[如何计算上传流量\\\\\n\\\\\n了解语雀流量的作用，以及流量超限如何获取](https://www.yuque.com/yuque/qa/ixiyhr)\n\n[如何使用兑换码\\\\\n\\\\\n语雀兑换码的获取规则介绍，以及如何使用](https://www.yuque.com/yuque/qa/kpdrnf)\n\n[在线申请发票\\\\\n\\\\\n可在这里了解购买会员或者空间后如何获取发票](https://www.yuque.com/yuque/qa/kaw2la)\n\n[常见空间人数问题\\\\\n\\\\\n对于语雀空间使用人数的上限介绍](https://www.yuque.com/yuque/qa/sxskaq)\n\n[是否可以提供合同\\\\\n\\\\\n语雀可为企业空间用户提供盖章版通用电子协议](https://www.yuque.com/yuque/qa/kqw77t)\n\n[新用户公开分享能力\\\\\n\\\\\n注册满 7 日的用户，将自动获得各项公开分享能力](https://www.yuque.com/yuque/qa/zsw0w0)\n\n[语雀数据安全\\\\\n\\\\\n了解语雀在数据安全上做的那些事情](https://www.yuque.com/yuque/ng1qth/safety)\n\n[常见支付问题\\\\\n\\\\\n了解空间、个人会员、空间等支付细节](https://www.yuque.com/yuque/qa/on3fgp)\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*J1n5Sr2qh6sAAAAAAAAAAAAAARQnAQ)\n\n一个知识构建与分享工具\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*5CiSRraBRL0AAAAAAAAAAAAADvuFAQ/original)\n\n微信扫码加入社群\n\n加入语雀社群，获得更多信息，结交雀友\n\n| About Products | Support | About |\n| --- | --- | --- |\n| - [Core competence](https://123yunpan.yuque.com/about/products)<br>- [Product information](https://www.yuque.com/about/blog)<br>- [Group use](https://www.yuque.com/yuque/rvzzxz)<br>- [Customer cases](https://www.yuque.com/about/cases)<br>- [Pricing](https://123yunpan.yuque.com/about/price) | - [Help Center](https://123yunpan.yuque.com/about/help)<br>- [Security](https://123yunpan.yuque.com/about/security)<br>- [Terms](https://123yunpan.yuque.com/terms)<br>- [Developer](https://www.yuque.com/yuque/developer)<br>- [Feedback](https://www.yuque.com/feedbacks/new) | - [About](https://www.yuque.com/yuque/ng1qth/about)<br>- [Yuque Column Blog](https://123yunpan.yuque.com/about/blog)<br>- [Media reports](https://www.yuque.com/yuque/lpa7n6)<br>- [Contact us](https://www.yuque.com/yuque/qa/ca1gxp)<br>- [Join us](https://123yunpan.yuque.com/about/careers) |\n\n© 语雀  ICP证号： [合字B2-20200098](https://tsm.miit.gov.cn/dxxzsp/)ICP备案号： [浙ICP备14032978号-13](https://beian.miit.gov.cn/)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*56CJRLF0M2oAAAAAAAAAAAAADvuFAQ/original) [浙公网安备33010602012110](https://beian.mps.gov.cn/#/query/webSearch?code=33010602013485)",
+      "metadata": {
+        "og:url": "https://123yunpan.yuque.com/about/help",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "ogUrl": "https://123yunpan.yuque.com/about/help",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "title": "Help · 123云盘",
+        "pagename": "index",
+        "renderer": "webkit",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:title": "语雀帮助 · 123云盘",
+        "og:type": "webpage",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "pagetype": "index",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogTitle": "语雀帮助 · 123云盘",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-5ea7-7779-87be-2d03d00358bc",
+        "sourceURL": "https://123yunpan.yuque.com/about/help",
+        "url": "https://123yunpan.yuque.com/about/help",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "cb6845bb-875e-49fb-88c8-770d4481c4ca",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "团队使用个人使用\n\n## 普通用户\n\n适合个人笔记用户，简单好用\n\n### 核心权益\n\n- 新建文稿数 100 篇/月\n- 小记功能\n- 文档功能\n- 知识库基础功能\n- 协作分享\n- 导入导出\n\n¥0/人/年\n\n[开始使用](https://123yunpan.yuque.com/login)\n\n## 专业会员\n\n适合笔记深度用户，构建你的数字花园\n\n### 核心权益\n\n- 普通用户所有权益\n- 无限文稿数\n- 最高 1500 知识库\n- 无限使用 AI 助手\n- 更多格式、更大附件\n- 安全等知识库高级功能\n- 互联网公开\n- 公开我的花园\n\n¥99/人/年\n\n[立即开通](https://123yunpan.yuque.com/dashboard?pay_source=index_price&mode=showpay&upgradeLevel=1)\n\n## 超级会员\n\n适合知识构建与分享的践行者，与朋友共同成长\n\n### 核心权益\n\n- 专业会员所有权益\n- 超大月度流量\n- 超大附件上传\n- 花园特色功能\n- 特色功能优先体验\n- 超级会员交流群\n\n¥299/人/年\n\n[立即开通](https://123yunpan.yuque.com/dashboard?pay_source=index_price&mode=showpay&upgradeLevel=2)\n\n## 个人权益详细对比\n\n普通用户\n\n专业会员\n\n超级会员\n\n用量\n\n文稿数\n\n100 篇/月\n\n无限\n\n无限\n\n知识库数\n\n100\n\n1500\n\n1500\n\nAI 助手使用次数\n\n100 次/天\n\n无限\n\n无限\n\n协作人数\n\n5 人\n\n50 人\n\n500 人\n\n月度流量\n\n1 GB\n\n10 GB\n\n50 GB\n\n单图片上传\n\n10 MB\n\n20 MB\n\n50 MB\n\n单附件上传\n\n30 MB\n\n500 MB\n\n2 GB\n\n单视频上传\n\n-\n\n500 MB\n\n2 GB\n\n功能\n\n小记功能\n\n文档功能\n\n导入导出\n\n附件上传格式\n\n基础格式\n\n音视频、压缩包等\n\n音视频、压缩包等\n\n附件嵌入查看\n\n-\n\n知识库基础功能\n\n安全等知识库高级功能\n\n-\n\n协作分享\n\n互联网公开\n\n-\n\n公开我的花园\n\n-\n\n智能翻译等基础特色功能\n\n-\n\n超级权益\n\n花园特色功能\n\n-\n\n-\n\n特色功能优先体验\n\n-\n\n-\n\n超级会员交流群\n\n-\n\n-\n\n[了解更多](https://www.yuque.com/yuque/ng1qth/member-privilege)\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*Iz4cTZZaL7MAAAAAAAAAAAAADvuFAQ/original)\n\n向非营利公益组织、教育机构、创业团队提供免费服务\n\n完成认证后，将免费获得旗舰版空间。\n\n[查看详情介绍](https://www.yuque.com/yuque/organizations/gf443f)\n\n## 常见问题\n\n1. [What is the rule for calculating the number of documents?](https://www.yuque.com/yuque/qa/doccount)\n2. [How is monthly traffic calculated?](https://www.yuque.com/yuque/qa/ixiyhr)\n3. [Which payment methods are supported?](https://www.yuque.com/yuque/qa/on3fgp)\n4. [How to get an invoice?](https://www.yuque.com/yuque/qa/kaw2la)\n5. [Whether to support overseas account payment?](https://www.yuque.com/yuque/qa/on3fgp#tzr7c)\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*J1n5Sr2qh6sAAAAAAAAAAAAAARQnAQ)\n\n一个知识构建与分享工具\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*5CiSRraBRL0AAAAAAAAAAAAADvuFAQ/original)\n\n微信扫码加入社群\n\n加入语雀社群，获得更多信息，结交雀友\n\n| About Products | Support | About |\n| --- | --- | --- |\n| - [Core competence](https://123yunpan.yuque.com/about/products)<br>- [Product information](https://www.yuque.com/about/blog)<br>- [Group use](https://www.yuque.com/yuque/rvzzxz)<br>- [Customer cases](https://www.yuque.com/about/cases)<br>- [Pricing](https://123yunpan.yuque.com/about/price) | - [Help Center](https://123yunpan.yuque.com/about/help)<br>- [Security](https://123yunpan.yuque.com/about/security)<br>- [Terms](https://123yunpan.yuque.com/terms)<br>- [Developer](https://www.yuque.com/yuque/developer)<br>- [Feedback](https://www.yuque.com/feedbacks/new) | - [About](https://www.yuque.com/yuque/ng1qth/about)<br>- [Yuque Column Blog](https://123yunpan.yuque.com/about/blog)<br>- [Media reports](https://www.yuque.com/yuque/lpa7n6)<br>- [Contact us](https://www.yuque.com/yuque/qa/ca1gxp)<br>- [Join us](https://123yunpan.yuque.com/about/careers) |\n\n© 语雀  ICP证号： [合字B2-20200098](https://tsm.miit.gov.cn/dxxzsp/)ICP备案号： [浙ICP备14032978号-13](https://beian.miit.gov.cn/)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*56CJRLF0M2oAAAAAAAAAAAAADvuFAQ/original) [浙公网安备33010602012110](https://beian.mps.gov.cn/#/query/webSearch?code=33010602013485)",
+      "metadata": {
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "title": "定价 · 语雀",
+        "og:url": "https://123yunpan.yuque.com/about/price",
+        "ogTitle": "语雀定价 · 123云盘",
+        "ogUrl": "https://123yunpan.yuque.com/about/price",
+        "renderer": "webkit",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagetype": "index",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "pagename": "index",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:type": "webpage",
+        "og:title": "语雀定价 · 123云盘",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-5e8a-772e-901e-3d4ee8285990",
+        "sourceURL": "https://123yunpan.yuque.com/about/price",
+        "url": "https://123yunpan.yuque.com/about/price",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "3ed5e2c8-83ad-4116-8ee2-c8857b83fbdb",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*4E27Q4kJl50AAAAAAAAAAAAAARQnAQ)**数字花园的前世今生**](https://www.yuque.com/yuque/blog/blgsdc)\n\n1998年，是万维网诞生的第十个年头，各种奇奇怪怪的网站都如雨后春笋般出现。有个人在研究了一番互联网之后，指着那些网页和超链接说，这不就是花园吗？于是，他建立了一个网站：超文本花园，阐述互联网和花园的相似之处。24年后，我们仍然可以访问它。而这，就是花园第一次和互联网联系在一起，这也就是今天我们所要讲的「数字花园」。\n\n[了解更多](https://123yunpan.yuque.com/go/book/103555)\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*J1n5Sr2qh6sAAAAAAAAAAAAAARQnAQ)\n\n一个知识构建与分享工具\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*5CiSRraBRL0AAAAAAAAAAAAADvuFAQ/original)\n\n微信扫码加入社群\n\n加入语雀社群，获得更多信息，结交雀友\n\n| About Products | Support | About |\n| --- | --- | --- |\n| - [Core competence](https://123yunpan.yuque.com/about/products)<br>- [Product information](https://www.yuque.com/about/blog)<br>- [Group use](https://www.yuque.com/yuque/rvzzxz)<br>- [Customer cases](https://www.yuque.com/about/cases)<br>- [Pricing](https://123yunpan.yuque.com/about/price) | - [Help Center](https://123yunpan.yuque.com/about/help)<br>- [Security](https://123yunpan.yuque.com/about/security)<br>- [Terms](https://123yunpan.yuque.com/terms)<br>- [Developer](https://www.yuque.com/yuque/developer)<br>- [Feedback](https://www.yuque.com/feedbacks/new) | - [About](https://www.yuque.com/yuque/ng1qth/about)<br>- [Yuque Column Blog](https://123yunpan.yuque.com/about/blog)<br>- [Media reports](https://www.yuque.com/yuque/lpa7n6)<br>- [Contact us](https://www.yuque.com/yuque/qa/ca1gxp)<br>- [Join us](https://123yunpan.yuque.com/about/careers) |\n\n© 语雀  ICP证号： [合字B2-20200098](https://tsm.miit.gov.cn/dxxzsp/)ICP备案号： [浙ICP备14032978号-13](https://beian.miit.gov.cn/)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*56CJRLF0M2oAAAAAAAAAAAAADvuFAQ/original) [浙公网安备33010602012110](https://beian.mps.gov.cn/#/query/webSearch?code=33010602013485)\n\nNot Found",
+      "metadata": {
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogTitle": "语雀，为每一个人提供优秀的文档和知识库工具 · 123云盘",
+        "pagetype": "index",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "renderer": "webkit",
+        "ogUrl": "https://123yunpan.yuque.com/about/blog",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:title": "语雀，为每一个人提供优秀的文档和知识库工具 · 123云盘",
+        "title": "Blog · 123云盘",
+        "og:url": "https://123yunpan.yuque.com/about/blog",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "og:type": "webpage",
+        "pagename": "index",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-5ee9-71dc-b349-21a643f658d3",
+        "sourceURL": "https://123yunpan.yuque.com/about/blog",
+        "url": "https://123yunpan.yuque.com/about/blog",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "ebf308bc-ed80-4be4-b6e1-09d1f4d20cb5",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "## 我们正在塑造\n\n# 新一代知识构建与分享工具\n\n### 孵化自蚂蚁集团，希望服务更多个体以及团队\n\n「语雀」是蚂蚁集团旗下的 **文档与知识库工具**，源自蚂蚁集团和阿里巴巴内部文档协同需求，2018年1月8日正式对外提供服务，现已服务于数十万企业组织和数百万个人用户。\n\n语雀诞生伊始，只是希望能给工程师提供一个好用的工具用来写技术文档，但在产品研发的过程中，我们发现其实身边的每个人、每个团队都有很多知识，但一直以来缺少一个好用的工具，让这些知识不只是留在每个人的大脑或电脑里，还可以被方便地记录、分享和交流。\n\n带着这颗初心，我们觉得语雀不应止步于服务工程师，应该致力于为每个人和团队提供一款顺手的工具，让知识能得以记录、沉淀和交流，让人们可以在「语雀」中平等快乐地创作和交流知识。\n\n我们希望每一个人和团队，可以将自己的学习、记录、思考和创作，有机的整合在一起，形成有生命力的独特景观， **让再小的个体也可以拥有自己的数字花园**。\n\n认识下有爱的我们吧![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*MFdKSYkz0m8AAAAAAAAAAAAADvuFAQ/original)\n\n语雀团队秉承简单自由有爱的文化。简单的背后是专业，足够专业才能让事情变简单。自由的背后是责任，我们崇尚自由，同时必须要有对产品和用户的责任与担当。\n\n![team](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*Zad3TLQSccsAAAAAAAAAAAAADvuFAQ/original)\n\n“\n\n##### 这里有一群性格各异，却又有着共同特点的人\n\n#### 眼里有光\n\n心中有热爱、有理想、有憧憬、有信念、有朝气、有坚持，眼里才有光芒。\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*7FSMTqhYjvwAAAAAAAAAAAAADvuFAQ/original)\n\n#### 乐于分享\n\n心中有热爱、有理想、有憧憬、有信念、有朝气、有坚持，眼里才有光芒。\n\n#### 长期主义\n\n团队花了大量精力做最底层的文档引擎和编辑器，是为了走得更长远。\n\n#### 快乐工作\n\n快乐工作不是一句空话，我们鼓励更多元化的人才发展，让每个人脸上有笑容。\n\n语雀的产品原则\n\n- ###### 1\\. 安全可信任\n\n\n数据安全、隐私保护、服务稳定是语雀的生命线。语雀上的文档都是用户的知识财富，我们作为系统需要给用户提供足够的安全感，保证数据的安全，保护用户的隐私。\n\n- ###### 2\\. 与用户一起成长\n\n\n以人为本，与用户交朋友，在共创中一起成长。产品和用户是平等的关系，在和用户的交流互动中，产品能够更好的成长，同时也能为用户提供更多的价值。\n\n- ###### 3\\. 平静创作，愉悦交流\n\n\n自然与舒适是语雀对用户体验的追求，顺应每一个人的潜意识，轻松愉悦地完成知识创作、沉淀和消费。\n\n\n我们需要你的加入\n\n1. [产品经理](https://www.yuque.com/yuque/careers/jobs#8bd26af8)\n2. [产品设计师](https://www.yuque.com/yuque/jobs/hqgkkh#ab4e36cd)\n3. [品牌创意设计师](https://www.yuque.com/yuque/jobs/hqgkkh#R1O5Y)\n4. [全栈工程师](https://www.yuque.com/yuque/jobs/hqgkkh#f263cb88)\n5. [编辑器工程师](https://www.yuque.com/yuque/jobs/hqgkkh#xuw4H)\n6. [客户端应用研发工程师](https://www.yuque.com/yuque/jobs/hqgkkh#697nS)\n7. [Java 工程师](https://www.yuque.com/yuque/jobs/hqgkkh#uncEi)\n8. [综合运营](https://www.yuque.com/yuque/jobs/hqgkkh#fkJ2f)\n9. [内容安全策略运营](https://www.yuque.com/yuque/jobs/hqgkkh#WOTTP)\n\n语雀的天空\n\n[了解更多](https://123yunpan.yuque.com/go/book/103555)\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*J1n5Sr2qh6sAAAAAAAAAAAAAARQnAQ)\n\n一个知识构建与分享工具\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*5CiSRraBRL0AAAAAAAAAAAAADvuFAQ/original)\n\n微信扫码加入社群\n\n加入语雀社群，获得更多信息，结交雀友\n\n| About Products | Support | About |\n| --- | --- | --- |\n| - [Core competence](https://123yunpan.yuque.com/about/products)<br>- [Product information](https://www.yuque.com/about/blog)<br>- [Group use](https://www.yuque.com/yuque/rvzzxz)<br>- [Customer cases](https://www.yuque.com/about/cases)<br>- [Pricing](https://123yunpan.yuque.com/about/price) | - [Help Center](https://123yunpan.yuque.com/about/help)<br>- [Security](https://123yunpan.yuque.com/about/security)<br>- [Terms](https://123yunpan.yuque.com/terms)<br>- [Developer](https://www.yuque.com/yuque/developer)<br>- [Feedback](https://www.yuque.com/feedbacks/new) | - [About](https://www.yuque.com/yuque/ng1qth/about)<br>- [Yuque Column Blog](https://123yunpan.yuque.com/about/blog)<br>- [Media reports](https://www.yuque.com/yuque/lpa7n6)<br>- [Contact us](https://www.yuque.com/yuque/qa/ca1gxp)<br>- [Join us](https://123yunpan.yuque.com/about/careers) |\n\n© 语雀  ICP证号： [合字B2-20200098](https://tsm.miit.gov.cn/dxxzsp/)ICP备案号： [浙ICP备14032978号-13](https://beian.miit.gov.cn/)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*56CJRLF0M2oAAAAAAAAAAAAADvuFAQ/original) [浙公网安备33010602012110](https://beian.mps.gov.cn/#/query/webSearch?code=33010602013485)\n\nNot Found",
+      "metadata": {
+        "pagename": "index",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:title": "语雀招聘 · 123云盘",
+        "og:type": "webpage",
+        "renderer": "webkit",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "title": "关于我们 · 123云盘",
+        "ogUrl": "https://123yunpan.yuque.com/about/careers",
+        "ogTitle": "语雀招聘 · 123云盘",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "pagetype": "index",
+        "og:url": "https://123yunpan.yuque.com/about/careers",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-5f08-71d1-932c-3bae2b6ab6b7",
+        "sourceURL": "https://123yunpan.yuque.com/about/careers",
+        "url": "https://123yunpan.yuque.com/about/careers",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "f441bcf5-6094-478d-98e2-62241084d33f",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "pagename": "new_session",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:url": "https://123yunpan.yuque.com/login?register_from=official_website_groups",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "pagetype": "new_session",
+        "og:type": "webpage",
+        "ogUrl": "https://123yunpan.yuque.com/login?register_from=official_website_groups",
+        "language": "en",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "renderer": "webkit",
+        "og:title": "Log In · 123云盘",
+        "ogTitle": "Log In · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "title": "Log In · 123云盘",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-f4c9-7652-b87c-57243eb09287",
+        "sourceURL": "https://123yunpan.yuque.com/login?register_from=official_website_groups",
+        "url": "https://123yunpan.yuque.com/login?register_from=official_website_groups",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "85478ee8-f39f-4042-9661-8557e89e1005",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:title": "Log In · 123云盘",
+        "renderer": "webkit",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "pagetype": "new_session",
+        "og:type": "webpage",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "pagename": "new_session",
+        "ogTitle": "Log In · 123云盘",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "language": "en",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "title": "Log In · 123云盘",
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d12-4071-72bd-922b-a38c2347eed5",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "8124b255-51a1-4515-876b-6bb48af92e98",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*5c0bQJVIDJwAAAAAAAAAAAAAARQnAQ)![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*aO4ETK9AqacAAAAAAAAAAAAAARQnAQ)\n\n# Future-oriented organization\n\n# Facilitate knowledge collaboration\n\nA new generation of document and knowledge collaboration tools to make collaboration more efficient and create a relaxed and smooth work experience.\n\n[Trial](https://123yunpan.yuque.com/r/organizations/new?mode=pro)\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*6c4ITowL43cAAAAAAAAAAAAAARQnAQ)\n\n## Core competence\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*B-bdRJfvZPgAAAAAAAAAAAAAARQnAQ)\n\n##### Structured knowledge precipitation\n\nThe book structure, with multiple product matrices such as tables, board, presentations, etc., allows each enterprise to accumulate, organize, and classify information to form a concise and systematic enterprise book to help enterprises in information management.\n\n##### Efficient knowledge collaboration\n\nThrough the form of real-time collaboration and asynchronous information discussion, transparent and orderly team information sharing can be established, rationality does not interfere, and more orderly communication can be achieved, allowing organization members or business partners to complete collaboration more efficiently.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*m71wTIrciPoAAAAAAAAAAAAAARQnAQ)\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*BFAlQaK1PW4AAAAAAAAAAAAAARQnAQ)\n\n##### Strong security protection\n\nBased on Ant Group's years of security technology accumulation, Yuque has obtained multiple security qualification certifications at home and abroad, providing global watermarks, IP whitelists, export restrictions, resignation permissions and other secure access and detailed spatial log records to make corporate information more secure. [Learn more](https://123yunpan.yuque.com/about/security)\n\n## Application scenarios\n\nProject collaboration\n\nTeam documents\n\nProduct Manual\n\nGroup management\n\nCultural development\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*L79HSbSpf0YAAAAAAAAAAAAAARQnAQ)\n\n##### Project collaboration\n\nProject related personnel can easily insert pictures, tables, boardxz, design drafts, calendars and other content cards in the Yuque document to efficiently complete the writing of project documents. At the same time, you can share with project team members with one click and invite them to view, write or comment together. With flexible authority management, intra-team and cross-team collaboration can also be completed safely and efficiently.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*8X3ZTIN4iTEAAAAAAAAAAAAAARQnAQ)\n\n##### Team documents\n\nYou can use Yuque to accumulate team knowledge, share team experience through the organization of different knowledge bases and exchange of information between teams, and customize group homepages, discussion areas and other functions to build group blogs for external publicity and expand influence And recruitment window.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*OemjQbUR5icAAAAAAAAAAAAAARQnAQ)\n\n##### Product Manual\n\nThrough the feature structured catalog function of Yuque Book, it is possible to compile clear and easy-to-read product manuals, instructions for use or help documents to help the accurate and effective transmission of information. At the same time, the personalized layout of the Yuque catalog allows the product to show different catalog styles according to its own style to meet the needs of enterprises. At the same time, the product design with separate reading and writing can ensure that the information is updated in time without affecting users' reading.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*A1eCSa-9Q7oAAAAAAAAAAAAAARQnAQ)\n\n##### Group management\n\nAdministrators can customize the group homepage, organization announcements and other modules to create various forms and design interesting information notification sections, publish or guide employees to read important internal documents: such as employee manuals, rules and regulations, company activities, learning materials, etc., to promote Communication of important company information.\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*iJlCRpElEygAAAAAAAAAAAAAARQnAQ)\n\n##### Cultural development\n\nYuque’s support for multimedia files and flexible and convenient topic management allows companies to record team culture construction and organizational development through various forms such as document book, resource knowledge book, drawing board book, etc., through the group discussion area and topic knowledge The library promotes communication within the team.\n\n## Customer cases\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*qn1AT6Ph-N8AAAAAAAAAAAAAARQnAQ)Xinhua Zhiyun\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*XiuERbWo7m8AAAAAAAAAAAAAARQnAQ)XiaoBaoOnline\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*q5zLTJ6H5XUAAAAAAAAAAAAAARQnAQ)Craiditx\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*jGpsSIsDm4sAAAAAAAAAAAAAARQnAQ)Zhejiang University\n\nZhejiang University\n\nYuque helped Zhejiang University to establish a school-wide knowledge sharing platform. Under this unified management model, Yuque’s \"multi-layer data encryption\", \"IP whitelist\", and \"authority settings\" can be used to ensure data security through the platform. The security management and sharing authorization and other methods make confidential information more secure, and make public information more transparent. While increasing the resource sharing rate, firmly keep the red line of intellectual property and scientific research security.\n\nXinhua Zhiyun\n\nDuring the trial, Yuque really surprised us. Unlike other products we have used before, Yuque is easy to use and it is powerful. At first, it was only used by the technical and product team to write documents and manage projects. It has been gradually extended to other functional departments, including HR, administration, and operations. Now almost everyone in Xinhua Zhiyun uses Yuque.\n\nXiaoBaoOnline\n\nMany features of Yuque solved our pain points at XiaobaoOnline. For example the \"translation\" feature helped us a lot. XiaobaoOnline serves many international schools and a large number of our documents need to provide a English version. With the help of the \"translation\" feature, everyone in the team can collaborate in the same document and focus on the content. Yuque takes care of the work of translation. It drastically facilitates the communication between different team members.\n\nCraiditx\n\nUsing Yuque, we have built various knowledge base for each department to record their work and knowledge. Meanwhile, we can collaborate the same document in real time and share it with others. We even start to streamline several work processes using yuque such as daily stand-ups, projects managements, and team retrospectives.\n\nZhejiang University\n\nYuque helped Zhejiang University to establish a school-wide knowledge sharing platform. Under this unified management model, Yuque’s \"multi-layer data encryption\", \"IP whitelist\", and \"authority settings\" can be used to ensure data security through the platform. The security management and sharing authorization and other methods make confidential information more secure, and make public information more transparent. While increasing the resource sharing rate, firmly keep the red line of intellectual property and scientific research security.\n\nXinhua Zhiyun\n\nDuring the trial, Yuque really surprised us. Unlike other products we have used before, Yuque is easy to use and it is powerful. At first, it was only used by the technical and product team to write documents and manage projects. It has been gradually extended to other functional departments, including HR, administration, and operations. Now almost everyone in Xinhua Zhiyun uses Yuque.\n\nXiaoBaoOnline\n\nMany features of Yuque solved our pain points at XiaobaoOnline. For example the \"translation\" feature helped us a lot. XiaobaoOnline serves many international schools and a large number of our documents need to provide a English version. With the help of the \"translation\" feature, everyone in the team can collaborate in the same document and focus on the content. Yuque takes care of the work of translation. It drastically facilitates the communication between different team members.\n\nCraiditx\n\nUsing Yuque, we have built various knowledge base for each department to record their work and knowledge. Meanwhile, we can collaborate the same document in real time and share it with others. We even start to streamline several work processes using yuque such as daily stand-ups, projects managements, and team retrospectives.\n\nZhejiang University\n\nYuque helped Zhejiang University to establish a school-wide knowledge sharing platform. Under this unified management model, Yuque’s \"multi-layer data encryption\", \"IP whitelist\", and \"authority settings\" can be used to ensure data security through the platform. The security management and sharing authorization and other methods make confidential information more secure, and make public information more transparent. While increasing the resource sharing rate, firmly keep the red line of intellectual property and scientific research security.\n\n## Join the growing community at Yuque\n\n![](https://gw.alipayobjects.com/mdn/prod_resou/afts/img/A*oWGtR52GUfwAAAAAAAAAAAAAARQnAQ)\n\n## Yuque organization, empowers corporate knowledge collaboration.\n\nA new generation of document and knowledge collaboration tools to make collaboration more efficient and create a relaxed and smooth work experience.\n\n[Trial](https://123yunpan.yuque.com/r/organizations/new?mode=pro)\n\n![](https://gw.alipayobjects.com/mdn/rms_ee84bf/afts/img/A*J1n5Sr2qh6sAAAAAAAAAAAAAARQnAQ)\n\n一个知识构建与分享工具\n\n![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*5CiSRraBRL0AAAAAAAAAAAAADvuFAQ/original)\n\n微信扫码加入社群\n\n加入语雀社群，获得更多信息，结交雀友\n\n| About Products | Support | About |\n| --- | --- | --- |\n| - [Core competence](https://123yunpan.yuque.com/about/products)<br>- [Product information](https://www.yuque.com/about/blog)<br>- [Group use](https://www.yuque.com/yuque/rvzzxz)<br>- [Customer cases](https://www.yuque.com/about/cases)<br>- [Pricing](https://123yunpan.yuque.com/about/price) | - [Help Center](https://123yunpan.yuque.com/about/help)<br>- [Security](https://123yunpan.yuque.com/about/security)<br>- [Terms](https://123yunpan.yuque.com/terms)<br>- [Developer](https://www.yuque.com/yuque/developer)<br>- [Feedback](https://www.yuque.com/feedbacks/new) | - [About](https://www.yuque.com/yuque/ng1qth/about)<br>- [Yuque Column Blog](https://123yunpan.yuque.com/about/blog)<br>- [Media reports](https://www.yuque.com/yuque/lpa7n6)<br>- [Contact us](https://www.yuque.com/yuque/qa/ca1gxp)<br>- [Join us](https://123yunpan.yuque.com/about/careers) |\n\n© 语雀  ICP证号： [合字B2-20200098](https://tsm.miit.gov.cn/dxxzsp/)ICP备案号： [浙ICP备14032978号-13](https://beian.miit.gov.cn/)![](https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*56CJRLF0M2oAAAAAAAAAAAAADvuFAQ/original) [浙公网安备33010602012110](https://beian.mps.gov.cn/#/query/webSearch?code=33010602013485)",
+      "metadata": {
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagename": "index",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:title": "语雀空间 - 助力企业知识管理 · 123云盘",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "title": "Yuque Organization - empowers corporate knowledge management.",
+        "ogUrl": "https://123yunpan.yuque.com/about/organization",
+        "og:type": "webpage",
+        "og:url": "https://123yunpan.yuque.com/about/organization",
+        "renderer": "webkit",
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "ogTitle": "语雀空间 - 助力企业知识管理 · 123云盘",
+        "pagetype": "index",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d13-265c-7111-af7f-421ec71aed02",
+        "sourceURL": "https://123yunpan.yuque.com/about/organization",
+        "url": "https://123yunpan.yuque.com/about/organization",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "c7391a31-c20f-44a4-a3f5-3b2d2ab4f49e",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "pagetype": "new_session",
+        "ogTitle": "Log In · 123云盘",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:url": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price%26mode%3Dshowpay%26upgradeLevel%3D2",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagename": "new_session",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "language": "en",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "og:type": "webpage",
+        "og:title": "Log In · 123云盘",
+        "ogUrl": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price%26mode%3Dshowpay%26upgradeLevel%3D2",
+        "renderer": "webkit",
+        "title": "Log In · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d13-3982-7088-98e9-5fbdbe27f2af",
+        "sourceURL": "https://123yunpan.yuque.com/dashboard?pay_source=index_price&mode=showpay&upgradeLevel=2",
+        "url": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price%26mode%3Dshowpay%26upgradeLevel%3D2",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "7aa7c067-35e2-4029-854a-fe404c010d7b",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems",
+      "metadata": {
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "og:title": "Log In · 123云盘",
+        "title": "Log In · 123云盘",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:type": "webpage",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "renderer": "webkit",
+        "ogTitle": "Log In · 123云盘",
+        "pagetype": "new_session",
+        "ogUrl": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price%26mode%3Dshowpay%26upgradeLevel%3D1",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+        "og:url": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price%26mode%3Dshowpay%26upgradeLevel%3D1",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "pagename": "new_session",
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d13-3941-730b-a0c1-d142ebcf2b80",
+        "sourceURL": "https://123yunpan.yuque.com/dashboard?pay_source=index_price&mode=showpay&upgradeLevel=1",
+        "url": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price%26mode%3Dshowpay%26upgradeLevel%3D1",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "1504aee9-a0c2-4262-9130-fab5640941c7",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Ffeedbacks%2Fnew)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "og:url": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Ffeedbacks%2Fnew",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "pagename": "new_session",
+        "title": "Log In · 123云盘",
+        "ogTitle": "Log In · 123云盘",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:type": "webpage",
+        "og:title": "Log In · 123云盘",
+        "language": "en",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "ogUrl": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Ffeedbacks%2Fnew",
+        "pagetype": "new_session",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "renderer": "webkit",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d13-3997-75fd-b172-14fdddc95d2c",
+        "sourceURL": "https://123yunpan.yuque.com/feedbacks/new",
+        "url": "https://123yunpan.yuque.com/login?org=123yunpan&goto=https%3A%2F%2F123yunpan.yuque.com%2Ffeedbacks%2Fnew",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "f2864eaf-cfe4-4c5c-8a77-2fdeb3af9409",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price",
+        "title": "Log In · 123云盘",
+        "renderer": "webkit",
+        "og:title": "Log In · 123云盘",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:type": "webpage",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "language": "en",
+        "pagename": "new_session",
+        "pagetype": "new_session",
+        "ogTitle": "Log In · 123云盘",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d13-dd0a-7600-a4eb-754db3da7e91",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Fdashboard%3Fpay_source%3Dindex_price",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "8edc40f6-b1c2-421d-83b1-cacdbb49bd1c",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    },
+    {
+      "markdown": "[![](https://cdn.nlark.com/yuque/0/2023/png/39215739/1697095421529-avatar/0305d093-2687-4529-834f-505f11f1ac50.png?x-oss-process=image%2Fresize%2Cm_fill%2Cw_124%2Ch_124%2Fformat%2Cpng)123云盘](https://123yunpan.yuque.com/about)\n\n+86\n\n请按住滑块，拖动到最右边\n\nGet code\n\nLogin / Register\n\nI have read and agreed Yuque [服务协议](https://www.yuque.com/terms) and [隐私权政策](https://app.nlark.com/mobile-app/pages/privacy-policy.html)\n\nOther login\n\nPassword\n\n[Retrieve password](https://123yunpan.yuque.com/password_reset)\n\n[Sign up](https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Ffeedbacks%2Fnew)\n\n[Encounter problems](https://www.yuque.com/yuque/cdgcvd/xt7yg8)\n\n中文 / English\n\nEncounter problems\n\n九色鹿",
+      "metadata": {
+        "og:type": "webpage",
+        "ogImage": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "pagename": "new_session",
+        "ogUrl": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Ffeedbacks%2Fnew",
+        "ogDescription": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:title": "Log In · 123云盘",
+        "ogTitle": "Log In · 123云盘",
+        "description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "og:description": "十万阿里人都在用的笔记与文档知识库，面向企业、组织或个人，提供全新的体系化知识管理，打造轻松流畅的工作协同。金融级数据安全、丰富的应用场景、强大的知识创作与管理，助力企业、个人轻松拥有云端知识库",
+        "pagetype": "new_session",
+        "language": "en",
+        "robots": [
+          "noindex",
+          "nofollow"
+        ],
+        "og:url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Ffeedbacks%2Fnew",
+        "renderer": "webkit",
+        "og:image": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "viewport": [
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+          "width=device-width, initial-scale=1.0"
+        ],
+        "title": "Log In · 123云盘",
+        "theme-color": [
+          "black",
+          "#E7E9E8"
+        ],
+        "favicon": "https://mdn.alipayobjects.com/huamei_0prmtq/afts/img/A*sRUdR543RjcAAAAAAAAAAAAADvuFAQ/original",
+        "scrapeId": "019e8d13-f74d-74e9-9421-4a0f7c3fa43a",
+        "sourceURL": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Ffeedbacks%2Fnew",
+        "url": "https://123yunpan.yuque.com/login?goto=https%3A%2F%2F123yunpan.yuque.com%2Ffeedbacks%2Fnew",
+        "statusCode": 200,
+        "contentType": "text/html; charset=utf-8",
+        "timezone": "America/New_York",
+        "proxyUsed": "basic",
+        "cacheState": "miss",
+        "indexId": "f67ca046-b455-4057-8f5f-8a72efa7bd6d",
+        "creditsUsed": 1
+      },
+      "warning": "This scrape job was throttled at your current concurrency limit. If you'd like to scrape faster, you can upgrade your plan."
+    }
+  ]
+}

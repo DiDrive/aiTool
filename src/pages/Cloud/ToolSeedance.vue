@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Dialog } from "../../lib/dialog";
 import {
@@ -46,6 +46,8 @@ const assets = ref<SeedanceAsset[]>([]);
 const mentionAssetIds = ref<string[]>([]);
 const assetPickerVisible = ref(false);
 const assetPickerKeyword = ref("");
+const promptTextareaRef = ref<any>(null);
+const mentionRange = ref<{ start: number; end: number } | null>(null);
 
 const modeOptions: Array<{ label: string; value: CreationMode; desc: string }> = [
     { label: "首尾帧", value: "frames", desc: "控制开始和结束画面" },
@@ -228,10 +230,19 @@ const openMentionPicker = () => {
     assetPickerVisible.value = true;
 };
 
-const showMentionPickerFromPrompt = () => {
-    const match = prompt.value.match(/(^|\s)@([^\s@]*)$/);
+const getPromptTextarea = () => {
+    return promptTextareaRef.value?.$el?.querySelector?.("textarea") as HTMLTextAreaElement | null;
+};
+
+const syncMentionPicker = async () => {
+    await nextTick();
+    const textarea = getPromptTextarea();
+    const cursor = typeof textarea?.selectionStart === "number" ? textarea.selectionStart : prompt.value.length;
+    const beforeCursor = prompt.value.slice(0, cursor);
+    const match = beforeCursor.match(/@([^\s@]*)$/);
     assetPickerVisible.value = Boolean(match && mentionAssets.value.length);
-    assetPickerKeyword.value = match?.[2] || "";
+    assetPickerKeyword.value = match?.[1] || "";
+    mentionRange.value = match ? { start: cursor - match[0].length, end: cursor } : null;
     mentionAssetIds.value = mentionAssetIds.value.filter(id => {
         const asset = mentionAssets.value.find(item => item.id === id);
         if (!asset) {
@@ -241,17 +252,31 @@ const showMentionPickerFromPrompt = () => {
     });
 };
 
-watch(prompt, showMentionPickerFromPrompt);
+watch(prompt, syncMentionPicker);
 
 const selectMentionAsset = (asset: MentionAsset) => {
     const token = mentionTokenOf(asset);
-    const prefix = prompt.value.replace(/(^|\s)@([^\s@]*)$/, "$1").trimEnd();
-    prompt.value = `${prefix}${prefix ? " " : ""}${token} `;
+    const range = mentionRange.value;
+    if (range) {
+        const prefix = prompt.value.slice(0, range.start).trimEnd();
+        const suffix = prompt.value.slice(range.end).trimStart();
+        prompt.value = `${prefix}${prefix ? " " : ""}${token} ${suffix}`.trimEnd();
+    } else {
+        prompt.value = `${prompt.value.trimEnd()}${prompt.value.trim() ? " " : ""}${token} `;
+    }
     if (!mentionAssetIds.value.includes(asset.id)) {
         mentionAssetIds.value.push(asset.id);
     }
     assetPickerVisible.value = false;
     assetPickerKeyword.value = "";
+    mentionRange.value = null;
+};
+
+const hideMentionPickerLater = () => {
+    window.setTimeout(() => {
+        assetPickerVisible.value = false;
+        mentionRange.value = null;
+    }, 120);
 };
 
 const removeMentionToken = (asset: MentionAsset) => {
@@ -312,6 +337,19 @@ const submit = async () => {
         Dialog.tipError("请输入提示词或添加参考素材");
         return;
     }
+    const localVideoAsset = assets.value.find(item => {
+        return item.type === "video" && item.url.trim() && !/^https?:\/\//i.test(item.url.trim()) && !/^asset:\/\//i.test(item.url.trim());
+    });
+    const relayEnabled = Boolean(
+        platform.content.directFileRelay?.enabled &&
+            String(platform.content.directFileRelay?.clientID || "").trim() &&
+            String(platform.content.directFileRelay?.clientSecret || "").trim() &&
+            String(platform.content.directFileRelay?.parentFileID || "").trim()
+    );
+    if (localVideoAsset && !relayEnabled) {
+        Dialog.tipError("视频参考当前需要先上传到可访问的文件服务；图片和音频会自动转成 Base64 提交");
+        return;
+    }
     const body: any = {
         model: model.value,
         content,
@@ -334,6 +372,8 @@ const submit = async () => {
         templateType: "custom-api",
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
+        proxyUrl: platform.content.proxyUrl || "",
+        directFileRelay: platform.content.directFileRelay,
         submitPath: "/api/v3/contents/generations/tasks",
         queryPath: "/api/v3/contents/generations/tasks/{id}",
         requestBodyJson: JSON.stringify(body, null, 2),
@@ -543,10 +583,15 @@ const submit = async () => {
                         <button class="h-8 w-8 rounded-full bg-white text-lg text-gray-500 shadow-sm hover:text-blue-600" type="button" @click="openMentionPicker">+</button>
                     </div>
                     <a-textarea
+                        ref="promptTextareaRef"
                         v-model="prompt"
                         :auto-size="{ minRows: 2, maxRows: 5 }"
                         placeholder="描述画面、角色、动作和镜头。输入 @ 选择已上传素材。"
-                        @blur="assetPickerVisible = false"
+                        @input="syncMentionPicker"
+                        @keyup="syncMentionPicker"
+                        @click="syncMentionPicker"
+                        @focus="syncMentionPicker"
+                        @blur="hideMentionPickerLater"
                     />
                 </div>
             </div>

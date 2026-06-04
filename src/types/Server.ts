@@ -55,3 +55,16 @@ export type ServerRuntime = {
     startTimestampMS?: number;
     eventChannelName?: string;
 };
+
+export type ServerInfo = {
+    type: EnumServerType;
+    localPath: string;
+    name: string;
+    version: string;
+    setting: {
+        [key: string]: any;
+    };
+    logFile: string;
+    eventChannelName: string;
+    config: any;
+};

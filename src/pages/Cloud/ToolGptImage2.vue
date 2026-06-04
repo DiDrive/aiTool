@@ -158,6 +158,7 @@ const submit = async () => {
         templateType: "custom-api",
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
+        proxyUrl: platform.content.proxyUrl || "",
         submitPath: isEdit ? "/v1/images/edits" : "/v1/images/generations",
         queryPath: "",
         requestBodyJson: JSON.stringify(body, null, 2),

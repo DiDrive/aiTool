@@ -83,6 +83,7 @@ const maybeUploadNodeAssets = async (
     apiBaseUrl: string,
     apiKey: string,
     connectorType: RunningHubConnectorType,
+    proxyUrl: string,
     nodeInfoList: Array<Record<string, any>>
 ) => {
     if (connectorType === "model-api") {
@@ -109,6 +110,7 @@ const maybeUploadNodeAssets = async (
                 apiKey,
                 filePath,
                 fileType: "input",
+                proxyUrl,
             });
             if (uploadRes?.code) {
                 throw new Error(uploadRes?.msg || `素材上传失败：${filePath}`);
@@ -152,6 +154,7 @@ const createPreparedPayload = async (modelConfig: RunningHubModelConfigType) => 
         apiBaseUrl,
         modelConfig.apiKey,
         connectorType,
+        modelConfig.proxyUrl || "",
         nodeInfoList
     );
     return {
@@ -201,16 +204,21 @@ const extractRemoteResultUrls = (remoteResults: any[]) => {
 };
 
 const normalizeDirectApiResults = (res: any) => {
-    const dataList = Array.isArray(res?.data)
-        ? res.data
-        : Array.isArray(res?.data?.data)
-          ? res.data.data
-          : [];
-    if (dataList.length > 0) {
-        return dataList
+    const candidates = [
+        res?.data,
+        res?.data?.data,
+        res?.result?.data,
+        res?.data?.result?.data,
+        res?.output,
+        res?.outputs,
+        res?.result?.output,
+    ];
+    for (const candidate of candidates) {
+        const dataList = Array.isArray(candidate) ? candidate : [];
+        const imageResults = dataList
             .map((item: any) => {
-                const url = String(item?.url || item?.fileUrl || "").trim();
-                const b64 = String(item?.b64_json || "").trim();
+                const url = String(item?.url || item?.fileUrl || item?.image_url || item?.imageUrl || "").trim();
+                const b64 = String(item?.b64_json || item?.base64 || item?.image_base64 || "").trim();
                 if (url) {
                     return { url, fileUrl: url, outputType: "image" };
                 }
@@ -220,14 +228,43 @@ const normalizeDirectApiResults = (res: any) => {
                 return null;
             })
             .filter(Boolean);
+        if (imageResults.length > 0) {
+            return imageResults;
+        }
     }
-    const content = res?.content || res?.data?.content || {};
+    const content = res?.content || res?.data?.content || res?.result?.content || {};
     const results = [
         content?.video_url ? { url: content.video_url, fileUrl: content.video_url, outputType: "video" } : null,
         content?.image_url ? { url: content.image_url, fileUrl: content.image_url, outputType: "image" } : null,
         content?.audio_url ? { url: content.audio_url, fileUrl: content.audio_url, outputType: "audio" } : null,
     ].filter(Boolean);
     return results;
+};
+
+const pickDeepValue = (value: any, paths: string[]) => {
+    for (const pathValue of paths) {
+        const found = pathValue.split(".").reduce((current, key) => current?.[key], value);
+        if (typeof found !== "undefined" && found !== null && String(found).trim()) {
+            return found;
+        }
+    }
+    return "";
+};
+
+const extractDirectApiTaskId = (res: any) => {
+    return String(
+        pickDeepValue(res, [
+            "data.taskId",
+            "data.task_id",
+            "data.id",
+            "data.task.id",
+            "data.task.taskId",
+            "data.task.task_id",
+            "taskId",
+            "task_id",
+            "id",
+        ]) || ""
+    );
 };
 
 const buildResultPayload = async (
@@ -377,7 +414,7 @@ export const RunningHubTask: TaskBiz = {
                     statusMsg: "",
                     jobResult,
                 });
-                const res: any = await callRunningHubHandle("runninghub:runTask", {
+                let res: any = await callRunningHubHandle("runninghub:runTask", {
                     apiBaseUrl: normalizeBaseUrl(modelConfig.baseUrl || DEFAULT_BASE_URL),
                     apiKey: modelConfig.apiKey,
                     connectorType: modelConfig.connectorType,
@@ -387,6 +424,7 @@ export const RunningHubTask: TaskBiz = {
                     nodeInfoList: jobResult.Submit.submittedNodeInfoList || [],
                     requestBody: jobResult.Submit.submittedBody || {},
                     requestFormat: modelConfig.requestFormat || "json",
+                    directFileRelay: modelConfig.directFileRelay,
                     webhookUrl: modelConfig.webhookUrl,
                     instanceType: modelConfig.instanceType,
                     accessPassword: modelConfig.accessPassword,
@@ -394,6 +432,7 @@ export const RunningHubTask: TaskBiz = {
                     retainSeconds: modelConfig.retainSeconds,
                     usePersonalQueue: modelConfig.usePersonalQueue,
                     workflow: modelConfig.workflowJson,
+                    proxyUrl: modelConfig.proxyUrl || "",
                 });
                 jobResult.Submit.requestUrl = String(res?._diagnostics?.requestUrl || "");
                 jobResult.Submit.responseDiagnostics = res?._diagnostics || {};
@@ -401,7 +440,7 @@ export const RunningHubTask: TaskBiz = {
                 if (res?.code) {
                     throw new Error(responseMessageOf(res, "任务提交失败"));
                 }
-                const taskId = String(res?.data?.taskId || res?.taskId || res?.data?.id || res?.id || "");
+                const taskId = extractDirectApiTaskId(res);
                 const syncResults = normalizeDirectApiResults(res);
                 if (!taskId && syncResults.length > 0) {
                     jobResult.Submit.status = "success";
@@ -419,7 +458,7 @@ export const RunningHubTask: TaskBiz = {
                     });
                     return "success";
                 }
-                if (modelConfig.connectorType === "custom-api") {
+                if (modelConfig.connectorType === "custom-api" && !taskId) {
                     const msg = responseMessageOf(
                         res,
                         `Direct API 已返回，但没有可识别的产出结果。URL: ${jobResult.Submit.requestUrl || "-"}`
@@ -476,6 +515,7 @@ export const RunningHubTask: TaskBiz = {
             connectorType: modelConfig.connectorType,
             queryPath: modelConfig.queryPath,
             taskId,
+            proxyUrl: modelConfig.proxyUrl || "",
         });
         if (res?.code && !res?.data?.status) {
             jobResult.Query.status = "fail";
@@ -572,6 +612,7 @@ export const RunningHubTask: TaskBiz = {
             connectorType: modelConfig.connectorType,
             cancelPath: modelConfig.cancelPath,
             taskId,
+            proxyUrl: modelConfig.proxyUrl || "",
         });
     },
 };

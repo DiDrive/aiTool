@@ -9,9 +9,8 @@ import {Dialog} from "../../lib/dialog";
 import {t} from "../../lang";
 import {StorageService} from "../../service/StorageService";
 import {TaskService} from "../../service/TaskService";
-import {EnumServerStatus, EnumServerType, ServerRecord, ServerRuntime} from "../../types/Server";
+import {EnumServerStatus, EnumServerType, ServerInfo, ServerRecord, ServerRuntime} from "../../types/Server";
 import store from "../index";
-import {ServerInfo} from "../../../electron/mapi/server/type";
 
 // const serverCloudStore = useServerCloudStore()
 const taskStore = useTaskStore();

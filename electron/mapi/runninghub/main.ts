@@ -1,9 +1,26 @@
-import { ipcMain } from "electron";
+import { ipcMain, net, session } from "electron";
 import path from "node:path";
+import https from "node:https";
+import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 const DEFAULT_BASE_URL = "https://www.runninghub.cn";
 const DEFAULT_DIRECT_API_TIMEOUT_MS = 300000;
+const PAN123_BASE_URL = "https://open-api.123pan.com";
+const PAN123_URL_AUTH_TTL_SECONDS = 7 * 24 * 60 * 60;
+let currentProxyRules = "";
+const pan123TokenCache = new Map<string, { token: string; expiredAt: number }>();
+const exchangeTokenAssetGroupCache = new Map<string, string>();
+
+type DirectFileRelayOptions = {
+    provider?: "123pan";
+    enabled?: boolean;
+    clientID?: string;
+    clientSecret?: string;
+    parentFileID?: number | string;
+    urlAuthKey?: string;
+    assetMode?: boolean;
+};
 
 const normalizeApiBaseUrl = (url?: string) => {
     return String(url || DEFAULT_BASE_URL).trim().replace(/\/+$/, "") || DEFAULT_BASE_URL;
@@ -26,6 +43,36 @@ const buildApiUrl = (apiBaseUrl: string, apiPath: string) => {
     return `${baseUrl}/${pathValue}`;
 };
 
+const normalizeProxyRules = (proxyUrl?: string) => {
+    const value = String(proxyUrl || "").trim();
+    if (!value) {
+        return "";
+    }
+    if (/^(direct|system)$/i.test(value)) {
+        return value.toLowerCase();
+    }
+    if (/^[a-z][a-z0-9+.-]*=/i.test(value) || /^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+        return value;
+    }
+    return `http://${value}`;
+};
+
+const applyProxyRules = async (proxyUrl?: string) => {
+    const proxyRules = normalizeProxyRules(proxyUrl);
+    if (proxyRules === currentProxyRules) {
+        return;
+    }
+    currentProxyRules = proxyRules;
+    if (proxyRules === "direct") {
+        await session.defaultSession.setProxy({ mode: "direct" });
+    } else if (proxyRules === "system") {
+        await session.defaultSession.setProxy({ mode: "system" });
+    } else {
+        await session.defaultSession.setProxy(proxyRules ? { proxyRules } : {});
+    }
+    await session.defaultSession.closeAllConnections();
+};
+
 const responseMessageOf = (json: any, fallback: string) => {
     return String(
         json?.error?.message ||
@@ -46,6 +93,541 @@ const attachDiagnostics = (json: any, diagnostics: Record<string, any>) => {
     return result;
 };
 
+const errorDetailOf = (e: any) => {
+    const parts = [
+        e?.stack || e?.message || e,
+        e?.cause?.stack || e?.cause?.message || e?.cause,
+        e?.cause?.code ? `cause.code=${e.cause.code}` : "",
+        e?.cause?.errno ? `cause.errno=${e.cause.errno}` : "",
+        e?.cause?.syscall ? `cause.syscall=${e.cause.syscall}` : "",
+        e?.cause?.hostname ? `cause.hostname=${e.cause.hostname}` : "",
+    ]
+        .map(item => String(item || "").trim())
+        .filter(Boolean);
+    return Array.from(new Set(parts)).join("\n");
+};
+
+const appFetch = async (url: string, init: RequestInit) => {
+    if (typeof (net as any)?.fetch === "function") {
+        return await (net as any).fetch(url, init);
+    }
+    return await fetch(url, init);
+};
+
+const parseJsonBody = async (res: Response) => {
+    const text = await res.text();
+    try {
+        return text ? JSON.parse(text) : {};
+    } catch (e) {
+        return {
+            code: res.ok ? 0 : res.status,
+            msg: text || `HTTP ${res.status}`,
+            data: {},
+        };
+    }
+};
+
+const assertOkJson = (json: any, fallback: string) => {
+    if (json?.code || json?.error || json?.errorMessage) {
+        throw new Error(responseMessageOf(json, fallback));
+    }
+    return json;
+};
+
+const describeHttpSource = (sourceUrl: string) => {
+    try {
+        const url = new URL(sourceUrl);
+        return `${url.protocol}//${url.hostname}${url.pathname}`;
+    } catch (e) {
+        return sourceUrl;
+    }
+};
+
+const verifyPublicSourceUrl = async (sourceUrl: string, proxyUrl?: string) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+        await applyProxyRules(proxyUrl);
+        const res = await appFetch(sourceUrl, {
+            method: "GET",
+            headers: {
+                "User-Agent": "AIGCPanel-Electron",
+                "Range": "bytes=0-0",
+            },
+            signal: controller.signal,
+        });
+        if (!res.ok && res.status !== 206) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+    } catch (e: any) {
+        throw new Error(`123 云盘直链自检失败，ExchangeToken 无法归档这个素材源：${describeHttpSource(sourceUrl)}\n${e?.message || e}`);
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
+const postJsonRaw = async (
+    requestUrl: string,
+    body: Record<string, any>,
+    headers: Record<string, string> = {},
+    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS,
+    proxyUrl?: string
+) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        await applyProxyRules(proxyUrl);
+        const res = await appFetch(requestUrl, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "AIGCPanel-Electron",
+                ...headers,
+            },
+            body: JSON.stringify(body || {}),
+            signal: controller.signal,
+        });
+        const json = await parseJsonBody(res);
+        if (typeof json.code === "undefined") {
+            json.code = res.ok ? 0 : res.status;
+        }
+        if (typeof json.msg === "undefined") {
+            json.msg = responseMessageOf(json, res.ok ? "" : `HTTP ${res.status}`);
+        }
+        return json;
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
+const getJsonRaw = async (
+    requestUrl: string,
+    headers: Record<string, string> = {},
+    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS,
+    proxyUrl?: string
+) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        await applyProxyRules(proxyUrl);
+        const res = await appFetch(requestUrl, {
+            method: "GET",
+            headers: {
+                "Accept": "application/json",
+                "User-Agent": "AIGCPanel-Electron",
+                ...headers,
+            },
+            signal: controller.signal,
+        });
+        const json = await parseJsonBody(res);
+        if (typeof json.code === "undefined") {
+            json.code = res.ok ? 0 : res.status;
+        }
+        if (typeof json.msg === "undefined") {
+            json.msg = responseMessageOf(json, res.ok ? "" : `HTTP ${res.status}`);
+        }
+        return json;
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
+const pan123Headers = (token?: string) => ({
+    "Platform": "open_platform",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+});
+
+const pickPan123Suid = (url: URL) => {
+    const firstPath = url.pathname.split("/").filter(Boolean)[0] || "";
+    if (/^\d+$/.test(firstPath)) {
+        return firstPath;
+    }
+    const hostPrefix = url.hostname.split(".")[0] || "";
+    if (/^\d+$/.test(hostPrefix)) {
+        return hostPrefix;
+    }
+    return "";
+};
+
+const signPan123DirectUrl = (directUrl: string, authKey?: string) => {
+    const privateKey = String(authKey || "").trim();
+    if (!privateKey) {
+        return directUrl;
+    }
+    const url = new URL(directUrl);
+    const suid = pickPan123Suid(url);
+    if (!suid) {
+        throw new Error("123 云盘直链 URL 无法识别 suid，不能生成 URL 鉴权签名");
+    }
+    const timestamp = (Math.floor(Date.now() / 1000) + PAN123_URL_AUTH_TTL_SECONDS).toString();
+    const rand = crypto.randomBytes(4).toString("hex");
+    const md5hash = crypto
+        .createHash("md5")
+        .update(`${url.pathname}-${timestamp}-${rand}-${suid}-${privateKey}`)
+        .digest("hex");
+    url.searchParams.set("auth_key", `${timestamp}-${rand}-${suid}-${md5hash}`);
+    return url.toString();
+};
+
+const getPan123AccessToken = async (relay: DirectFileRelayOptions, proxyUrl?: string) => {
+    const clientID = String(relay.clientID || "").trim();
+    const clientSecret = String(relay.clientSecret || "").trim();
+    if (!clientID || !clientSecret) {
+        throw new Error("123 云盘中转未配置 Client ID / Client Secret");
+    }
+    const cacheKey = `${clientID}:${clientSecret}`;
+    const cached = pan123TokenCache.get(cacheKey);
+    if (cached && cached.expiredAt > Date.now() + 120000) {
+        return cached.token;
+    }
+    const json = assertOkJson(
+        await postJsonRaw(
+            `${PAN123_BASE_URL}/api/v1/access_token`,
+            { clientID, clientSecret },
+            pan123Headers(),
+            30000,
+            proxyUrl
+        ),
+        "123 云盘 access_token 获取失败"
+    );
+    const token = String(json?.data?.accessToken || "").trim();
+    const expiredAt = Date.parse(String(json?.data?.expiredAt || ""));
+    if (!token) {
+        throw new Error("123 云盘 access_token 返回为空");
+    }
+    pan123TokenCache.set(cacheKey, {
+        token,
+        expiredAt: Number.isFinite(expiredAt) ? expiredAt : Date.now() + 3600000,
+    });
+    return token;
+};
+
+const uploadFileToPan123 = async (filePath: string, relay: DirectFileRelayOptions, proxyUrl?: string) => {
+    const token = await getPan123AccessToken(relay, proxyUrl);
+    const buffer = await readFile(filePath);
+    const etag = crypto.createHash("md5").update(buffer).digest("hex");
+    const parentFileID = Number(relay.parentFileID || 0);
+    if (!Number.isFinite(parentFileID)) {
+        throw new Error("123 云盘 Folder ID 必须是数字");
+    }
+    const createJson = assertOkJson(
+        await postJsonRaw(
+            `${PAN123_BASE_URL}/upload/v1/file/create`,
+            {
+                parentFileID,
+                filename: `${Date.now()}_${path.basename(filePath)}`,
+                etag,
+                size: buffer.length,
+                duplicate: 1,
+            },
+            pan123Headers(token),
+            60000,
+            proxyUrl
+        ),
+        "123 云盘创建文件失败"
+    );
+    let fileID = Number(createJson?.data?.fileID || 0);
+    const reuse = createJson?.data?.reuse === true;
+    const preuploadID = String(createJson?.data?.preuploadID || "").trim();
+    const sliceSize = Number(createJson?.data?.sliceSize || buffer.length || 1);
+    if (!reuse) {
+        if (!preuploadID || !sliceSize) {
+            throw new Error("123 云盘创建文件未返回 preuploadID/sliceSize");
+        }
+        let sliceNo = 1;
+        for (let offset = 0; offset < buffer.length; offset += sliceSize) {
+            const urlJson = assertOkJson(
+                await postJsonRaw(
+                    `${PAN123_BASE_URL}/upload/v1/file/get_upload_url`,
+                    { preuploadID, sliceNo },
+                    pan123Headers(token),
+                    60000,
+                    proxyUrl
+                ),
+                "123 云盘获取上传地址失败"
+            );
+            const presignedURL = String(urlJson?.data?.presignedURL || "").trim();
+            if (!presignedURL) {
+                throw new Error("123 云盘未返回分片上传地址");
+            }
+            await applyProxyRules(proxyUrl);
+            const putRes = await appFetch(presignedURL, {
+                method: "PUT",
+                body: buffer.subarray(offset, Math.min(offset + sliceSize, buffer.length)),
+            });
+            if (!putRes.ok) {
+                throw new Error(`123 云盘分片上传失败：HTTP ${putRes.status}`);
+            }
+            sliceNo += 1;
+        }
+        const completeJson = assertOkJson(
+            await postJsonRaw(
+                `${PAN123_BASE_URL}/upload/v1/file/upload_complete`,
+                { preuploadID },
+                pan123Headers(token),
+                60000,
+                proxyUrl
+            ),
+            "123 云盘上传完毕失败"
+        );
+        fileID = Number(completeJson?.data?.fileID || fileID || 0);
+        if (completeJson?.data?.async) {
+            for (let i = 0; i < 60; i += 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                const asyncJson = assertOkJson(
+                    await postJsonRaw(
+                        `${PAN123_BASE_URL}/upload/v1/file/upload_async_result`,
+                        { preuploadID },
+                        pan123Headers(token),
+                        30000,
+                        proxyUrl
+                    ),
+                    "123 云盘异步上传结果查询失败"
+                );
+                if (asyncJson?.data?.completed) {
+                    fileID = Number(asyncJson?.data?.fileID || fileID || 0);
+                    break;
+                }
+            }
+        }
+    }
+    if (!fileID) {
+        throw new Error("123 云盘上传完成但未返回 fileID");
+    }
+    const directJson = assertOkJson(
+        await getJsonRaw(
+            `${PAN123_BASE_URL}/api/v1/direct-link/url?fileID=${encodeURIComponent(String(fileID))}`,
+            pan123Headers(token),
+            30000,
+            proxyUrl
+        ),
+        "123 云盘获取直链失败"
+    );
+    const rawDirectUrl = String(directJson?.data?.url || "").trim();
+    if (!/^https?:\/\//i.test(rawDirectUrl)) {
+        throw new Error("123 云盘返回的直链不是有效 HTTP URL");
+    }
+    const directUrl = signPan123DirectUrl(rawDirectUrl, relay.urlAuthKey);
+    await verifyPublicSourceUrl(directUrl, proxyUrl);
+    return { fileID, directUrl };
+};
+
+const createExchangeTokenAsset = async (
+    apiBaseUrl: string,
+    apiKey: string,
+    filePath: string,
+    publicUrl: string,
+    assetType: "Image" | "Video",
+    proxyUrl?: string
+) => {
+    const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
+    const cacheKey = `${baseUrl}:${apiKey.slice(0, 8)}`;
+    let groupId = exchangeTokenAssetGroupCache.get(cacheKey) || "";
+    if (!groupId) {
+        const groupJson = assertOkJson(
+            await postJsonRaw(
+                `${baseUrl}/open/CreateAssetGroup`,
+                { Name: "AIGCPanel Seedance" },
+                { Authorization: `Bearer ${apiKey}` },
+                30000,
+                proxyUrl
+            ),
+            "ExchangeToken 创建资产组失败"
+        );
+        groupId = String(
+            groupJson?.data?.GroupId ||
+                groupJson?.Result?.GroupId ||
+                groupJson?.Result?.Id ||
+                groupJson?.GroupId ||
+                groupJson?.Id ||
+                ""
+        ).trim();
+        if (!groupId) {
+            throw new Error("ExchangeToken 创建资产组未返回 GroupId");
+        }
+        exchangeTokenAssetGroupCache.set(cacheKey, groupId);
+    }
+    const assetJson = assertOkJson(
+        await postJsonRaw(
+            `${baseUrl}/open/CreateAsset`,
+            {
+                GroupId: groupId,
+                URL: publicUrl,
+                Name: path.basename(filePath),
+                AssetType: assetType,
+            },
+            { Authorization: `Bearer ${apiKey}` },
+            30000,
+            proxyUrl
+        ),
+        "ExchangeToken 创建资产失败"
+    );
+    const createAssetMessage = responseMessageOf(assetJson, "");
+    const assetId = String(
+        assetJson?.data?.AssetId ||
+            assetJson?.Result?.AssetId ||
+            assetJson?.Result?.Id ||
+            assetJson?.AssetId ||
+            assetJson?.Id ||
+            ""
+    ).trim();
+    if (!assetId) {
+        throw new Error("ExchangeToken 创建资产未返回 AssetId");
+    }
+    for (let i = 0; i < 60; i += 1) {
+        const statusJson = assertOkJson(
+            await postJsonRaw(
+                `${baseUrl}/open/GetAsset`,
+                { Id: assetId, AssetId: assetId },
+                { Authorization: `Bearer ${apiKey}` },
+                30000,
+                proxyUrl
+            ),
+            "ExchangeToken 查询资产失败"
+        );
+        const status = String(
+            statusJson?.data?.Status ||
+                statusJson?.Result?.Status ||
+                statusJson?.Status ||
+                ""
+        ).trim();
+        if (/^Active$/i.test(status)) {
+            return `asset://${assetId}`;
+        }
+        if (/failed|error|reject/i.test(status)) {
+            const reason = responseMessageOf(statusJson?.data || statusJson?.Result || statusJson, createAssetMessage || "failed");
+            throw new Error(`ExchangeToken 资产入库失败：${status}\n${reason}`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    throw new Error("ExchangeToken 资产入库超时");
+};
+
+const shouldRetryByNetRequest = (e: any) => {
+    return /ERR_CONNECTION_CLOSED|fetch failed|other side closed/i.test(errorDetailOf(e));
+};
+
+const parseTextResponse = (text: string, statusCode: number) => {
+    try {
+        return text ? JSON.parse(text) : {};
+    } catch (e) {
+        return {
+            code: statusCode >= 200 && statusCode < 300 ? 0 : statusCode,
+            msg: text || `HTTP ${statusCode}`,
+            data: {},
+        };
+    }
+};
+
+const requestTextByNetRequest = async (
+    requestUrl: string,
+    method: string,
+    headers: Record<string, string>,
+    bodyText: string,
+    timeoutMs: number
+) => {
+    return await new Promise<{ statusCode: number; text: string }>((resolve, reject) => {
+        const req = net.request({
+            method,
+            url: requestUrl,
+        });
+        let finished = false;
+        const timer = setTimeout(() => {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            req.abort();
+            reject(new Error(`请求超时：${timeoutMs}ms`));
+        }, timeoutMs);
+        for (const [key, value] of Object.entries(headers)) {
+            if (value) {
+                req.setHeader(key, value);
+            }
+        }
+        req.on("response", response => {
+            const chunks: Buffer[] = [];
+            response.on("data", chunk => chunks.push(Buffer.from(chunk)));
+            response.on("end", () => {
+                if (finished) {
+                    return;
+                }
+                finished = true;
+                clearTimeout(timer);
+                resolve({
+                    statusCode: response.statusCode || 0,
+                    text: Buffer.concat(chunks).toString("utf8"),
+                });
+            });
+            response.on("error", error => {
+                if (finished) {
+                    return;
+                }
+                finished = true;
+                clearTimeout(timer);
+                reject(error);
+            });
+        });
+        req.on("error", error => {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            clearTimeout(timer);
+            reject(error);
+        });
+        if (bodyText) {
+            req.write(bodyText);
+        }
+        req.end();
+    });
+};
+
+const requestTextByNodeHttps = async (
+    requestUrl: string,
+    method: string,
+    headers: Record<string, string>,
+    bodyText: string,
+    timeoutMs: number
+) => {
+    return await new Promise<{ statusCode: number; text: string }>((resolve, reject) => {
+        const url = new URL(requestUrl);
+        const req = https.request(
+            {
+                method,
+                hostname: url.hostname,
+                port: url.port || 443,
+                path: `${url.pathname}${url.search}`,
+                headers: {
+                    ...headers,
+                    "Content-Length": Buffer.byteLength(bodyText).toString(),
+                },
+                timeout: timeoutMs,
+            },
+            response => {
+                const chunks: Buffer[] = [];
+                response.on("data", chunk => chunks.push(Buffer.from(chunk)));
+                response.on("end", () => {
+                    resolve({
+                        statusCode: response.statusCode || 0,
+                        text: Buffer.concat(chunks).toString("utf8"),
+                    });
+                });
+                response.on("error", reject);
+            }
+        );
+        req.on("timeout", () => {
+            req.destroy(new Error(`请求超时：${timeoutMs}ms`));
+        });
+        req.on("error", reject);
+        if (bodyText) {
+            req.write(bodyText);
+        }
+        req.end();
+    });
+};
+
 const normalizeStatus = (status: any) => {
     return String(status || "").trim().toUpperCase();
 };
@@ -55,34 +637,32 @@ const requestJson = async (
     apiPath: string,
     body: Record<string, any>,
     apiKey?: string,
-    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS
+    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS,
+    proxyUrl?: string,
+    directFileRelay?: DirectFileRelayOptions
 ) => {
     const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
     const requestUrl = buildApiUrl(baseUrl, apiPath);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const requestBody = await normalizeJsonBodyLocalFiles(body || {});
-        const res = await fetch(requestUrl, {
+        await applyProxyRules(proxyUrl);
+        const requestBody = await normalizeJsonBodyLocalFiles(body || {}, baseUrl, apiKey, directFileRelay, proxyUrl);
+        const bodyText = JSON.stringify(requestBody);
+        const headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "AIGCPanel-Electron",
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        };
+        const res = await appFetch(requestUrl, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-            },
-            body: JSON.stringify(requestBody),
+            headers,
+            body: bodyText,
             signal: controller.signal,
         });
         const text = await res.text();
-        let json: any = {};
-        try {
-            json = text ? JSON.parse(text) : {};
-        } catch (e) {
-            json = {
-                code: res.ok ? 0 : res.status,
-                msg: text || `HTTP ${res.status}`,
-                data: {},
-            };
-        }
+        let json: any = parseTextResponse(text, res.status);
         if (typeof json !== "object" || !json) {
             json = {};
         }
@@ -100,6 +680,91 @@ const requestJson = async (
             ok: res.ok,
         });
     } catch (e: any) {
+        if (shouldRetryByNetRequest(e)) {
+            try {
+                const requestBody = await normalizeJsonBodyLocalFiles(body || {}, baseUrl, apiKey, directFileRelay, proxyUrl);
+                const bodyText = JSON.stringify(requestBody);
+                const headers = {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "User-Agent": "AIGCPanel-Electron",
+                    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                };
+                const raw = await requestTextByNetRequest(requestUrl, "POST", headers, bodyText, timeoutMs);
+                let json: any = parseTextResponse(raw.text, raw.statusCode);
+                if (typeof json !== "object" || !json) {
+                    json = {};
+                }
+                if (typeof json.code === "undefined" && typeof json.status === "undefined") {
+                    json.code = raw.statusCode >= 200 && raw.statusCode < 300 ? 0 : raw.statusCode;
+                }
+                if (typeof json.msg === "undefined" && typeof json.errorMessage === "undefined") {
+                    json.msg = responseMessageOf(json, raw.statusCode >= 200 && raw.statusCode < 300 ? "" : `HTTP ${raw.statusCode}`);
+                }
+                return attachDiagnostics(json, {
+                    requestUrl,
+                    method: "POST",
+                    requestFormat: "json",
+                    httpStatus: raw.statusCode,
+                    ok: raw.statusCode >= 200 && raw.statusCode < 300,
+                    transport: "electron-net-request",
+                    retriedAfter: errorDetailOf(e),
+                });
+            } catch (fallbackError: any) {
+                try {
+                    const requestBody = await normalizeJsonBodyLocalFiles(body || {}, baseUrl, apiKey, directFileRelay, proxyUrl);
+                    const bodyText = JSON.stringify(requestBody);
+                    const headers = {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "User-Agent": "AIGCPanel-Electron",
+                        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                    };
+                    const raw = await requestTextByNodeHttps(requestUrl, "POST", headers, bodyText, timeoutMs);
+                    let json: any = parseTextResponse(raw.text, raw.statusCode);
+                    if (typeof json !== "object" || !json) {
+                        json = {};
+                    }
+                    if (typeof json.code === "undefined" && typeof json.status === "undefined") {
+                        json.code = raw.statusCode >= 200 && raw.statusCode < 300 ? 0 : raw.statusCode;
+                    }
+                    if (typeof json.msg === "undefined" && typeof json.errorMessage === "undefined") {
+                        json.msg = responseMessageOf(json, raw.statusCode >= 200 && raw.statusCode < 300 ? "" : `HTTP ${raw.statusCode}`);
+                    }
+                    return attachDiagnostics(json, {
+                        requestUrl,
+                        method: "POST",
+                        requestFormat: "json",
+                        httpStatus: raw.statusCode,
+                        ok: raw.statusCode >= 200 && raw.statusCode < 300,
+                        transport: "node-https",
+                        retriedAfter: [
+                            errorDetailOf(e),
+                            errorDetailOf(fallbackError),
+                        ].filter(Boolean).join("\n--- fallback ---\n"),
+                    });
+                } catch (nodeHttpsError: any) {
+                    return attachDiagnostics(
+                        {
+                            code: -1,
+                            msg: String(nodeHttpsError?.message || nodeHttpsError || "请求发送失败"),
+                            data: {},
+                        },
+                        {
+                            requestUrl,
+                            method: "POST",
+                            requestFormat: "json",
+                            transport: "node-https",
+                            error: errorDetailOf(nodeHttpsError),
+                            retriedAfter: [
+                                errorDetailOf(e),
+                                errorDetailOf(fallbackError),
+                            ].filter(Boolean).join("\n--- fallback ---\n"),
+                        }
+                    );
+                }
+            }
+        }
         return attachDiagnostics(
             {
                 code: -1,
@@ -110,7 +775,7 @@ const requestJson = async (
                 requestUrl,
                 method: "POST",
                 requestFormat: "json",
-                error: String(e?.stack || e?.message || e || ""),
+                error: errorDetailOf(e),
             }
         );
     } finally {
@@ -156,16 +821,53 @@ const localFileToDataUrl = async (value: string) => {
     return `data:${mimeFromFile(filePath)};base64,${buffer.toString("base64")}`;
 };
 
-const normalizeJsonBodyLocalFiles = async (value: any): Promise<any> => {
+const normalizeJsonBodyLocalFiles = async (
+    value: any,
+    apiBaseUrl?: string,
+    apiKey?: string,
+    relay?: DirectFileRelayOptions,
+    proxyUrl?: string
+): Promise<any> => {
     if (Array.isArray(value)) {
-        return await Promise.all(value.map(item => normalizeJsonBodyLocalFiles(item)));
+        return await Promise.all(value.map(item => normalizeJsonBodyLocalFiles(item, apiBaseUrl, apiKey, relay, proxyUrl)));
     }
     if (value && typeof value === "object") {
         const result: Record<string, any> = {};
         for (const [key, child] of Object.entries(value)) {
-            result[key] = await normalizeJsonBodyLocalFiles(child);
+            result[key] = await normalizeJsonBodyLocalFiles(child, apiBaseUrl, apiKey, relay, proxyUrl);
         }
         return result;
+    }
+    if (typeof value === "string" && isLocalFilePath(value)) {
+        const filePath = toLocalFilePath(value);
+        const useRelay = Boolean(relay?.enabled && relay?.provider === "123pan");
+        const ext = path.extname(filePath).toLowerCase();
+        const isImage = /(\.png|\.jpe?g|\.webp|\.gif|\.bmp|\.tiff?)$/i.test(ext);
+        const isVideo = /(\.mp4|\.mov)$/i.test(ext);
+        const isAudio = /(\.wav|\.mp3)$/i.test(ext);
+        if (useRelay) {
+            const uploaded = await uploadFileToPan123(filePath, relay!, proxyUrl);
+            if ((isImage || isVideo) && relay?.assetMode !== false) {
+                if (!apiBaseUrl || !apiKey) {
+                    throw new Error("资产入库需要 ExchangeToken Base URL 和 API Key");
+                }
+                return await createExchangeTokenAsset(
+                    apiBaseUrl,
+                    apiKey,
+                    filePath,
+                    uploaded.directUrl,
+                    isImage ? "Image" : "Video",
+                    proxyUrl
+                );
+            }
+            return uploaded.directUrl;
+        }
+        if (isImageOrAudioFile(value)) {
+            return await localFileToDataUrl(value);
+        }
+        if (isVideo) {
+            throw new Error("本地视频需要先配置 123 云盘中转后才能提交 Seedance");
+        }
     }
     if (typeof value === "string" && isLocalFilePath(value) && isImageOrAudioFile(value)) {
         return await localFileToDataUrl(value);
@@ -212,18 +914,20 @@ const requestFormData = async (
     apiPath: string,
     body: Record<string, any>,
     apiKey?: string,
-    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS
+    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS,
+    proxyUrl?: string
 ) => {
     const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
     const requestUrl = buildApiUrl(baseUrl, apiPath);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
+        await applyProxyRules(proxyUrl);
         const form = new FormData();
         for (const [key, value] of Object.entries(body || {})) {
             await appendFormValue(form, key, value);
         }
-        const res = await fetch(requestUrl, {
+        const res = await appFetch(requestUrl, {
             method: "POST",
             headers: {
                 ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
@@ -274,7 +978,7 @@ const requestFormData = async (
                 requestUrl,
                 method: "POST",
                 requestFormat: "form-data",
-                error: String(e?.stack || e?.message || e || ""),
+                error: errorDetailOf(e),
             }
         );
     } finally {
@@ -286,14 +990,16 @@ const requestGetJson = async (
     apiBaseUrl: string,
     apiPath: string,
     apiKey?: string,
-    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS
+    timeoutMs = DEFAULT_DIRECT_API_TIMEOUT_MS,
+    proxyUrl?: string
 ) => {
     const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
     const requestUrl = buildApiUrl(baseUrl, apiPath);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const res = await fetch(requestUrl, {
+        await applyProxyRules(proxyUrl);
+        const res = await appFetch(requestUrl, {
             method: "GET",
             headers: {
                 ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
@@ -338,7 +1044,7 @@ const requestGetJson = async (
                 requestUrl,
                 method: "GET",
                 requestFormat: "json",
-                error: String(e?.stack || e?.message || e || ""),
+                error: errorDetailOf(e),
             }
         );
     } finally {
@@ -350,7 +1056,8 @@ const uploadFile = async (
     apiBaseUrl: string,
     apiKey: string,
     filePath: string,
-    fileType = "input"
+    fileType = "input",
+    proxyUrl?: string
 ) => {
     const buffer = await readFile(filePath);
     const form = new FormData();
@@ -360,7 +1067,8 @@ const uploadFile = async (
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-        const res = await fetch(`${normalizeApiBaseUrl(apiBaseUrl)}/task/openapi/upload`, {
+        await applyProxyRules(proxyUrl);
+        const res = await appFetch(`${normalizeApiBaseUrl(apiBaseUrl)}/task/openapi/upload`, {
             method: "POST",
             headers: {
                 ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
@@ -396,25 +1104,36 @@ const normalizeResults = (value: any) => {
 };
 
 const normalizeDirectTaskResults = (value: any) => {
-    const content = value?.content || {};
+    const content = value?.content || value?.data?.content || value?.result?.content || {};
     const contentVideoUrl = String(content?.video_url || "").trim();
     const contentImageUrl = String(content?.image_url || "").trim();
     const outputText = String(content?.text || "").trim();
-    const imageDataResults = Array.isArray(value?.data)
-        ? value.data
-              .map((item: any) => {
-                  const url = String(item?.url || "").trim();
-                  const b64 = String(item?.b64_json || "").trim();
-                  if (url) {
-                      return { url, outputType: "image", fileUrl: url };
-                  }
-                  if (b64) {
-                      return { text: b64, outputType: "image_base64", fileUrl: "" };
-                  }
-                  return null;
-              })
-              .filter(Boolean)
-        : [];
+    const imageDataResults = [
+        value?.data,
+        value?.data?.data,
+        value?.result?.data,
+        value?.data?.result?.data,
+        value?.output,
+        value?.outputs,
+        value?.result?.output,
+    ].flatMap((candidate: any) => {
+        if (!Array.isArray(candidate)) {
+            return [];
+        }
+        return candidate
+            .map((item: any) => {
+                const url = String(item?.url || item?.fileUrl || item?.image_url || item?.imageUrl || "").trim();
+                const b64 = String(item?.b64_json || item?.base64 || item?.image_base64 || "").trim();
+                if (url) {
+                    return { url, outputType: "image", fileUrl: url };
+                }
+                if (b64) {
+                    return { text: b64, outputType: "image_base64", fileUrl: "" };
+                }
+                return null;
+            })
+            .filter(Boolean);
+    });
     const fromContent = [
         ...(contentVideoUrl ? [{ url: contentVideoUrl, outputType: "video", fileUrl: contentVideoUrl }] : []),
         ...(contentImageUrl ? [{ url: contentImageUrl, outputType: "image", fileUrl: contentImageUrl }] : []),
@@ -424,17 +1143,71 @@ const normalizeDirectTaskResults = (value: any) => {
     return fromContent.length > 0 ? fromContent : normalizeResults(value?.results);
 };
 
+const pickDeepValue = (value: any, paths: string[]) => {
+    for (const pathValue of paths) {
+        const found = pathValue.split(".").reduce((current, key) => current?.[key], value);
+        if (typeof found !== "undefined" && found !== null && String(found).trim()) {
+            return found;
+        }
+    }
+    return "";
+};
+
+const extractDirectTaskId = (value: any, fallback = "") => {
+    return String(
+        pickDeepValue(value, [
+            "data.taskId",
+            "data.task_id",
+            "data.id",
+            "data.task.id",
+            "data.task.taskId",
+            "data.task.task_id",
+            "taskId",
+            "task_id",
+            "id",
+        ]) || fallback
+    );
+};
+
+const extractDirectStatus = (value: any) => {
+    return String(
+        pickDeepValue(value, [
+            "data.status",
+            "data.task.status",
+            "status",
+            "state",
+        ]) || ""
+    );
+};
+
 ipcMain.handle("runninghub:uploadFile", async (event, options: {
     apiBaseUrl?: string;
     apiKey: string;
     filePath: string;
     fileType?: string;
+    proxyUrl?: string;
 }) => {
     return await uploadFile(
         options.apiBaseUrl || DEFAULT_BASE_URL,
         options.apiKey || "",
         options.filePath,
-        options.fileType || "input"
+        options.fileType || "input",
+        options.proxyUrl
+    );
+});
+
+ipcMain.handle("runninghub:testDirectApi", async (event, options: {
+    apiBaseUrl?: string;
+    apiKey?: string;
+    proxyUrl?: string;
+}) => {
+    const baseUrl = normalizeApiBaseUrl(options.apiBaseUrl || DEFAULT_BASE_URL);
+    return await requestGetJson(
+        baseUrl,
+        "v1/models",
+        options.apiKey || "",
+        15000,
+        options.proxyUrl
     );
 });
 
@@ -455,6 +1228,8 @@ ipcMain.handle("runninghub:runTask", async (event, options: {
     retainSeconds?: number | null;
     usePersonalQueue?: boolean;
     workflow?: string;
+    proxyUrl?: string;
+    directFileRelay?: DirectFileRelayOptions;
 }) => {
     const connectorType = String(options.connectorType || "").trim();
     if (connectorType === "ai-app") {
@@ -469,7 +1244,9 @@ ipcMain.handle("runninghub:runTask", async (event, options: {
                     accessPassword: options.accessPassword || undefined,
                     usePersonalQueue: typeof options.usePersonalQueue === "boolean" ? options.usePersonalQueue : undefined,
                 },
-                options.apiKey
+                options.apiKey,
+                DEFAULT_DIRECT_API_TIMEOUT_MS,
+                options.proxyUrl
             );
         }
         return await requestJson(
@@ -483,7 +1260,9 @@ ipcMain.handle("runninghub:runTask", async (event, options: {
                 instanceType: options.instanceType || undefined,
                 accessPassword: options.accessPassword || undefined,
             },
-            options.apiKey
+            options.apiKey,
+            DEFAULT_DIRECT_API_TIMEOUT_MS,
+            options.proxyUrl
         );
     }
     if (connectorType === "workflow") {
@@ -502,7 +1281,9 @@ ipcMain.handle("runninghub:runTask", async (event, options: {
                 retainSeconds: typeof options.retainSeconds === "number" ? options.retainSeconds : undefined,
                 accessPassword: options.accessPassword || undefined,
             },
-            options.apiKey
+            options.apiKey,
+            DEFAULT_DIRECT_API_TIMEOUT_MS,
+            options.proxyUrl
         );
     }
     if (options.requestFormat === "form-data") {
@@ -510,14 +1291,19 @@ ipcMain.handle("runninghub:runTask", async (event, options: {
             options.apiBaseUrl || DEFAULT_BASE_URL,
             normalizeApiPath(options.submitPath, ""),
             options.requestBody || {},
-            options.apiKey
+            options.apiKey,
+            DEFAULT_DIRECT_API_TIMEOUT_MS,
+            options.proxyUrl
         );
     }
     return await requestJson(
         options.apiBaseUrl || DEFAULT_BASE_URL,
         normalizeApiPath(options.submitPath, ""),
         options.requestBody || {},
-        options.apiKey
+        options.apiKey,
+        DEFAULT_DIRECT_API_TIMEOUT_MS,
+        options.proxyUrl,
+        options.directFileRelay
     );
 });
 
@@ -527,6 +1313,7 @@ ipcMain.handle("runninghub:queryTask", async (event, options: {
     connectorType: "ai-app" | "workflow" | "model-api" | "custom-api";
     queryPath?: string;
     taskId: string;
+    proxyUrl?: string;
 }) => {
     const baseUrl = options.apiBaseUrl || DEFAULT_BASE_URL;
     const queryPath = normalizeApiPath(options.queryPath, "openapi/v2/query");
@@ -537,23 +1324,27 @@ ipcMain.handle("runninghub:queryTask", async (event, options: {
               .replace(/:id|:taskId/gi, encodeURIComponent(options.taskId))
         : queryPath;
     const directResult = hasTaskPathPlaceholder
-        ? await requestGetJson(baseUrl, resolvedQueryPath, options.apiKey)
+        ? await requestGetJson(baseUrl, resolvedQueryPath, options.apiKey, DEFAULT_DIRECT_API_TIMEOUT_MS, options.proxyUrl)
         : await requestJson(
               baseUrl,
               resolvedQueryPath,
               {
                   taskId: options.taskId,
               },
-              options.apiKey
+              options.apiKey,
+              DEFAULT_DIRECT_API_TIMEOUT_MS,
+              options.proxyUrl
           );
-    if (typeof directResult?.status !== "undefined" || Array.isArray(directResult?.results) || Array.isArray(directResult?.data) || directResult?.taskId || directResult?.id) {
+    const directTaskId = extractDirectTaskId(directResult, options.taskId);
+    const directStatus = extractDirectStatus(directResult);
+    if (directStatus || Array.isArray(directResult?.results) || Array.isArray(directResult?.data) || directTaskId) {
         return {
-            code: normalizeStatus(directResult?.status) === "FAILED" ? 500 : 0,
+            code: normalizeStatus(directStatus) === "FAILED" ? 500 : 0,
             msg: directResult?.errorMessage || directResult?.msg || "",
             data: {
-                taskId: directResult?.taskId || directResult?.id || options.taskId,
-                status: normalizeStatus(directResult?.status || (Array.isArray(directResult?.data) ? "succeeded" : "")),
-                rawStatus: directResult?.status || "",
+                taskId: directTaskId,
+                status: normalizeStatus(directStatus || (Array.isArray(directResult?.data) ? "succeeded" : "")),
+                rawStatus: directStatus,
                 results: normalizeDirectTaskResults(directResult),
                 clientId: directResult?.clientId || "",
                 promptTips: directResult?.promptTips || "",
@@ -571,7 +1362,9 @@ ipcMain.handle("runninghub:queryTask", async (event, options: {
             apiKey: options.apiKey || "",
             taskId: options.taskId,
         },
-        options.apiKey
+        options.apiKey,
+        DEFAULT_DIRECT_API_TIMEOUT_MS,
+        options.proxyUrl
     );
     const outputsResult = await requestJson(
         baseUrl,
@@ -580,7 +1373,9 @@ ipcMain.handle("runninghub:queryTask", async (event, options: {
             apiKey: options.apiKey || "",
             taskId: options.taskId,
         },
-        options.apiKey
+        options.apiKey,
+        DEFAULT_DIRECT_API_TIMEOUT_MS,
+        options.proxyUrl
     );
     return {
         code: statusResult?.code === 0 || statusResult?.code === 804 ? 0 : (statusResult?.code || outputsResult?.code || 500),
@@ -611,6 +1406,7 @@ ipcMain.handle("runninghub:cancelTask", async (event, options: {
     connectorType: "ai-app" | "workflow" | "model-api" | "custom-api";
     cancelPath?: string;
     taskId: string;
+    proxyUrl?: string;
 }) => {
     if (options.connectorType === "workflow") {
         return await requestJson(
@@ -620,7 +1416,9 @@ ipcMain.handle("runninghub:cancelTask", async (event, options: {
                 apiKey: options.apiKey || "",
                 taskId: options.taskId,
             },
-            options.apiKey
+            options.apiKey,
+            DEFAULT_DIRECT_API_TIMEOUT_MS,
+            options.proxyUrl
         );
     }
     if (options.cancelPath) {
@@ -630,7 +1428,9 @@ ipcMain.handle("runninghub:cancelTask", async (event, options: {
             {
                 taskId: options.taskId,
             },
-            options.apiKey
+            options.apiKey,
+            DEFAULT_DIRECT_API_TIMEOUT_MS,
+            options.proxyUrl
         );
     }
     return {

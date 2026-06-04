@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import AudioPlayer from "../../components/common/AudioPlayer.vue";
 import ImagePreviewBox from "../../components/common/ImagePreviewBox.vue";
 import VideoPlayer from "../../components/common/VideoPlayer.vue";
 import { Dialog } from "../../lib/dialog";
 import { TimeUtil } from "../../lib/util";
-import { DigitalHumanClipRecord, DigitalHumanClipService } from "../../service/DigitalHumanClipService";
+import {
+    DigitalHumanClipRecord,
+    DigitalHumanClipService,
+    DigitalHumanClipType,
+    DigitalHumanDisplayMode,
+} from "../../service/DigitalHumanClipService";
 import { DigitalHumanIdentityRecord, DigitalHumanIdentityService } from "../../service/DigitalHumanIdentityService";
 
 const loading = ref(false);
@@ -13,6 +18,28 @@ const records = ref<DigitalHumanClipRecord[]>([]);
 const identityRecords = ref<DigitalHumanIdentityRecord[]>([]);
 const clipTypeFilter = ref("all");
 const identityFilter = ref(0);
+const selectedClipId = ref(0);
+const settingsVisible = ref(false);
+const savingSettings = ref(false);
+const clipForm = ref<{
+    title: string;
+    clipType: DigitalHumanClipType;
+    displayMode: DigitalHumanDisplayMode;
+    identityId: number;
+    productTitle: string;
+    productId: string;
+    tagsText: string;
+    status: "draft" | "ready" | "archived";
+}>({
+    title: "",
+    clipType: "talk",
+    displayMode: "normal",
+    identityId: 0,
+    productTitle: "",
+    productId: "",
+    tagsText: "",
+    status: "ready",
+});
 
 const clipTypeLabelMap: Record<string, string> = {
     idle: "待机片",
@@ -43,6 +70,22 @@ const clipTypeOptions = [
     { label: "过渡片", value: "transition" },
 ];
 
+const displayModeOptions = [
+    { label: "普通口播", value: "normal" },
+    { label: "商品叠层", value: "overlay" },
+    { label: "桌面展示", value: "table" },
+    { label: "左手持", value: "hold-left" },
+    { label: "右手持", value: "hold-right" },
+    { label: "双手持", value: "hold-both" },
+    { label: "专属商品片", value: "product-clip" },
+];
+
+const clipStatusOptions = [
+    { label: "可直接编排", value: "ready" },
+    { label: "草稿", value: "draft" },
+    { label: "归档", value: "archived" },
+];
+
 const identityOptions = computed(() => {
     return [
         { label: "全部身份", value: 0 },
@@ -65,6 +108,30 @@ const filteredRecords = computed(() => {
     });
 });
 
+const selectedRecord = computed(() => {
+    return (
+        filteredRecords.value.find(item => Number(item.id || 0) === Number(selectedClipId.value || 0)) ||
+        filteredRecords.value[0] ||
+        null
+    );
+});
+
+const fillClipForm = (record: DigitalHumanClipRecord | null) => {
+    if (!record) {
+        return;
+    }
+    clipForm.value = {
+        title: record.title || "",
+        clipType: record.content.clipType || "talk",
+        displayMode: record.content.displayMode || "normal",
+        identityId: Number(record.content.identityId || 0),
+        productTitle: record.content.productTitle || "",
+        productId: record.content.productId || "",
+        tagsText: Array.isArray(record.content.tags) ? record.content.tags.join(", ") : "",
+        status: record.content.status || "ready",
+    };
+};
+
 const stats = computed(() => {
     return {
         total: records.value.length,
@@ -83,6 +150,10 @@ const doRefresh = async () => {
         ]);
         records.value = clips;
         identityRecords.value = identities;
+        if (!records.value.some(item => Number(item.id || 0) === Number(selectedClipId.value || 0))) {
+            selectedClipId.value = Number(clips[0]?.id || 0);
+        }
+        fillClipForm(selectedRecord.value);
     } finally {
         loading.value = false;
     }
@@ -91,7 +162,62 @@ const doRefresh = async () => {
 const doDelete = async (record: DigitalHumanClipRecord) => {
     await Dialog.confirm("确认删除这个直播片段吗？");
     await DigitalHumanClipService.delete(record);
+    if (Number(selectedClipId.value || 0) === Number(record.id || 0)) {
+        selectedClipId.value = 0;
+    }
     await doRefresh();
+};
+
+const selectRecord = (record: DigitalHumanClipRecord) => {
+    selectedClipId.value = Number(record.id || 0);
+    settingsVisible.value = false;
+    fillClipForm(record);
+};
+
+const openSettings = (record: DigitalHumanClipRecord | null = selectedRecord.value) => {
+    if (!record) {
+        return;
+    }
+    selectRecord(record);
+    settingsVisible.value = true;
+};
+
+const saveSettings = async () => {
+    const record = selectedRecord.value;
+    if (!record?.id) {
+        return;
+    }
+    if (!clipForm.value.title.trim()) {
+        Dialog.tipError("请输入片段名称");
+        return;
+    }
+    const identity = identityRecords.value.find(item => Number(item.id || 0) === Number(clipForm.value.identityId || 0));
+    try {
+        savingSettings.value = true;
+        await DigitalHumanClipService.save({
+            ...record,
+            title: clipForm.value.title.trim(),
+            content: {
+                ...record.content,
+                clipType: clipForm.value.clipType,
+                displayMode: clipForm.value.displayMode,
+                identityId: Number(identity?.id || 0) || undefined,
+                identityTitle: identity?.title || "",
+                productTitle: clipForm.value.productTitle.trim(),
+                productId: clipForm.value.productId.trim(),
+                tags: clipForm.value.tagsText
+                    .split(",")
+                    .map(item => item.trim())
+                    .filter(Boolean),
+                status: clipForm.value.status,
+            },
+        });
+        settingsVisible.value = false;
+        Dialog.tipSuccess("直播片段设置已保存");
+        await doRefresh();
+    } finally {
+        savingSettings.value = false;
+    }
 };
 
 const previewTypeOf = (record: DigitalHumanClipRecord) => {
@@ -111,6 +237,17 @@ const durationText = (record: DigitalHumanClipRecord) => {
     const seconds = Number(record.content.durationSeconds || 0);
     return seconds > 0 ? TimeUtil.secondsToTime(seconds) : "-";
 };
+
+const assetText = (record: DigitalHumanClipRecord) => {
+    if (record.content.videoUrl) return "视频";
+    if (record.content.audioUrl) return "音频";
+    if (record.content.coverImage) return "图片";
+    return "无素材";
+};
+
+watch(selectedRecord, record => {
+    fillClipForm(record);
+});
 
 onMounted(() => {
     doRefresh();
@@ -168,6 +305,110 @@ onMounted(() => {
                     </a-select>
                     <div class="flex items-center text-sm text-slate-400">当前 {{ filteredRecords.length }} 条</div>
                 </div>
+
+                <div
+                    v-if="selectedRecord"
+                    class="mt-5 grid gap-5 rounded-2xl border border-slate-100 bg-slate-50 p-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]"
+                >
+                    <div class="min-w-0 overflow-hidden rounded-xl bg-white p-3">
+                        <ImagePreviewBox
+                            v-if="previewTypeOf(selectedRecord) === 'image'"
+                            :url="selectedRecord.content.coverImage || ''"
+                            width="100%"
+                            height="18rem"
+                            large-width="100%"
+                            large-height="60vh"
+                        />
+                        <div
+                            v-else-if="previewTypeOf(selectedRecord) === 'video'"
+                            class="h-72 overflow-hidden rounded-lg bg-black"
+                        >
+                            <VideoPlayer :url="selectedRecord.content.videoUrl" width="100%" height="100%" />
+                        </div>
+                        <div
+                            v-else-if="previewTypeOf(selectedRecord) === 'audio'"
+                            class="rounded-lg bg-white p-3"
+                        >
+                            <AudioPlayer :url="selectedRecord.content.audioUrl" show-wave />
+                        </div>
+                        <div v-else class="rounded-lg bg-white px-4 py-20 text-center text-sm text-slate-400">
+                            暂无可预览内容
+                        </div>
+                    </div>
+                    <div class="min-w-0 rounded-xl bg-white p-4">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="truncate text-xl font-semibold text-slate-900" :title="selectedRecord.title">
+                                    {{ selectedRecord.title }}
+                                </div>
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                                        {{ clipTypeLabelMap[selectedRecord.content.clipType] || selectedRecord.content.clipType }}
+                                    </span>
+                                    <span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-600">
+                                        {{ displayModeLabelMap[selectedRecord.content.displayMode] || selectedRecord.content.displayMode }}
+                                    </span>
+                                    <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs text-emerald-600">
+                                        {{ assetText(selectedRecord) }}
+                                    </span>
+                                    <span v-if="settingsVisible" class="rounded-full bg-indigo-50 px-2.5 py-1 text-xs text-indigo-600">
+                                        正在编辑
+                                    </span>
+                                </div>
+                            </div>
+                            <a-button type="primary" size="small" @click.stop="openSettings(selectedRecord)">
+                                设置
+                            </a-button>
+                        </div>
+                        <div class="mt-4 grid grid-cols-2 gap-3">
+                            <a-input v-model="clipForm.title" placeholder="片段名称" />
+                            <a-select v-model="clipForm.status">
+                                <a-option v-for="item in clipStatusOptions" :key="item.value" :value="item.value">
+                                    {{ item.label }}
+                                </a-option>
+                            </a-select>
+                            <a-select v-model="clipForm.clipType">
+                                <a-option
+                                    v-for="item in clipTypeOptions.filter(option => option.value !== 'all')"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ item.label }}
+                                </a-option>
+                            </a-select>
+                            <a-select v-model="clipForm.displayMode">
+                                <a-option v-for="item in displayModeOptions" :key="item.value" :value="item.value">
+                                    {{ item.label }}
+                                </a-option>
+                            </a-select>
+                            <a-select v-model="clipForm.identityId" allow-clear placeholder="不绑定身份">
+                                <a-option
+                                    v-for="item in identityOptions.filter(option => Number(option.value || 0) > 0)"
+                                    :key="item.value"
+                                    :value="item.value"
+                                >
+                                    {{ item.label }}
+                                </a-option>
+                            </a-select>
+                            <a-input v-model="clipForm.productTitle" placeholder="商品名称，可选" />
+                            <a-input v-model="clipForm.productId" placeholder="商品 ID，可选" />
+                            <a-input v-model="clipForm.tagsText" placeholder="标签，英文逗号分隔" />
+                        </div>
+                        <div class="mt-4 flex items-center justify-between gap-3">
+                            <div class="min-w-0 text-xs text-slate-400">
+                                <span>模板：{{ selectedRecord.content.templateTitle || "-" }}</span>
+                                <span class="mx-2">/</span>
+                                <span>用时：{{ durationText(selectedRecord) }}</span>
+                            </div>
+                            <a-button type="primary" :loading="savingSettings" @click="saveSettings">
+                                保存设置
+                            </a-button>
+                        </div>
+                        <div v-if="selectedRecord.content.text" class="mt-3 line-clamp-3 text-xs leading-5 text-slate-500">
+                            {{ selectedRecord.content.text }}
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="mt-6">
@@ -181,7 +422,9 @@ onMounted(() => {
                     <div
                         v-for="record in filteredRecords"
                         :key="record.id"
-                        class="overflow-hidden rounded-[24px] border border-white/80 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
+                        class="cursor-pointer overflow-hidden rounded-[24px] border bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition-colors"
+                        :class="Number(selectedRecord?.id || 0) === Number(record.id || 0) ? 'border-blue-200 ring-2 ring-blue-100' : 'border-white/80 hover:border-blue-100'"
+                        @click="selectRecord(record)"
                     >
                         <div class="flex items-start justify-between gap-3">
                             <div class="min-w-0">
@@ -203,9 +446,17 @@ onMounted(() => {
                                     </span>
                                 </div>
                             </div>
-                            <a-button size="mini" type="text" status="danger" @click="doDelete(record)">
-                                删除
-                            </a-button>
+                            <div class="flex flex-shrink-0 gap-1" @click.stop>
+                                <a-button size="mini" type="outline" @click="selectRecord(record)">
+                                    预览
+                                </a-button>
+                                <a-button size="mini" type="outline" @click.stop="openSettings(record)">
+                                    设置
+                                </a-button>
+                                <a-button size="mini" type="text" status="danger" @click="doDelete(record)">
+                                    删除
+                                </a-button>
+                            </div>
                         </div>
 
                         <div class="mt-4 grid grid-cols-[88px_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
@@ -268,5 +519,6 @@ onMounted(() => {
                 </div>
             </div>
         </div>
+
     </div>
 </template>

@@ -21,6 +21,7 @@ type DisplayStatus = "queue" | "running" | "success" | "fail";
 const props = defineProps<{
     record: TaskRecord;
     displayStatus: DisplayStatus;
+    nowMs?: number;
 }>();
 
 type OutputItem = {
@@ -175,7 +176,7 @@ const durationText = computed(() => {
     if (!start) {
         return "-";
     }
-    const end = Number(props.record?.endTime || Date.now());
+    const end = Number(props.record?.endTime || props.nowMs || Date.now());
     const seconds = Math.max(1, Math.round((end - start) / 1000));
     return TimeUtil.secondsToTime(seconds);
 });
@@ -185,7 +186,7 @@ const durationSeconds = computed(() => {
     if (!start) {
         return 0;
     }
-    const end = Number(props.record?.endTime || Date.now());
+    const end = Number(props.record?.endTime || props.nowMs || Date.now());
     return Math.max(1, Math.round((end - start) / 1000));
 });
 
@@ -245,10 +246,6 @@ const failDetail = computed(() => {
         String((props.record as any)?.jobResult?.Query?.error || "").trim(),
     ].filter(Boolean);
     return Array.from(new Set(parts)).join("\n");
-});
-
-const requestDiagnostics = computed(() => {
-    return (props.record as any)?.jobResult?.Submit?.responseDiagnostics || {};
 });
 
 const downloadOutput = async (item: OutputItem) => {
@@ -366,11 +363,6 @@ const saveAsClip = async () => {
                 </span>
                 <div v-if="failDetail" class="mt-2 whitespace-pre-wrap break-all rounded-lg bg-rose-50 px-2 py-1.5 text-xs leading-5 text-rose-600">
                     {{ failDetail }}
-                </div>
-                <div v-if="requestDiagnostics.requestUrl" class="mt-2 break-all rounded-lg bg-slate-50 px-2 py-1.5 text-xs leading-5 text-slate-500">
-                    <div>请求：{{ requestDiagnostics.method || "-" }} {{ requestDiagnostics.requestUrl }}</div>
-                    <div v-if="requestDiagnostics.httpStatus">HTTP：{{ requestDiagnostics.httpStatus }}</div>
-                    <div v-if="requestDiagnostics.error" class="text-rose-500">{{ requestDiagnostics.error }}</div>
                 </div>
             </div>
 

@@ -121,9 +121,6 @@ const buildConnectorType = (template: CloudTemplateRecord) => {
     if (template.content.templateType === "ai-app") {
         return "ai-app";
     }
-    if (template.content.templateType === "custom-api") {
-        return "custom-api";
-    }
     return "model-api";
 };
 
@@ -163,7 +160,6 @@ const buildModelConfig = async (
         workflowJson: replacePlaceholders(template.content.workflowJson || "", variables),
         nodeInfoListJson: replacePlaceholders(template.content.nodeInfoTemplateJson || "[]", variables),
         requestBodyJson: replacePlaceholders(template.content.requestBodyTemplateJson || "{}", variables),
-        requestFormat: template.content.requestFormat || "json",
         saveAsVideoTemplate: capability === "digital-human",
     };
 };

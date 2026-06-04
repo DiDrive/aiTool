@@ -2,11 +2,14 @@ import {ipcMain} from "electron";
 import {spawn} from "child_process";
 import {Log} from "../log/main";
 import path from "node:path";
+import {readFile} from "node:fs/promises";
+import {fileURLToPath} from "node:url";
 import {AppEnv} from "../env";
 import {extraResolveBin} from "../../lib/env";
 
 let ffmpegProcess: any = null;
 let ffmpegStreamMode: string = "";
+const RUNNING_HUB_DEFAULT_BASE_URL = "https://www.runninghub.cn";
 
 const isProcessRunning = (proc: any) => {
     if (!proc) return false;
@@ -117,7 +120,7 @@ const runningHubPost = async (
     body: Record<string, any>,
     apiKey?: string
 ) => {
-    const baseUrl = normalizeApiBaseUrl(apiBaseUrl || "https://www.runninghub.ai");
+    const baseUrl = normalizeApiBaseUrl(apiBaseUrl || RUNNING_HUB_DEFAULT_BASE_URL);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
     try {
@@ -143,6 +146,187 @@ const runningHubPost = async (
     } finally {
         clearTimeout(timeout);
     }
+};
+
+const runningHubPickUploadFileName = (result: any) => {
+    const candidates = [
+        result?.data?.fileName,
+        result?.data?.filename,
+        result?.data?.file,
+        result?.data?.name,
+        result?.fileName,
+        result?.filename,
+        result?.file,
+        typeof result?.data === "string" ? result.data : "",
+    ];
+    return String(candidates.find(item => typeof item === "string" && item.trim()) || "").trim();
+};
+
+const runningHubInferAssetExtension = (fieldName?: string) => {
+    const field = String(fieldName || "").trim().toLowerCase();
+    if (field.includes("audio") || field.includes("voice") || field.includes("mp3")) return ".mp3";
+    if (field.includes("video") || field.includes("file") || field.includes("mp4")) return ".mp4";
+    return "";
+};
+
+const runningHubInferAssetFileName = (value: string, fieldName?: string) => {
+    const fallback = `asset${runningHubInferAssetExtension(fieldName)}`;
+    try {
+        if (/^https?:\/\//i.test(value)) {
+            const url = new URL(value);
+            const name = decodeURIComponent(path.basename(url.pathname || ""));
+            return name && name !== "/" ? name : fallback;
+        }
+        if (/^file:\/\//i.test(value)) {
+            return path.basename(fileURLToPath(value)) || fallback;
+        }
+    } catch (e) {
+        return fallback;
+    }
+    return path.basename(value) || fallback;
+};
+
+const runningHubLooksLikeUploadedFile = (value: string) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return true;
+    if (/^https?:\/\//i.test(trimmed) || /^file:\/\//i.test(trimmed)) return false;
+    if (/[\\/]/.test(trimmed)) return false;
+    return true;
+};
+
+const runningHubUploadBlob = async (
+    apiBaseUrl: string,
+    apiKey: string,
+    bytes: Buffer,
+    fileName: string,
+    fileType = "input"
+) => {
+    const form = new FormData();
+    form.append("apiKey", apiKey || "");
+    form.append("fileType", fileType || "input");
+    form.append("file", new Blob([bytes]), fileName);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+        const result = await fetch(`${normalizeApiBaseUrl(apiBaseUrl || RUNNING_HUB_DEFAULT_BASE_URL)}/task/openapi/upload`, {
+            method: "POST",
+            headers: {
+                ...(apiKey ? {Authorization: `Bearer ${apiKey}`} : {}),
+            },
+            body: form,
+            signal: controller.signal,
+        });
+        const text = await result.text();
+        let json: any = {};
+        try {
+            json = text ? JSON.parse(text) : {};
+        } catch (e) {
+            json = {code: result.ok ? 0 : result.status, msg: text || `HTTP ${result.status}`, data: {}};
+        }
+        const fileValue = runningHubPickUploadFileName(json);
+        if (!fileValue) {
+            throw new Error(json?.msg || "RunningHub 上传成功但未返回文件名");
+        }
+        return fileValue;
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
+const runningHubUploadAssetValue = async (
+    apiBaseUrl: string,
+    apiKey: string,
+    value: any,
+    fieldName?: string
+) => {
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    if (runningHubLooksLikeUploadedFile(trimmed)) return trimmed;
+
+    let bytes: Buffer;
+    if (/^https?:\/\//i.test(trimmed)) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        try {
+            const res = await fetch(trimmed, {method: "GET", signal: controller.signal});
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            bytes = Buffer.from(await res.arrayBuffer());
+        } finally {
+            clearTimeout(timeout);
+        }
+    } else {
+        const filePath = /^file:\/\//i.test(trimmed)
+            ? fileURLToPath(trimmed)
+            : path.isAbsolute(trimmed)
+              ? trimmed
+              : path.resolve(AppEnv.appRoot, trimmed);
+        bytes = await readFile(filePath);
+    }
+
+    return await runningHubUploadBlob(
+        apiBaseUrl || RUNNING_HUB_DEFAULT_BASE_URL,
+        apiKey || "",
+        bytes,
+        runningHubInferAssetFileName(trimmed, fieldName)
+    );
+};
+
+const runningHubPrepareNodeInfoList = async (
+    apiBaseUrl: string,
+    apiKey: string,
+    nodeInfoList?: Array<Record<string, any>>
+) => {
+    if (!Array.isArray(nodeInfoList)) return [];
+    return await Promise.all(
+        nodeInfoList.map(async item => {
+            if (!item || typeof item !== "object") return item;
+            return {
+                ...item,
+                fieldValue: await runningHubUploadAssetValue(apiBaseUrl, apiKey, item.fieldValue, item.fieldName),
+            };
+        })
+    );
+};
+
+const runningHubRunAiApp = async (options: {
+    apiBaseUrl?: string;
+    apiKey?: string;
+    webappId?: string;
+    nodeInfoList?: Array<Record<string, any>>;
+    webhookUrl?: string;
+    instanceType?: string;
+}) => {
+    const apiBaseUrl = options.apiBaseUrl || RUNNING_HUB_DEFAULT_BASE_URL;
+    const webappId = String(options.webappId || "").trim();
+    const nodeInfoList = await runningHubPrepareNodeInfoList(apiBaseUrl, options.apiKey || "", options.nodeInfoList);
+    if (webappId) {
+        return await runningHubPost(
+            apiBaseUrl,
+            `openapi/v2/run/ai-app/${encodeURIComponent(webappId)}`,
+            {
+                nodeInfoList,
+                instanceType: options.instanceType || "default",
+                usePersonalQueue: "false",
+                webhookUrl: options.webhookUrl || undefined,
+            },
+            options.apiKey
+        );
+    }
+    return await runningHubPost(
+        apiBaseUrl,
+        "task/openapi/ai-app/run",
+        {
+            apiKey: options.apiKey || "",
+            webappId,
+            nodeInfoList,
+            webhookUrl: options.webhookUrl || undefined,
+            instanceType: options.instanceType || undefined,
+            usePersonalQueue: "false",
+        },
+        options.apiKey
+    );
 };
 
 const runningHubMapStatus = (raw: any) => {
@@ -317,18 +501,7 @@ ipcMain.handle("live:startCloudStream", async (event, options: {
 }) => {
     const provider = normalizeProvider(options.provider);
     if (provider === "runninghub") {
-        return await runningHubPost(
-            options.apiBaseUrl || "https://www.runninghub.ai",
-            "task/openapi/ai-app/run",
-            {
-                apiKey: options.apiKey || "",
-                webappId: options.webappId || "",
-                nodeInfoList: Array.isArray(options.nodeInfoList) ? options.nodeInfoList : [],
-                webhookUrl: options.webhookUrl || undefined,
-                instanceType: options.instanceType || undefined,
-            },
-            options.apiKey
-        );
+        return await runningHubRunAiApp(options);
     }
     const scene = {
         id: options.sceneId || "default",
@@ -391,7 +564,7 @@ ipcMain.handle("live:getCloudStreamStatus", async (event, options: {
             return {code: 404, msg: "RUNNINGHUB_TASK_ID_MISSING", data: {status: "stopped"}};
         }
         const v2Result = await runningHubPost(
-            options.apiBaseUrl || "https://www.runninghub.ai",
+            options.apiBaseUrl || RUNNING_HUB_DEFAULT_BASE_URL,
             "openapi/v2/query",
             {
                 taskId: options.taskId,
@@ -413,7 +586,7 @@ ipcMain.handle("live:getCloudStreamStatus", async (event, options: {
             };
         }
         const statusResult = await runningHubPost(
-            options.apiBaseUrl || "https://www.runninghub.ai",
+            options.apiBaseUrl || RUNNING_HUB_DEFAULT_BASE_URL,
             "task/openapi/status",
             {
                 apiKey: options.apiKey || "",
@@ -424,7 +597,7 @@ ipcMain.handle("live:getCloudStreamStatus", async (event, options: {
         const statusText = String(statusResult?.data || "");
         let previewUrl = "";
         const outputsResult = await runningHubPost(
-            options.apiBaseUrl || "https://www.runninghub.ai",
+            options.apiBaseUrl || RUNNING_HUB_DEFAULT_BASE_URL,
             "task/openapi/outputs",
             {
                 apiKey: options.apiKey || "",
@@ -502,18 +675,7 @@ ipcMain.handle("live:syncCloudSceneClip", async (event, options: {
 }) => {
     const provider = normalizeProvider(options.provider);
     if (provider === "runninghub") {
-        return await runningHubPost(
-            options.apiBaseUrl || "https://www.runninghub.ai",
-            "task/openapi/ai-app/run",
-            {
-                apiKey: options.apiKey || "",
-                webappId: options.webappId || "",
-                nodeInfoList: Array.isArray(options.nodeInfoList) ? options.nodeInfoList : [],
-                webhookUrl: options.webhookUrl || undefined,
-                instanceType: options.instanceType || undefined,
-            },
-            options.apiKey
-        );
+        return await runningHubRunAiApp(options);
     }
     const requestBody =
         options.requestBody && typeof options.requestBody === "object"

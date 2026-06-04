@@ -678,8 +678,8 @@ onUnmounted(() => {
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <a-button type="outline" size="small" :status="isSettingsVisible ? 'normal' : 'primary'" @click="isSettingsVisible = true">配置参数</a-button>
-                        <a-button type="outline" size="small" :status="!isSettingsVisible ? 'normal' : 'primary'" @click="isSettingsVisible = false">查看弹幕</a-button>
+                        <a-button :type="isSettingsVisible ? 'primary' : 'outline'" size="small" @click="isSettingsVisible = true">配置参数</a-button>
+                        <a-button :type="!isSettingsVisible ? 'primary' : 'outline'" size="small" @click="isSettingsVisible = false">查看弹幕</a-button>
                     </div>
                 </div>
 

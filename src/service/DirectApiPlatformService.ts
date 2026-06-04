@@ -7,6 +7,16 @@ export type DirectApiPlatformContent = {
     platformType: DirectApiPlatformType;
     baseUrl: string;
     apiKey: string;
+    proxyUrl?: string;
+    directFileRelay?: {
+        provider?: "123pan";
+        enabled?: boolean;
+        clientID?: string;
+        clientSecret?: string;
+        parentFileID?: number | string;
+        urlAuthKey?: string;
+        assetMode?: boolean;
+    };
     capabilities: DirectApiCapability[];
     isDefault?: boolean;
 };
@@ -30,6 +40,16 @@ const decode = (record: StorageRecord | null): DirectApiPlatformRecord | null =>
             platformType: record.content?.platformType || "exchangetoken",
             baseUrl: record.content?.baseUrl || "https://api.exchangetoken.ai",
             apiKey: record.content?.apiKey || "",
+            proxyUrl: record.content?.proxyUrl || "",
+            directFileRelay: {
+                provider: record.content?.directFileRelay?.provider || "123pan",
+                enabled: !!record.content?.directFileRelay?.enabled,
+                clientID: record.content?.directFileRelay?.clientID || "",
+                clientSecret: record.content?.directFileRelay?.clientSecret || "",
+                parentFileID: record.content?.directFileRelay?.parentFileID || "",
+                urlAuthKey: record.content?.directFileRelay?.urlAuthKey || "",
+                assetMode: record.content?.directFileRelay?.assetMode !== false,
+            },
             capabilities: Array.isArray(record.content?.capabilities)
                 ? record.content.capabilities
                 : DEFAULT_CAPABILITIES,

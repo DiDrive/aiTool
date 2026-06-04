@@ -21,6 +21,16 @@ export type RunningHubModelConfigType = {
     templateType?: string;
     baseUrl: string;
     apiKey: string;
+    proxyUrl?: string;
+    directFileRelay?: {
+        provider?: "123pan";
+        enabled?: boolean;
+        clientID?: string;
+        clientSecret?: string;
+        parentFileID?: number | string;
+        urlAuthKey?: string;
+        assetMode?: boolean;
+    };
     submitPath?: string;
     queryPath?: string;
     cancelPath?: string;
