@@ -82,6 +82,8 @@ const filteredRecords = computed(() => {
     });
 });
 
+const displayedRecords = computed(() => filteredRecords.value.slice(0, 30));
+
 const summary = computed(() => {
     const result = {
         running: 0,
@@ -305,12 +307,18 @@ onBeforeUnmount(() => {
             <div class="flex-grow overflow-auto px-3 py-3">
                 <div class="space-y-3">
                     <CloudTaskSidebarItem
-                        v-for="record in filteredRecords"
+                        v-for="record in displayedRecords"
                         :key="record.id"
                         :record="record"
                         :display-status="resolveDisplayStatus(record)"
                         :now-ms="nowMs"
                     />
+                </div>
+                <div
+                    v-if="filteredRecords.length > displayedRecords.length"
+                    class="mt-3 rounded-xl bg-white px-3 py-3 text-xs text-gray-400"
+                >
+                    当前仅显示前 {{ displayedRecords.length }} 条，切换筛选可缩小结果范围。
                 </div>
                 <m-empty v-if="filteredRecords.length === 0" class="mt-10" text="没有符合条件的任务" />
             </div>

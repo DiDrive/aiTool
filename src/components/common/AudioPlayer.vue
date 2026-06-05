@@ -172,7 +172,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     if (wave.value) {
-        wave.value.destroy();
+        try {
+            wave.value.destroy();
+        } catch (e) {
+            console.warn("[AudioPlayer] destroy failed", e);
+        } finally {
+            wave.value = null;
+        }
     }
 });
 

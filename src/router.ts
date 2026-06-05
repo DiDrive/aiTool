@@ -27,12 +27,17 @@ const router = createRouter({
     routes,
 });
 
-// watch router change
 router.beforeEach((to, from, next) => {
-    window.$mapi?.statistics?.tick("visit", {
-        path: to.path,
-    });
     next();
+    window.setTimeout(() => {
+        try {
+            window.$mapi?.statistics?.tick("visit", {
+                path: to.path,
+            });
+        } catch (e) {
+            console.warn("[router] statistics tick failed", e);
+        }
+    }, 0);
 });
 
 export default router;

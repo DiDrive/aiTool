@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AigcPanel AI 工具 UI 设计稿</title>
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --panel: #ffffff;
+      --panel-soft: #f9fafc;
+      --ink: #141820;
+      --muted: #667085;
+      --line: #e5e8ef;
+      --blue: #265bd7;
+      --blue-soft: #e9f0ff;
+      --cyan: #00a7b5;
+      --green: #16a06a;
+      --amber: #d58a00;
+      --violet: #7057d8;
+      --danger: #d84a4a;
+      --shadow: 0 22px 60px rgba(27, 39, 72, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #e9edf5;
+      color: var(--ink);
+      font-family: "Alibaba PuHuiTi", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    .stage {
+      min-height: 100vh;
+      padding: 36px;
+      display: grid;
+      place-items: center;
+    }
+
+    .app {
+      width: min(1360px, calc(100vw - 56px));
+      height: min(820px, calc(100vh - 56px));
+      min-height: 720px;
+      background: var(--bg);
+      border: 1px solid rgba(255,255,255,.8);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 42px 1fr;
+    }
+
+    .titlebar {
+      background: rgba(255,255,255,.9);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 12px;
+    }
+
+    .brand-mark {
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      background: var(--blue);
+      color: white;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .titlebar strong { font-size: 13px; }
+    .titlebar span { color: var(--muted); font-size: 12px; }
+    .window-actions { margin-left: auto; display: flex; gap: 12px; color: #495162; }
+
+    .body {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 72px 1fr 310px;
+    }
+
+    .rail {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 18px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, #dce8ff, #fff);
+      border: 1px solid var(--line);
+      display: grid;
+      place-items: center;
+      color: var(--blue);
+      font-weight: 800;
+    }
+
+    .nav-item {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      color: #3d4657;
+      position: relative;
+      font-size: 18px;
+    }
+
+    .nav-item.active {
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .nav-item.active::before {
+      content: "";
+      position: absolute;
+      left: -10px;
+      width: 3px;
+      height: 24px;
+      border-radius: 3px;
+      background: var(--blue);
+    }
+
+    .main {
+      min-width: 0;
+      overflow: auto;
+      padding: 24px;
+    }
+
+    .hero-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .hero {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 22px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 24px;
+      min-height: 208px;
+    }
+
+    .eyebrow {
+      color: var(--blue);
+      font-weight: 700;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 30px;
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+
+    .copy {
+      color: var(--muted);
+      line-height: 1.7;
+      max-width: 620px;
+      margin-bottom: 18px;
+    }
+
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    button {
+      height: 38px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 0 14px;
+      color: var(--ink);
+      font-weight: 700;
+      font-family: inherit;
+    }
+
+    button.primary {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: white;
+    }
+
+    .hero-meter {
+      background: linear-gradient(180deg, #f5f8ff, #ffffff);
+      border: 1px solid #dfe7f7;
+      border-radius: 12px;
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .meter-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+    .meter-value { font-size: 34px; font-weight: 800; }
+    .bar { height: 8px; border-radius: 8px; background: #e8edf6; overflow: hidden; }
+    .bar > div { height: 100%; border-radius: inherit; background: var(--blue); }
+
+    .quick-card {
+      background: #172033;
+      color: white;
+      border-radius: 14px;
+      padding: 18px;
+      display: grid;
+      align-content: space-between;
+      min-height: 208px;
+    }
+
+    .quick-card p { color: #b8c1d3; line-height: 1.65; margin: 8px 0 14px; }
+    .quick-card button { width: fit-content; color: white; background: #265bd7; border-color: #3972f0; }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 6px 0 12px;
+    }
+
+    h2 { margin: 0; font-size: 18px; letter-spacing: 0; }
+    .section-head a { color: var(--blue); text-decoration: none; font-weight: 700; font-size: 13px; }
+
+    .capabilities {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .cap-card, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    .cap-card {
+      padding: 16px;
+      min-height: 156px;
+      display: grid;
+      align-content: space-between;
+      gap: 14px;
+    }
+
+    .cap-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .cap-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 800;
+      font-size: 16px;
+    }
+    .cap-card h3 { margin: 12px 0 6px; font-size: 17px; }
+    .cap-card p { margin: 0; color: var(--muted); line-height: 1.55; }
+    .chip { color: #485266; background: var(--panel-soft); border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
+
+    .work-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+      gap: 18px;
+    }
+
+    .panel { padding: 16px; min-width: 0; }
+
+    .live-layout {
+      display: grid;
+      grid-template-columns: 210px 1fr;
+      gap: 14px;
+      min-height: 280px;
+    }
+
+    .live-preview {
+      border-radius: 10px;
+      background: #0f1725;
+      color: white;
+      padding: 14px;
+      display: grid;
+      align-content: space-between;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .live-preview::after {
+      content: "";
+      width: 136px;
+      height: 136px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(38,91,215,.65), rgba(0,167,181,.08));
+      position: absolute;
+      right: -28px;
+      bottom: -28px;
+    }
+
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #1fd08d; margin-right: 6px; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .tab { padding: 8px 10px; border-radius: 8px; background: var(--panel-soft); color: var(--muted); font-weight: 700; }
+    .tab.active { background: var(--blue-soft); color: var(--blue); }
+
+    .script-box {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      min-height: 120px;
+      background: #fff;
+      line-height: 1.7;
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .input {
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+    }
+
+    .task-list { display: grid; gap: 10px; }
+    .task {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+      background: #fff;
+    }
+    .task-head { display: flex; justify-content: space-between; gap: 10px; font-weight: 700; }
+    .task-head span { color: var(--muted); font-size: 12px; font-weight: 500; }
+
+    .side {
+      min-width: 0;
+      background: rgba(255,255,255,.68);
+      border-left: 1px solid var(--line);
+      padding: 18px;
+      overflow: auto;
+    }
+
+    .side .panel { margin-bottom: 14px; }
+
+    .model-row, .queue-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .model-row:last-child, .queue-row:last-child { border-bottom: 0; }
+    .model-row strong, .queue-row strong { display: block; margin-bottom: 3px; }
+    .model-row span, .queue-row span { color: var(--muted); font-size: 12px; }
+
+    .badge {
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .ok { color: #08764d; background: #e8f7f0; }
+    .warn { color: #946000; background: #fff4da; }
+    .blue { color: var(--blue); background: var(--blue-soft); }
+
+    @media (max-width: 1120px) {
+      .body { grid-template-columns: 72px 1fr; }
+      .side { display: none; }
+      .hero-row, .hero { grid-template-columns: 1fr; }
+      .capabilities { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      .stage { padding: 0; }
+      .app { width: 100vw; height: 100vh; min-height: 0; border-radius: 0; }
+      .body { grid-template-columns: 1fr; }
+      .rail { display: none; }
+      .main { padding: 16px; }
+      .capabilities, .work-grid, .live-layout { grid-template-columns: 1fr; }
+      h1 { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="app" aria-label="AigcPanel UI concept">
+      <header class="titlebar">
+        <div class="brand-mark">AI</div>
+        <strong>AigcPanel Pro</strong>
+        <span>本地 AI 创作与数字人直播工作台</span>
+        <div class="window-actions">－ □ ×</div>
+      </header>
+
+      <div class="body">
+        <nav class="rail" aria-label="主导航">
+          <div class="avatar">U</div>
+          <div class="nav-item active" title="首页">⌂</div>
+          <div class="nav-item" title="数字人">AI</div>
+          <div class="nav-item" title="视频">▶</div>
+          <div class="nav-item" title="声音">♪</div>
+          <div class="nav-item" title="工具">✦</div>
+          <div class="nav-item" title="模型">◇</div>
+          <div class="nav-item" title="设置" style="margin-top:auto">⚙</div>
+        </nav>
+
+        <section class="main">
+          <div class="hero-row">
+            <section class="hero">
+              <div>
+                <div class="eyebrow">AI 创作控制台</div>
+                <h1>把视频、声音、数字人直播放进同一个生产流程</h1>
+                <p class="copy">从脚本、语音、形象到直播互动都在一个面板完成。首页优先展示今日任务、常用能力和运行状态，减少在多个页面之间来回寻找入口。</p>
+                <div class="actions">
+                  <button class="primary">新建创作</button>
+                  <button>打开直播中控</button>
+                  <button>导入素材</button>
+                </div>
+              </div>
+              <div class="hero-meter">
+                <div class="meter-head"><span>今日任务完成率</span><strong>运行正常</strong></div>
+                <div class="meter-value">86%</div>
+                <div class="bar"><div style="width:86%"></div></div>
+                <div class="meter-head"><span>视频 12</span><span>声音 28</span><span>直播 3</span></div>
+              </div>
+            </section>
+
+            <aside class="quick-card">
+              <div>
+                <div class="eyebrow" style="color:#88a8ff">推荐流程</div>
+                <h2>短视频带货直播</h2>
+                <p>选择商品脚本，生成讲解音频，绑定数字人形象后推送到直播控制台。</p>
+              </div>
+              <button>一键创建流程</button>
+            </aside>
+          </div>
+
+          <div class="section-head">
+            <h2>常用 AI 能力</h2>
+            <a href="#">管理全部工具</a>
+          </div>
+          <section class="capabilities">
+            <article class="cap-card">
+              <div>
+                <div class="cap-top"><div class="cap-icon" style="background:var(--blue)">V</div><span class="chip">云端/本地</span></div>
+                <h3>视频生成</h3>
+                <p>数字人口播、图片转视频、口型同步和模板化视频任务。</p>
+              </div>
+              <button>开始</button>
+            </article>
+            <article class="cap-card">
+              <div>
+                <div class="cap-top"><div class="cap-icon" style="background:var(--cyan)">S</div><span class="chip">多音色</span></div>
+                <h3>声音工作室</h3>
+                <p>语音合成、声音克隆、字幕配音和长文本分段生成。</p>
+              </div>
+              <button>开始</button>
+            </article>
+            <article class="cap-card">
+              <div>
+                <div class="cap-top"><div class="cap-icon" style="background:var(--green)">L</div><span class="chip">互动中</span></div>
+                <h3>数字人直播</h3>
+                <p>知识库、自动回复、黑词规则、直播控制和播报历史。</p>
+              </div>
+              <button>进入</button>
+            </article>
+            <article class="cap-card">
+              <div>
+                <div class="cap-top"><div class="cap-icon" style="background:var(--violet)">M</div><span class="chip">API</span></div>
+                <h3>模型与服务</h3>
+                <p>管理 OpenAI 兼容平台、云模板、服务器和本地运行环境。</p>
+              </div>
+              <button>配置</button>
+            </article>
+          </section>
+
+          <section class="work-grid">
+            <article class="panel">
+              <div class="section-head" style="margin-top:0">
+                <h2>直播中控</h2>
+                <span class="badge ok"><span class="status-dot"></span>在线</span>
+              </div>
+              <div class="live-layout">
+                <div class="live-preview">
+                  <div><strong>数字人预览</strong><br><span style="color:#b8c1d3">商品讲解 · 竖屏 9:16</span></div>
+                  <div style="z-index:1">
+                    <div style="font-size:28px;font-weight:800">18:42</div>
+                    <span style="color:#b8c1d3">已连续播报</span>
+                  </div>
+                </div>
+                <div>
+                  <div class="tabs">
+                    <div class="tab active">知识库</div>
+                    <div class="tab">直播互动</div>
+                    <div class="tab">控制台</div>
+                    <div class="tab">播报历史</div>
+                  </div>
+                  <div class="script-box">欢迎来到直播间。今天重点介绍三款适合新手的 AI 创作工具，支持视频生成、语音合成和自动回复。系统会根据评论自动选择知识片段并生成口播。</div>
+                  <div class="input-row">
+                    <div class="input">输入临时播报内容或选择知识库片段</div>
+                    <button class="primary">插播</button>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="section-head" style="margin-top:0">
+                <h2>任务进度</h2>
+                <a href="#">查看全部</a>
+              </div>
+              <div class="task-list">
+                <div class="task">
+                  <div class="task-head">商品口播视频 <span>2 分钟前</span></div>
+                  <div class="bar"><div style="width:72%;background:var(--green)"></div></div>
+                  <span class="badge ok" style="width:fit-content">渲染中 72%</span>
+                </div>
+                <div class="task">
+                  <div class="task-head">声音克隆训练 <span>8 分钟前</span></div>
+                  <div class="bar"><div style="width:44%;background:var(--cyan)"></div></div>
+                  <span class="badge blue" style="width:fit-content">排队处理</span>
+                </div>
+                <div class="task">
+                  <div class="task-head">字幕配音导出 <span>今天 15:10</span></div>
+                  <div class="bar"><div style="width:100%;background:var(--blue)"></div></div>
+                  <span class="badge ok" style="width:fit-content">已完成</span>
+                </div>
+              </div>
+            </article>
+          </section>
+        </section>
+
+        <aside class="side">
+          <section class="panel">
+            <div class="section-head" style="margin-top:0">
+              <h2>运行环境</h2>
+              <span class="badge ok">健康</span>
+            </div>
+            <div class="model-row">
+              <div><strong>本地服务</strong><span>AI_Live_Server · 127.0.0.1</span></div>
+              <span class="badge ok">已启动</span>
+            </div>
+            <div class="model-row">
+              <div><strong>云端模板</strong><span>Seedance / RunningHub</span></div>
+              <span class="badge blue">可用</span>
+            </div>
+            <div class="model-row">
+              <div><strong>存储空间</strong><span>缓存与导出目录</span></div>
+              <span class="badge warn">68%</span>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head" style="margin-top:0">
+              <h2>模型连接</h2>
+              <a href="#">设置</a>
+            </div>
+            <div class="model-row">
+              <div><strong>OpenAI 兼容</strong><span>3 个平台已配置</span></div>
+              <span class="badge ok">正常</span>
+            </div>
+            <div class="model-row">
+              <div><strong>语音合成</strong><span>默认音色：温暖女声</span></div>
+              <span class="badge blue">默认</span>
+            </div>
+            <div class="model-row">
+              <div><strong>数字人形象</strong><span>已绑定 5 个身份</span></div>
+              <span class="badge ok">就绪</span>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head" style="margin-top:0">
+              <h2>云任务队列</h2>
+              <span class="badge blue">4</span>
+            </div>
+            <div class="queue-row">
+              <div><strong>图生图优化</strong><span>预计 01:20</span></div>
+              <span>56%</span>
+            </div>
+            <div class="queue-row">
+              <div><strong>长文本配音</strong><span>等待资源</span></div>
+              <span>队列中</span>
+            </div>
+            <div class="queue-row">
+              <div><strong>直播知识库同步</strong><span>刚刚完成</span></div>
+              <span>完成</span>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

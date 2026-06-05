@@ -1,15 +1,38 @@
 <script setup lang="ts">
-import {computed, onMounted, ref} from "vue";
-import Router from "../router";
+import {computed, ref, watch} from "vue";
+import {useRoute, useRouter} from "vue-router";
 import {ToolApps} from "./Apps/all";
 
+const route = useRoute();
+const router = useRouter();
 const tab = ref("");
 const defaultTab = ToolApps[0]?.name || "";
 
-onMounted(() => {
-    const queryTab = (Router.currentRoute.value.query.tab as string) || "";
+const syncTabFromRoute = () => {
+    const queryTab = (route.query.tab as string) || "";
     tab.value = ToolApps.some(app => app.name === queryTab) ? queryTab : defaultTab;
-});
+};
+
+watch(
+    () => route.query.tab,
+    () => {
+        syncTabFromRoute();
+    },
+    {immediate: true}
+);
+
+const tabHref = (name: string) => `#${route.path}?tab=${encodeURIComponent(name)}&_t=${Date.now()}`;
+
+const goTab = (event: MouseEvent, name: string) => {
+    event.preventDefault();
+    router.replace({
+        path: "/tool",
+        query: {
+            tab: name,
+            _t: String(Date.now()),
+        },
+    });
+};
 
 const dynamicComponent = computed(() => {
     for (const app of ToolApps) {
@@ -24,20 +47,23 @@ const dynamicComponent = computed(() => {
 <template>
     <div class="pb-device-container bg-white h-full relative select-none flex">
         <div class="p-4 w-max-52 flex-shrink-0 border-r border-solid border-gray-100 overflow-x-hidden overflow-y-auto">
-            <div
+            <a
                 v-for="s in ToolApps"
-                class="p-2 rounded-lg mb-4 cursor-pointer"
+                :href="tabHref(s.name)"
+                data-route-path="/tool"
+                :data-route-tab="s.name"
+                class="block p-2 rounded-lg mb-4 cursor-pointer"
                 :class="tab === s.name ? 'bg-gray-200' : ''"
-                @click="tab = s.name"
+                @click="goTab($event, s.name)"
             >
-                <div class="text-base truncate flex items-center">
+                <div class="text-base truncate flex items-center" data-route-path="/tool" :data-route-tab="s.name">
                     <img :src="s.icon" class="w-4 h-4 mr-2 object-contain"/>
                     {{ s.title }}
                 </div>
-            </div>
+            </a>
         </div>
         <div class="flex-grow h-full overflow-y-auto">
-            <component :is="dynamicComponent"/>
+            <component :is="dynamicComponent" :key="`${route.fullPath}:${tab}`"/>
         </div>
     </div>
 </template>

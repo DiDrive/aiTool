@@ -505,7 +505,7 @@ const createExchangeTokenAsset = async (
 };
 
 const shouldRetryByNetRequest = (e: any) => {
-    return /ERR_CONNECTION_CLOSED|fetch failed|other side closed/i.test(errorDetailOf(e));
+    return /ERR_CONNECTION_CLOSED|fetch failed|other side closed|socket hang up|ECONNRESET|connReset/i.test(errorDetailOf(e));
 };
 
 const parseTextResponse = (text: string, statusCode: number) => {

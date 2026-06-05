@@ -203,6 +203,69 @@ const extractRemoteResultUrls = (remoteResults: any[]) => {
         .filter(Boolean);
 };
 
+const imageExtFromBase64 = (value: string) => {
+    const mime = String(value || "").match(/^data:(image\/[a-z0-9.+-]+);base64,/i)?.[1]?.toLowerCase() || "";
+    if (mime.includes("jpeg") || mime.includes("jpg")) {
+        return "jpg";
+    }
+    if (mime.includes("webp")) {
+        return "webp";
+    }
+    if (mime.includes("gif")) {
+        return "gif";
+    }
+    return "png";
+};
+
+const base64ToBytes = (value: string) => {
+    const raw = String(value || "").replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "").trim();
+    const binary = atob(raw);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+};
+
+const saveBase64ImageResult = async (value: string, index: number) => {
+    const ext = imageExtFromBase64(value);
+    const file = await window.$mapi.file.hubFile(ext, {
+        returnFullPath: true,
+        saveGroup: "image",
+        savePathParam: {
+            source: "gpt-image-2",
+            index,
+        },
+    });
+    await window.$mapi.file.writeBuffer(file, base64ToBytes(value));
+    return file;
+};
+
+const materializeDirectApiResults = async (results: any[]) => {
+    const localFiles: string[] = [];
+    const normalizedResults: any[] = [];
+    for (const [index, item] of (Array.isArray(results) ? results : []).entries()) {
+        const base64Text = String(item?.text || item?.b64_json || item?.base64 || item?.image_base64 || "").trim();
+        if (base64Text && String(item?.outputType || "").includes("base64")) {
+            const localFile = await saveBase64ImageResult(base64Text, index);
+            localFiles.push(localFile);
+            normalizedResults.push({
+                fileUrl: localFile,
+                outputType: "image",
+                localFile,
+                source: "base64",
+                detail: `base64 image saved locally, length=${base64Text.length}`,
+            });
+            continue;
+        }
+        normalizedResults.push(item);
+    }
+    return {
+        results: normalizedResults,
+        localFiles,
+    };
+};
+
 const normalizeDirectApiResults = (res: any) => {
     const candidates = [
         res?.data,
@@ -443,13 +506,14 @@ export const RunningHubTask: TaskBiz = {
                 const taskId = extractDirectApiTaskId(res);
                 const syncResults = normalizeDirectApiResults(res);
                 if (!taskId && syncResults.length > 0) {
+                    const materialized = await materializeDirectApiResults(syncResults);
                     jobResult.Submit.status = "success";
                     jobResult.Query.status = "success";
                     jobResult.Query.taskStatus = "SUCCESS";
-                    jobResult.Query.results = syncResults as any;
+                    jobResult.Query.results = materialized.results as any;
                     jobResult.Query.usage = res?.usage || res?.data?.usage || {};
                     jobResult.End.status = "success";
-                    jobResult.End.localFiles = [];
+                    jobResult.End.localFiles = materialized.localFiles;
                     jobResult.step = "End";
                     await TaskService.update(bizId, {
                         status: "success",
@@ -529,13 +593,18 @@ export const RunningHubTask: TaskBiz = {
         jobResult.Query.results = Array.isArray(res?.data?.results) ? res.data.results : [];
         jobResult.Query.usage = res?.data?.usage || {};
         jobResult.Query.promptTips = res?.data?.promptTips || "";
-        await TaskService.update(bizId, { jobResult });
         if (status === "SUCCESS" || status === "SUCCEEDED") {
             const localFiles: string[] = [];
             const downloadErrors: string[] = [];
+            const materialized = await materializeDirectApiResults(jobResult.Query.results || []);
+            jobResult.Query.results = materialized.results;
+            localFiles.push(...materialized.localFiles);
             for (const item of jobResult.Query.results || []) {
                 const fileUrl = String(item?.url || item?.fileUrl || "").trim();
                 if (!fileUrl) {
+                    continue;
+                }
+                if (String(item?.localFile || "").trim() && fileUrl === item.localFile) {
                     continue;
                 }
                 try {
@@ -564,6 +633,7 @@ export const RunningHubTask: TaskBiz = {
             await TaskService.update(bizId, { jobResult });
             throw new Error(msg);
         }
+        await TaskService.update(bizId, { jobResult });
         return "running";
     },
     successFunc: async (bizId) => {

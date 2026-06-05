@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onBeforeMount, onMounted, ref} from "vue";
+import {onBeforeMount, ref} from "vue";
 import PageNav from "./../components/PageNav.vue";
 import {AppConfig} from "../config";
 import AppQuitConfirm from "../components/AppQuitConfirm.vue";
@@ -44,10 +44,6 @@ onBeforeMount(async () => {
 const doQuit = async () => {
     await appQuitConfirm.value?.show();
 };
-
-onMounted(() => {
-    // document.body.setAttribute('arco-theme', 'dark')
-});
 </script>
 <template>
     <div class="window-container">
@@ -91,7 +87,7 @@ onMounted(() => {
                     <PageNav />
                 </div>
                 <div class="min-w-0 flex-grow h-full overflow-hidden">
-                    <router-view></router-view>
+                    <router-view :key="$route.fullPath"></router-view>
                 </div>
                 <div class="flex-shrink-0 h-full border-l border-white/70 bg-white/55 backdrop-blur">
                     <CloudTaskSidebar />

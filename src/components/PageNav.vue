@@ -40,6 +40,17 @@ const doUser = async () => {
     }
     await window.$mapi.user.open();
 };
+
+const pageHref = (path: string) => `#${path}`;
+
+const goPage = (event: MouseEvent, path: string) => {
+    event.preventDefault();
+    const current = route.currentRoute.value;
+    route.replace({
+        path,
+        query: current.path === path ? {_t: String(Date.now())} : {},
+    });
+};
 </script>
 
 <template>
@@ -74,8 +85,9 @@ const doUser = async () => {
             <a
                 class="page-nav-item block text-center py-3"
                 :class="activeTab === 'home' ? 'active' : ''"
-                @click="$router.push('/')"
-                href="javascript:;"
+                data-route-path="/"
+                @click="goPage($event, '/')"
+                :href="pageHref('/')"
             >
                 <div>
                     <icon-home class="text-xl" />
@@ -85,8 +97,9 @@ const doUser = async () => {
             <a
                 class="page-nav-item block text-center py-3"
                 :class="activeTab === 'sound' ? 'active' : ''"
-                @click="$router.push('/sound')"
-                href="javascript:;"
+                data-route-path="/sound"
+                @click="goPage($event, '/sound')"
+                :href="pageHref('/sound')"
             >
                 <div>
                     <i class="iconfont icon-sound text-xl"></i>
@@ -96,8 +109,9 @@ const doUser = async () => {
             <a
                 class="page-nav-item block text-center py-3"
                 :class="activeTab === 'video' ? 'active' : ''"
-                @click="$router.push('/video')"
-                href="javascript:;"
+                data-route-path="/video"
+                @click="goPage($event, '/video')"
+                :href="pageHref('/video')"
             >
                 <div>
                     <i class="iconfont icon-video text-xl"></i>
@@ -107,8 +121,9 @@ const doUser = async () => {
             <a
                 class="page-nav-item block text-center py-3"
                 :class="activeTab === 'live' ? 'active' : ''"
-                @click="$router.push('/live')"
-                href="javascript:;"
+                data-route-path="/live"
+                @click="goPage($event, '/live')"
+                :href="pageHref('/live')"
             >
                 <div>
                     <icon-live-broadcast class="text-xl" />
@@ -118,8 +133,9 @@ const doUser = async () => {
             <a
                 class="page-nav-item block text-center py-3"
                 :class="activeTab === 'tool' ? 'active' : ''"
-                @click="$router.push('/tool')"
-                href="javascript:;"
+                data-route-path="/tool"
+                @click="goPage($event, '/tool')"
+                :href="pageHref('/tool')"
             >
                 <div>
                     <icon-tool class="text-xl" />
@@ -129,8 +145,9 @@ const doUser = async () => {
             <a
                 class="page-nav-item block text-center py-3"
                 :class="activeTab === 'server' ? 'active' : ''"
-                @click="$router.push('/server')"
-                href="javascript:;"
+                data-route-path="/server"
+                @click="goPage($event, '/server')"
+                :href="pageHref('/server')"
             >
                 <div>
                     <i class="iconfont icon-server text-xl"></i>
@@ -140,8 +157,9 @@ const doUser = async () => {
             <a
                 class="page-nav-item block text-center py-3"
                 :class="activeTab === 'setting' ? 'active' : ''"
-                @click="$router.push('/setting')"
-                href="javascript:;"
+                data-route-path="/setting"
+                @click="goPage($event, '/setting')"
+                :href="pageHref('/setting')"
             >
                 <div>
                     <icon-settings class="text-xl" />

@@ -28,11 +28,21 @@ const props = withDefaults(
 
 let player: Player | null = null;
 
-const initPlayer = () => {
-    if (player) {
+const destroyPlayer = () => {
+    if (!player) {
+        return;
+    }
+    try {
         player.destroy();
+    } catch (e) {
+        console.warn("[VideoPlayer] destroy failed", e);
+    } finally {
         player = null;
     }
+};
+
+const initPlayer = () => {
+    destroyPlayer();
     if (videoContainer.value && props.url) {
         let url = props.url
         if (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('file:')) {
@@ -66,9 +76,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-    if (player) {
-        player.destroy();
-    }
+    destroyPlayer();
 });
 </script>
 
