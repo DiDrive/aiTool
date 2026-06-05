@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AigcPanel Refined UI Kit</title>
+  <style>
+    :root {
+      --bg: #eef2f8;
+      --surface: #f7f9fc;
+      --panel: #ffffff;
+      --panel-2: #fbfcfe;
+      --ink: #121826;
+      --text: #243044;
+      --muted: #647085;
+      --faint: #98a2b3;
+      --line: #dde4ee;
+      --line-soft: #edf1f6;
+      --primary: #2458d8;
+      --primary-2: #1f6ff2;
+      --primary-soft: #eaf1ff;
+      --nav: #101827;
+      --green: #16a06a;
+      --cyan: #009eae;
+      --amber: #d28a00;
+      --red: #cf3f4d;
+      --radius: 12px;
+      --shadow-sm: 0 1px 2px rgba(16, 24, 40, .04);
+      --shadow-md: 0 14px 42px rgba(31, 45, 73, .12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #dde5f0;
+      color: var(--text);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { color: var(--ink); font-size: 24px; line-height: 1.22; margin-bottom: 6px; }
+    h2 { color: var(--ink); font-size: 16px; margin-bottom: 12px; }
+    h3 { color: var(--ink); font-size: 14px; margin-bottom: 7px; }
+    p { color: var(--muted); line-height: 1.65; margin-bottom: 0; }
+
+    .canvas {
+      width: 1500px;
+      margin: 0 auto;
+      padding: 40px;
+    }
+
+    .doc-head {
+      width: 820px;
+      margin-bottom: 26px;
+    }
+
+    .doc-head h1 { font-size: 34px; }
+    .doc-head p { font-size: 15px; }
+
+    .screen-title {
+      margin: 32px 0 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .screen-title h2 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .note { color: var(--muted); }
+
+    .screen {
+      width: 1360px;
+      height: 820px;
+      border-radius: 18px;
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: var(--shadow-md);
+      border: 1px solid rgba(255,255,255,.72);
+      display: grid;
+      grid-template-rows: 38px 1fr;
+      margin-bottom: 34px;
+    }
+
+    .titlebar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      background: rgba(255,255,255,.9);
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+    }
+
+    .brand {
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .window-actions {
+      margin-left: auto;
+      color: #6b7280;
+    }
+
+    .shell {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr) 360px;
+    }
+
+    .rail {
+      min-height: 0;
+      padding: 14px 8px;
+      background: var(--nav);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .avatar,
+    .nav-item {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      color: #b8c1d4;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .avatar {
+      background: #1d2a3e;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,.08);
+      margin-bottom: 8px;
+    }
+
+    .nav-item.active {
+      background: #fff;
+      color: var(--primary);
+      box-shadow: 0 8px 22px rgba(0,0,0,.22);
+    }
+
+    .nav-item.settings {
+      margin-top: auto;
+    }
+
+    .content {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      padding: 22px;
+    }
+
+    .page-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .page-head p {
+      max-width: 620px;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .btn {
+      height: 34px;
+      min-width: 74px;
+      padding: 0 12px;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn.primary {
+      color: #fff;
+      border-color: var(--primary);
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      box-shadow: 0 9px 18px rgba(36,88,216,.22);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.ok { color: #06784e; background: #e6f7ef; }
+    .badge.run { color: var(--primary); background: var(--primary-soft); }
+    .badge.wait { color: #946000; background: #fff4d7; }
+    .badge.fail { color: #a7363f; background: #fdebed; }
+    .badge.soft { color: #526071; background: #f3f6fa; border: 1px solid var(--line); }
+
+    .panel {
+      background: rgba(255,255,255,.92);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      padding: 15px;
+      min-width: 0;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .entry-card {
+      min-height: 148px;
+      display: grid;
+      align-content: space-between;
+      gap: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .entry-card::after {
+      content: "";
+      position: absolute;
+      right: -22px;
+      top: -24px;
+      width: 88px;
+      height: 88px;
+      border-radius: 999px;
+      background: var(--primary-soft);
+    }
+
+    .entry-top {
+      position: relative;
+      z-index: 1;
+    }
+
+    .entry-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: var(--primary);
+      background: var(--primary-soft);
+      font-weight: 900;
+      margin-bottom: 12px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+
+    .stat {
+      padding: 4px 18px;
+      border-right: 1px solid var(--line-soft);
+    }
+
+    .stat:last-child { border-right: 0; }
+    .stat strong {
+      display: block;
+      margin: 10px 0 8px;
+      color: var(--ink);
+      font-size: 29px;
+      line-height: 1;
+    }
+
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .tool-card {
+      min-height: 92px;
+      padding: 14px;
+      border-radius: 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+    }
+
+    .side-page {
+      display: grid;
+      grid-template-columns: 198px minmax(0, 1fr);
+      min-height: 0;
+      background: rgba(255,255,255,.76);
+    }
+
+    .subnav {
+      min-height: 0;
+      overflow: hidden;
+      background: rgba(255,255,255,.96);
+      border-right: 1px solid var(--line);
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .subnav-item {
+      min-height: 38px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      color: #344054;
+      font-weight: 800;
+    }
+
+    .subnav-item.active {
+      color: var(--primary);
+      background: var(--primary-soft);
+    }
+
+    .form-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 306px;
+      gap: 12px;
+    }
+
+    .form-stack {
+      display: grid;
+      gap: 9px;
+    }
+
+    .field {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #fbfcfe;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+    }
+
+    .field.textarea {
+      min-height: 120px;
+      align-items: flex-start;
+      padding-top: 12px;
+      line-height: 1.65;
+    }
+
+    .preview {
+      min-height: 276px;
+      border-radius: 14px;
+      padding: 16px;
+      color: #fff;
+      background:
+        radial-gradient(circle at 85% 85%, rgba(31,111,242,.7), rgba(31,111,242,0) 38%),
+        linear-gradient(145deg, #101827, #1a2436);
+      display: grid;
+      align-content: space-between;
+      overflow: hidden;
+    }
+
+    .table {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .tr {
+      min-height: 50px;
+      display: grid;
+      grid-template-columns: 1.3fr .86fr .75fr .86fr .65fr;
+      gap: 10px;
+      align-items: center;
+      padding: 0 13px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tr:last-child { border-bottom: 0; }
+    .th {
+      min-height: 42px;
+      color: var(--muted);
+      background: #f7f9fc;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .server-card {
+      min-height: 150px;
+      display: grid;
+      align-content: space-between;
+      gap: 12px;
+    }
+
+    .server-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .taskbar {
+      min-width: 0;
+      background: rgba(255,255,255,.78);
+      border-left: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .taskbar-head {
+      padding: 16px;
+      background: rgba(255,255,255,.9);
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .taskbar-head h2 { margin-bottom: 4px; }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 7px;
+      margin-top: 13px;
+    }
+
+    .summary-card {
+      border-radius: 12px;
+      padding: 9px 8px;
+      font-weight: 900;
+      text-align: left;
+    }
+
+    .summary-card span {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 11px;
+      font-weight: 700;
+      opacity: .72;
+    }
+
+    .filter-row {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .pill {
+      height: 26px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .pill.active {
+      color: #fff;
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .task-list {
+      min-height: 0;
+      overflow: hidden;
+      padding: 12px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+    }
+
+    .task-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .task-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 900;
+      color: var(--ink);
+    }
+
+    .task-title span,
+    .task-meta {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 12px;
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #e8edf6;
+    }
+
+    .bar i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--primary);
+    }
+
+    .settings-layout {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .setting-menu {
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      display: grid;
+      gap: 7px;
+      align-content: start;
+    }
+
+    .setting-row {
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .setting-row:last-child { border-bottom: 0; }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <section class="doc-head">
+      <h1>AigcPanel 精修版 UI Kit</h1>
+      <p>保留现有功能和操作模式，但重做视觉质感、间距、右侧任务结果栏和页面层级。已去掉“模型市场、工单反馈、问题反馈”。</p>
+    </section>
+
+    <div class="screen-title">
+      <h2>01 / 首页</h2>
+      <span class="note">入口 + 数据统计 + 常用能力，不包含模型市场、工单反馈、问题反馈</span>
+    </div>
+    <section class="screen">
+      <div class="titlebar">
+        <div class="brand">AI</div><strong>AigcPanel Pro</strong><span>首页</span><div class="window-actions">- □ x</div>
+      </div>
+      <div class="shell">
+        <nav class="rail">
+          <div class="avatar">U</div>
+          <div class="nav-item active">首页</div>
+          <div class="nav-item">数字人</div>
+          <div class="nav-item">模型</div>
+          <div class="nav-item">视频</div>
+          <div class="nav-item">声音</div>
+          <div class="nav-item">生图</div>
+          <div class="nav-item settings">设置</div>
+        </nav>
+        <section class="content">
+          <div class="page-head">
+            <div>
+              <h1>欢迎使用 AigcPanel</h1>
+              <p>保留常用能力入口和数据统计。栏目分类调整为视频、生图、数字人三类，任务仍从右侧任务结果栏统一查看。</p>
+            </div>
+            <div class="actions">
+              <span class="btn">帮助文档</span>
+            </div>
+          </div>
+
+          <div class="grid-4">
+            <article class="panel entry-card">
+              <div class="entry-top"><div class="entry-icon">声</div><h3>声音合成</h3><p>多种音色支持，开放模型接入。</p></div>
+              <span class="btn primary">立即使用</span>
+            </article>
+            <article class="panel entry-card">
+              <div class="entry-top"><div class="entry-icon">克</div><h3>声音克隆</h3><p>云端克隆音色，生成专属声音。</p></div>
+              <span class="btn primary">立即使用</span>
+            </article>
+            <article class="panel entry-card">
+              <div class="entry-top"><div class="entry-icon">视</div><h3>视频合成</h3><p>本地和云端模型生成视频。</p></div>
+              <span class="btn primary">立即使用</span>
+            </article>
+            <article class="panel entry-card">
+              <div class="entry-top"><div class="entry-icon">播</div><h3>数字人直播</h3><p>知识库、互动和自动播报。</p></div>
+              <span class="btn primary">立即使用</span>
+            </article>
+          </div>
+
+          <section class="panel" style="margin-bottom:12px">
+            <h2>数据统计</h2>
+            <div class="stats">
+              <div class="stat"><span>声音合成</span><strong>193</strong><span class="badge ok">今日 +3</span></div>
+              <div class="stat"><span>声音克隆</span><strong>95</strong><span class="badge ok">今日 +1</span></div>
+              <div class="stat"><span>视频合成</span><strong>145</strong><span class="badge ok">今日 +4</span></div>
+              <div class="stat"><span>任务总数</span><strong>433</strong><span class="badge ok">今日 +8</span></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="page-head" style="margin-bottom:12px">
+              <div><h2>常用能力</h2><p>按新分类展示：生视频、生图、数字人。</p></div>
+            </div>
+            <div class="tool-grid">
+              <div class="tool-card"><h3>云端生音频</h3><p>按模板提交云端音频生成任务。</p></div>
+              <div class="tool-card"><h3>云端克隆音色</h3><p>按模板提交云端音色克隆任务。</p></div>
+              <div class="tool-card"><h3>云端生视频</h3><p>视频栏目：按模板提交云端视频任务。</p></div>
+              <div class="tool-card"><h3>Seedance 2.0</h3><p>视频栏目：ExchangeToken 视频生成。</p></div>
+              <div class="tool-card"><h3>GPT Image 2</h3><p>生图栏目：OpenAI 兼容生图。</p></div>
+              <div class="tool-card"><h3>数字人直播编排</h3><p>数字人栏目：片段、配置和编排。</p></div>
+            </div>
+          </section>
+        </section>
+
+        <aside class="taskbar">
+          <div class="taskbar-head">
+            <h2>任务结果</h2>
+            <p>云端任务排期、运行状态与产出结果</p>
+            <div class="summary">
+              <div class="summary-card badge run"><span>运行中</span>3</div>
+              <div class="summary-card badge ok"><span>成功</span>18</div>
+              <div class="summary-card badge fail"><span>失败</span>1</div>
+              <div class="summary-card badge soft"><span>排队</span>6</div>
+            </div>
+          </div>
+          <div class="filter-row">
+            <span class="pill active">全部</span><span class="pill">图</span><span class="pill">视频</span><span class="pill">音频</span><span class="pill">成功</span>
+          </div>
+          <div class="task-list">
+            <div class="task-card"><div class="task-title">商品口播视频 <span>2 分钟前</span></div><div class="bar"><i style="width:72%;background:var(--green)"></i></div><div class="task-meta">视频 <span class="badge run" style="float:right">运行中</span></div></div>
+            <div class="task-card"><div class="task-title">声音克隆训练 <span>8 分钟前</span></div><div class="bar"><i style="width:44%;background:var(--cyan)"></i></div><div class="task-meta">音色 <span class="badge wait" style="float:right">排队</span></div></div>
+            <div class="task-card"><div class="task-title">图生图优化 <span>15:10</span></div><div class="bar"><i style="width:100%"></i></div><div class="task-meta">图片 <span class="badge ok" style="float:right">完成</span></div></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <div class="screen-title">
+      <h2>02 / 模型页</h2>
+      <span class="note">保留服务管理模式，强化卡片质感和状态识别</span>
+    </div>
+    <section class="screen">
+      <div class="titlebar">
+        <div class="brand">AI</div><strong>AigcPanel Pro</strong><span>模型</span><div class="window-actions">- □ x</div>
+      </div>
+      <div class="shell">
+        <nav class="rail">
+          <div class="avatar">U</div><div class="nav-item">首页</div><div class="nav-item">数字人</div><div class="nav-item active">模型</div><div class="nav-item">视频</div><div class="nav-item">声音</div><div class="nav-item">生图</div><div class="nav-item settings">设置</div>
+        </nav>
+        <section class="content">
+          <div class="page-head">
+            <div><h1>模型</h1><p>管理本地模型、远程模型、云端模型和平台配置。按钮和行为保持现有逻辑。</p></div>
+            <div class="actions"><span class="btn">模型与平台</span><span class="btn">添加远程</span><span class="btn primary">添加本地</span></div>
+          </div>
+          <div class="grid-3">
+            <article class="panel server-card"><div class="server-top"><strong>Local Live Server</strong><span class="badge ok">运行中</span></div><p>v1.4.2 · 本地目录</p><div class="actions"><span class="badge soft">直播</span><span class="badge soft">音频</span><span class="badge soft">数字人</span></div><div class="actions"><span class="btn">日志</span><span class="btn">信息</span><span class="btn">设置</span></div></article>
+            <article class="panel server-card"><div class="server-top"><strong>RunningHub Cloud</strong><span class="badge run">远程</span></div><p>云端模板和任务提交。</p><div class="actions"><span class="badge soft">视频</span><span class="badge soft">图片</span></div><div class="actions"><span class="btn">日志</span><span class="btn">信息</span></div></article>
+            <article class="panel server-card"><div class="server-top"><strong>Seedance Proxy</strong><span class="badge wait">待启动</span></div><p>ExchangeToken 视频生成。</p><div class="actions"><span class="badge soft">视频</span></div><div class="actions"><span class="btn">启动</span><span class="btn">删除</span></div></article>
+          </div>
+          <section class="panel">
+            <h2>服务列表</h2>
+            <div class="table">
+              <div class="tr th"><div>服务名称</div><div>类型</div><div>版本</div><div>能力</div><div>状态</div></div>
+              <div class="tr"><div>Local Live Server</div><div>本地</div><div>v1.4.2</div><div>直播/音频</div><div><span class="badge ok">运行中</span></div></div>
+              <div class="tr"><div>OpenAI Compatible</div><div>平台</div><div>-</div><div>图像/文本</div><div><span class="badge ok">可用</span></div></div>
+              <div class="tr"><div>Seedance Proxy</div><div>远程</div><div>v0.9</div><div>视频</div><div><span class="badge wait">待启动</span></div></div>
+            </div>
+          </section>
+        </section>
+        <aside class="taskbar">
+          <div class="taskbar-head"><h2>任务结果</h2><p>跨页面任务状态</p><div class="summary"><div class="summary-card badge run"><span>运行中</span>3</div><div class="summary-card badge ok"><span>成功</span>18</div><div class="summary-card badge fail"><span>失败</span>1</div><div class="summary-card badge soft"><span>排队</span>6</div></div></div>
+          <div class="filter-row"><span class="pill active">全部</span><span class="pill">失败</span><span class="pill">服务</span></div>
+          <div class="task-list"><div class="task-card"><div class="task-title">服务健康检查 <span>刚刚</span></div><div class="task-meta">模型服务 <span class="badge ok" style="float:right">通过</span></div></div></div>
+        </aside>
+      </div>
+    </section>
+
+    <div class="screen-title">
+      <h2>03 / 视频页</h2>
+      <span class="note">保留 VideoApps 左侧二级导航和动态组件区域</span>
+    </div>
+    <section class="screen">
+      <div class="titlebar">
+        <div class="brand">AI</div><strong>AigcPanel Pro</strong><span>视频</span><div class="window-actions">- □ x</div>
+      </div>
+      <div class="shell">
+        <nav class="rail">
+          <div class="avatar">U</div><div class="nav-item">首页</div><div class="nav-item">数字人</div><div class="nav-item">模型</div><div class="nav-item active">视频</div><div class="nav-item">声音</div><div class="nav-item">生图</div><div class="nav-item settings">设置</div>
+        </nav>
+        <main class="side-page">
+          <aside class="subnav">
+            <div class="subnav-item active">云端生视频</div><div class="subnav-item">Seedance 2.0</div>
+          </aside>
+          <section class="content">
+            <div class="page-head"><div><h1>云端生视频</h1><p>视频栏目只承载生视频能力：云端生视频和 Seedance 2.0。</p></div><div class="actions"><span class="btn">模板</span><span class="btn primary">提交任务</span></div></div>
+            <div class="form-layout">
+              <section class="panel form-stack"><h2>生成参数</h2><div class="field">选择模板</div><div class="field">选择音频 / 上传音频</div><div class="field">选择数字人身份</div><div class="field textarea">输入口播脚本或批量文本。</div><div class="actions"><span class="btn">保存草稿</span><span class="btn primary">提交排期</span></div></section>
+              <aside class="preview"><strong>视频预览</strong><div><h1 style="color:#fff">9:16</h1><p style="color:#cbd5e1">数字人口播 · 1080p</p></div></aside>
+            </div>
+            <section class="panel" style="margin-top:12px"><h2>最近视频任务</h2><div class="table"><div class="tr th"><div>标题</div><div>模板</div><div>时长</div><div>状态</div><div>操作</div></div><div class="tr"><div>商品口播</div><div>讲解模板</div><div>00:42</div><div><span class="badge ok">完成</span></div><div>下载</div></div><div class="tr"><div>直播暖场片段</div><div>待机片</div><div>01:20</div><div><span class="badge run">生成中</span></div><div>查看</div></div></div></section>
+          </section>
+        </main>
+        <aside class="taskbar">
+          <div class="taskbar-head"><h2>任务结果</h2><p>视频、口型、数字人任务</p><div class="summary"><div class="summary-card badge run"><span>运行中</span>2</div><div class="summary-card badge ok"><span>成功</span>9</div><div class="summary-card badge fail"><span>失败</span>0</div><div class="summary-card badge soft"><span>排队</span>4</div></div></div>
+          <div class="filter-row"><span class="pill active">视频</span><span class="pill">口型</span><span class="pill">数字人</span></div>
+          <div class="task-list"><div class="task-card"><div class="task-title">直播暖场片段 <span>72%</span></div><div class="bar"><i style="width:72%;background:var(--green)"></i></div><div class="task-meta">视频 <span class="badge run" style="float:right">运行中</span></div></div></div>
+        </aside>
+      </div>
+    </section>
+
+    <div class="screen-title">
+      <h2>04 / 数字人页</h2>
+      <span class="note">这里只展示数字人相关功能，不混入声音、生图或设置</span>
+    </div>
+    <section class="screen">
+      <div class="titlebar">
+        <div class="brand">AI</div><strong>AigcPanel Pro</strong><span>数字人</span><div class="window-actions">- □ x</div>
+      </div>
+      <div class="shell">
+        <nav class="rail">
+          <div class="avatar">U</div><div class="nav-item">首页</div><div class="nav-item active">数字人</div><div class="nav-item">模型</div><div class="nav-item">视频</div><div class="nav-item">声音</div><div class="nav-item">生图</div><div class="nav-item settings">设置</div>
+        </nav>
+        <main class="side-page">
+          <aside class="subnav">
+            <div class="subnav-item active">云端对口型</div>
+            <div class="subnav-item">云端普通数字人</div>
+            <div class="subnav-item">数字人直播片段</div>
+            <div class="subnav-item">直播执行配置</div>
+            <div class="subnav-item">数字人直播编排</div>
+            <div class="subnav-item">直播知识库</div>
+            <div class="subnav-item">直播控制台</div>
+            <div class="subnav-item">直播互动</div>
+            <div class="subnav-item">播报历史</div>
+          </aside>
+          <section class="content">
+            <div class="page-head">
+              <div>
+                <h1>云端对口型</h1>
+                <p>数字人栏目只放数字人相关能力：口型、普通数字人、直播片段、执行配置、直播编排和直播管理。</p>
+              </div>
+              <div class="actions"><span class="btn">模板</span><span class="btn primary">提交任务</span></div>
+            </div>
+            <div class="form-layout">
+              <section class="panel form-stack">
+                <h2>任务参数</h2>
+                <div class="field">选择数字人身份</div>
+                <div class="field">选择视频素材 / 直播片段</div>
+                <div class="field">选择音频文件</div>
+                <div class="field textarea">填写任务备注，或粘贴需要对口型的脚本内容。</div>
+                <div class="actions"><span class="btn">保存草稿</span><span class="btn primary">提交排期</span></div>
+              </section>
+              <aside class="preview">
+                <strong>数字人预览</strong>
+                <div><h1 style="color:#fff">9:16</h1><p style="color:#cbd5e1">口型同步 · 1080p</p></div>
+              </aside>
+            </div>
+            <section class="panel" style="margin-top:12px">
+              <h2>数字人资源</h2>
+              <div class="grid-3" style="margin-bottom:0">
+                <div class="tool-card"><h3>直播片段</h3><p>管理已保存的直播片段素材。</p></div>
+                <div class="tool-card"><h3>执行配置</h3><p>绑定直播各执行位所使用的云端模板。</p></div>
+                <div class="tool-card"><h3>直播编排</h3><p>管理待机片、讲解片和切换方案。</p></div>
+              </div>
+            </section>
+          </section>
+        </main>
+        <aside class="taskbar">
+          <div class="taskbar-head"><h2>任务结果</h2><p>数字人、口型和直播相关任务</p><div class="summary"><div class="summary-card badge run"><span>运行中</span>2</div><div class="summary-card badge ok"><span>成功</span>8</div><div class="summary-card badge fail"><span>失败</span>0</div><div class="summary-card badge soft"><span>排队</span>4</div></div></div>
+          <div class="filter-row"><span class="pill active">数字人</span><span class="pill">口型</span><span class="pill">直播片段</span><span class="pill">编排</span></div>
+          <div class="task-list">
+            <div class="task-card"><div class="task-title">直播暖场片段 <span>72%</span></div><div class="bar"><i style="width:72%;background:var(--green)"></i></div><div class="task-meta">数字人 <span class="badge run" style="float:right">运行中</span></div></div>
+            <div class="task-card"><div class="task-title">口型同步任务 <span>排队</span></div><div class="bar"><i style="width:18%;background:var(--cyan)"></i></div><div class="task-meta">口型 <span class="badge wait" style="float:right">排队</span></div></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <div class="screen-title">
+      <h2>05 / 生图页</h2>
+      <span class="note">原“工具”改为“生图”，这里只展示图片生成能力</span>
+    </div>
+    <section class="screen">
+      <div class="titlebar">
+        <div class="brand">AI</div><strong>AigcPanel Pro</strong><span>生图</span><div class="window-actions">- □ x</div>
+      </div>
+      <div class="shell">
+        <nav class="rail">
+          <div class="avatar">U</div><div class="nav-item">首页</div><div class="nav-item">数字人</div><div class="nav-item">模型</div><div class="nav-item">视频</div><div class="nav-item">声音</div><div class="nav-item active">生图</div><div class="nav-item settings">设置</div>
+        </nav>
+        <main class="side-page">
+          <aside class="subnav">
+            <div class="subnav-item active">GPT Image 2</div>
+            <div class="subnav-item">云端生图</div>
+          </aside>
+          <section class="content">
+            <div class="page-head">
+              <div><h1>GPT Image 2</h1><p>生图栏目只放图片生成相关能力，视频生成和数字人能力不放在这里。</p></div>
+              <div class="actions"><span class="btn">导入配置</span><span class="btn primary">提交任务</span></div>
+            </div>
+            <div class="form-layout">
+              <section class="panel form-stack">
+                <h2>生图参数</h2>
+                <div class="field">选择模型 / 平台</div>
+                <div class="field">图片尺寸：1:1 / 16:9 / 9:16</div>
+                <div class="field">参考图 / 上次结果</div>
+                <div class="field textarea">输入图片提示词，支持批量生成。</div>
+                <div class="actions"><span class="btn">保存模板</span><span class="btn primary">提交排期</span></div>
+              </section>
+              <aside class="preview">
+                <strong>图片预览</strong>
+                <div><h1 style="color:#fff">1:1</h1><p style="color:#cbd5e1">生成结果预览</p></div>
+              </aside>
+            </div>
+          </section>
+        </main>
+        <aside class="taskbar">
+          <div class="taskbar-head"><h2>任务结果</h2><p>图片生成任务与结果</p><div class="summary"><div class="summary-card badge run"><span>运行中</span>1</div><div class="summary-card badge ok"><span>成功</span>12</div><div class="summary-card badge fail"><span>失败</span>1</div><div class="summary-card badge soft"><span>排队</span>2</div></div></div>
+          <div class="filter-row"><span class="pill active">生图</span><span class="pill">GPT Image 2</span><span class="pill">云端生图</span></div>
+          <div class="task-list"><div class="task-card"><div class="task-title">图生图优化 <span>15:10</span></div><div class="bar"><i style="width:100%"></i></div><div class="task-meta">图片 <span class="badge ok" style="float:right">完成</span></div></div></div>
+        </aside>
+      </div>
+    </section>
+
+    <div class="screen-title">
+      <h2>06 / 声音页</h2>
+      <span class="note">声音栏目只展示音频和音色能力</span>
+    </div>
+    <section class="screen">
+      <div class="titlebar">
+        <div class="brand">AI</div><strong>AigcPanel Pro</strong><span>声音</span><div class="window-actions">- □ x</div>
+      </div>
+      <div class="shell">
+        <nav class="rail">
+          <div class="avatar">U</div><div class="nav-item">首页</div><div class="nav-item">数字人</div><div class="nav-item">模型</div><div class="nav-item">视频</div><div class="nav-item active">声音</div><div class="nav-item">生图</div><div class="nav-item settings">设置</div>
+        </nav>
+        <main class="side-page">
+          <aside class="subnav">
+            <div class="subnav-item active">云端生音频</div>
+            <div class="subnav-item">云端克隆音色</div>
+          </aside>
+          <section class="content">
+            <div class="page-head">
+              <div><h1>云端生音频</h1><p>声音栏目只放音频生成和音色克隆，不混入视频、生图或数字人配置。</p></div>
+              <div class="actions"><span class="btn">音色库</span><span class="btn primary">提交任务</span></div>
+            </div>
+            <div class="form-layout">
+              <section class="panel form-stack">
+                <h2>音频参数</h2>
+                <div class="field">选择音色</div>
+                <div class="field">选择模板</div>
+                <div class="field">语速 / 情绪 / 音量</div>
+                <div class="field textarea">输入要合成的文本，长文本会自动分段。</div>
+                <div class="actions"><span class="btn">试听</span><span class="btn primary">提交排期</span></div>
+              </section>
+              <aside class="panel">
+                <h2>音频预览</h2>
+                <div class="bar"><i style="width:42%;background:var(--cyan)"></i></div>
+                <p style="margin-top:12px">00:18 / 00:43</p>
+                <div class="actions" style="margin-top:16px"><span class="btn">播放</span><span class="btn">下载</span></div>
+              </aside>
+            </div>
+          </section>
+        </main>
+        <aside class="taskbar">
+          <div class="taskbar-head"><h2>任务结果</h2><p>音频与音色任务</p><div class="summary"><div class="summary-card badge run"><span>运行中</span>1</div><div class="summary-card badge ok"><span>成功</span>10</div><div class="summary-card badge fail"><span>失败</span>0</div><div class="summary-card badge soft"><span>排队</span>3</div></div></div>
+          <div class="filter-row"><span class="pill active">声音</span><span class="pill">音频</span><span class="pill">音色</span></div>
+          <div class="task-list"><div class="task-card"><div class="task-title">长文本配音 <span>44%</span></div><div class="bar"><i style="width:44%;background:var(--cyan)"></i></div><div class="task-meta">音频 <span class="badge run" style="float:right">运行中</span></div></div></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

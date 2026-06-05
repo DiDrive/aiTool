@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AigcPanel Full UI Kit</title>
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --panel: #ffffff;
+      --soft: #f9fafc;
+      --ink: #141820;
+      --muted: #667085;
+      --line: #e5e8ef;
+      --blue: #265bd7;
+      --blue-soft: #e9f0ff;
+      --cyan: #00a7b5;
+      --green: #16a06a;
+      --amber: #d58a00;
+      --violet: #7057d8;
+      --rose: #d84a4a;
+      --dark: #172033;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #e8edf5;
+      color: var(--ink);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+
+    .canvas {
+      width: 1580px;
+      margin: 0 auto;
+      padding: 40px;
+    }
+
+    .doc-title {
+      margin: 0 0 8px;
+      font-size: 34px;
+      line-height: 1.2;
+    }
+
+    .doc-copy {
+      margin: 0 0 26px;
+      width: 760px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 34px 0 14px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .kit-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .kit-card, .panel, .app-frame {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    .kit-card {
+      min-height: 150px;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .kit-card h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .kit-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 10px;
+    }
+
+    .swatch {
+      height: 46px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,.04);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .ok { color: #08764d; background: #e8f7f0; }
+    .blue { color: var(--blue); background: var(--blue-soft); }
+    .warn { color: #946000; background: #fff4da; }
+    .fail { color: #a42e2e; background: #fdecec; }
+    .soft { color: #485266; background: var(--soft); border: 1px solid var(--line); }
+
+    .app-frame {
+      width: 1360px;
+      height: 820px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 42px 1fr;
+      box-shadow: 0 22px 60px rgba(27, 39, 72, .12);
+      margin-bottom: 34px;
+    }
+
+    .titlebar {
+      background: rgba(255,255,255,.92);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+    }
+
+    .brand {
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      background: var(--blue);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .window-actions {
+      margin-left: auto;
+      color: #495162;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 72px 1fr 400px;
+      min-height: 0;
+      background: var(--bg);
+    }
+
+    .rail {
+      background: #fff;
+      border-right: 1px solid var(--line);
+      padding: 18px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar, .nav {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+    }
+
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, #dce8ff, #fff);
+      color: var(--blue);
+      border: 1px solid var(--line);
+    }
+
+    .nav.active {
+      color: var(--blue);
+      background: var(--blue-soft);
+      position: relative;
+    }
+
+    .nav.active::before {
+      content: "";
+      position: absolute;
+      left: -10px;
+      width: 3px;
+      height: 24px;
+      border-radius: 4px;
+      background: var(--blue);
+    }
+
+    .content {
+      min-width: 0;
+      overflow: hidden;
+      padding: 24px;
+    }
+
+    .content.scroll {
+      overflow-y: auto;
+    }
+
+    .page-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .page-head h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      line-height: 1.2;
+    }
+
+    .page-head p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .subnav {
+      width: 192px;
+      border-right: 1px solid var(--line);
+      background: #fff;
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .subnav-item {
+      height: 38px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      color: #344054;
+      font-weight: 700;
+    }
+
+    .subnav-item.active {
+      color: var(--blue);
+      background: var(--blue-soft);
+    }
+
+    .page-with-tabs {
+      display: grid;
+      grid-template-columns: 192px 1fr;
+      height: 100%;
+      background: #fff;
+    }
+
+    .cards-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .cards-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .cards-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .panel {
+      padding: 16px;
+      min-width: 0;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+
+    .hero {
+      min-height: 210px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 170px;
+      gap: 22px;
+    }
+
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: 30px;
+      line-height: 1.22;
+    }
+
+    .hero p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .meter {
+      background: linear-gradient(180deg, #f5f8ff, #fff);
+      border: 1px solid #dfe7f7;
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .meter strong {
+      display: block;
+      font-size: 34px;
+      margin: 12px 0;
+    }
+
+    .bar {
+      height: 8px;
+      background: #e8edf6;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .bar i {
+      display: block;
+      height: 100%;
+      border-radius: 8px;
+      background: var(--blue);
+    }
+
+    .cap-card {
+      padding: 16px;
+      min-height: 150px;
+      display: grid;
+      align-content: space-between;
+      gap: 12px;
+    }
+
+    .cap-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+    }
+
+    .cap-card h3, .media-card h3 {
+      margin: 10px 0 6px;
+      font-size: 16px;
+    }
+
+    .cap-card p, .media-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
+    }
+
+    .field {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      margin-bottom: 10px;
+    }
+
+    .textarea {
+      min-height: 136px;
+      align-items: flex-start;
+      padding-top: 12px;
+      line-height: 1.6;
+    }
+
+    .preview {
+      min-height: 278px;
+      border-radius: 12px;
+      background: #0f1725;
+      color: #fff;
+      padding: 16px;
+      display: grid;
+      align-content: space-between;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .preview::after {
+      content: "";
+      position: absolute;
+      right: -36px;
+      bottom: -36px;
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(38,91,215,.72), rgba(0,167,181,.08));
+    }
+
+    .table {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .tr {
+      display: grid;
+      grid-template-columns: 1.4fr .8fr .7fr .8fr .8fr;
+      gap: 10px;
+      align-items: center;
+      min-height: 54px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tr:last-child { border-bottom: 0; }
+    .th { color: var(--muted); font-size: 12px; background: var(--soft); }
+
+    .scheduler {
+      min-width: 0;
+      background: rgba(255,255,255,.72);
+      border-left: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .scheduler-head {
+      padding: 16px;
+      border-bottom: 1px solid rgba(255,255,255,.9);
+      background: rgba(255,255,255,.86);
+    }
+
+    .scheduler-head h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+    }
+
+    .scheduler-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .summary > div {
+      border-radius: 12px;
+      padding: 10px 8px;
+      font-weight: 800;
+    }
+
+    .summary span {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      opacity: .76;
+    }
+
+    .filters {
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255,255,255,.9);
+      background: rgba(255,255,255,.58);
+    }
+
+    .pill {
+      height: 26px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .pill.active {
+      color: #fff;
+      background: var(--blue);
+      border-color: var(--blue);
+    }
+
+    .result-list {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      overflow: hidden;
+    }
+
+    .result {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .result-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 800;
+    }
+
+    .result-top span {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 12px;
+    }
+
+    .result-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .server-card {
+      min-height: 154px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .server-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .live-grid {
+      display: grid;
+      grid-template-columns: 310px 1fr;
+      gap: 16px;
+    }
+
+    .message-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .message {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--soft);
+      border: 1px solid var(--line);
+    }
+
+    .settings-layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 16px;
+    }
+
+    .setting-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 16px;
+      min-height: 58px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .setting-row:last-child { border-bottom: 0; }
+    .setting-row p { margin: 4px 0 0; color: var(--muted); }
+
+    .tool-card {
+      min-height: 160px;
+      display: grid;
+      align-content: space-between;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <h1 class="doc-title">AigcPanel 全页面 UI Kit</h1>
+    <p class="doc-copy">覆盖现有主路由：首页、模型服务器、视频、声音、工具、数字人直播、设置。每个页面共用同一套桌面外壳、左侧导航和右侧“排期结果栏”，中间工作区按业务场景替换。</p>
+
+    <div class="section-title">
+      <h2>01 / 独立部件库</h2>
+      <span class="note">后续可映射到 Vue 组件：Shell、NavRail、SchedulerResultBar、PageHeader、CapabilityCard、TaskResultItem 等</span>
+    </div>
+
+    <div class="kit-grid">
+      <div class="kit-card">
+        <h3>Color Tokens</h3>
+        <div class="swatches">
+          <div class="swatch" style="background:var(--blue)"></div>
+          <div class="swatch" style="background:var(--cyan)"></div>
+          <div class="swatch" style="background:var(--green)"></div>
+          <div class="swatch" style="background:var(--amber)"></div>
+          <div class="swatch" style="background:var(--violet)"></div>
+          <div class="swatch" style="background:var(--ink)"></div>
+          <div class="swatch" style="background:var(--muted)"></div>
+          <div class="swatch" style="background:var(--line)"></div>
+        </div>
+        <p>主色只承担行动和当前状态，不把全页面染成单一蓝色。</p>
+      </div>
+
+      <div class="kit-card">
+        <h3>Buttons / Badges</h3>
+        <div class="actions">
+          <span class="btn primary">主按钮</span>
+          <span class="btn">次按钮</span>
+          <span class="badge ok">成功</span>
+          <span class="badge blue">运行中</span>
+          <span class="badge warn">排队</span>
+        </div>
+        <p>按钮圆角 8px，状态 badge 用语义色，适合工具型界面快速扫描。</p>
+      </div>
+
+      <div class="kit-card">
+        <h3>Form Elements</h3>
+        <div class="field">选择模板 / 模型 / 音色</div>
+        <div class="field textarea">输入提示词、脚本、直播插播内容或批量任务数据。</div>
+      </div>
+
+      <div class="kit-card">
+        <h3>SchedulerResultBar</h3>
+        <div class="summary">
+          <div class="blue"><span>运行中</span>3</div>
+          <div class="ok"><span>成功</span>18</div>
+          <div class="fail"><span>失败</span>1</div>
+          <div class="soft"><span>排队</span>6</div>
+        </div>
+        <p>全局排期结果栏，跨页面追踪云端任务、生成结果和失败重试。</p>
+      </div>
+    </div>
+
+    <div class="kit-grid">
+      <div class="kit-card cap-card">
+        <div>
+          <div class="cap-icon" style="background:var(--blue)">V</div>
+          <h3>CapabilityCard</h3>
+          <p>能力入口卡片：标题、说明、标签、行动按钮。</p>
+        </div>
+        <span class="btn">开始</span>
+      </div>
+
+      <div class="kit-card result">
+        <div class="result-top">TaskResultItem <span>2 分钟前</span></div>
+        <div class="bar"><i style="width:72%;background:var(--green)"></i></div>
+        <div class="result-foot"><span>商品口播视频</span><span class="badge ok">渲染中</span></div>
+      </div>
+
+      <div class="kit-card">
+        <h3>SubNavItem</h3>
+        <div class="subnav-item active">● 当前页面</div>
+        <div class="subnav-item">○ 其他页面</div>
+      </div>
+
+      <div class="kit-card">
+        <h3>SettingRow</h3>
+        <div class="setting-row">
+          <div><strong>自动启动服务</strong><p>应用启动时拉起本地模型服务</p></div>
+          <span class="badge ok">开启</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <h2>02 / 全局排期结果栏</h2>
+      <span class="note">每个页面右侧都复用，支持筛选、折叠、任务进度、产物预览、失败重试</span>
+    </div>
+    <div class="app-frame" style="height:520px;grid-template-rows:1fr;width:400px">
+      <aside class="scheduler">
+        <div class="scheduler-head">
+          <h2>排期结果</h2>
+          <p>跨页面查看全部云端任务与产出结果</p>
+          <div class="summary">
+            <div class="blue"><span>运行中</span>3</div>
+            <div class="ok"><span>成功</span>18</div>
+            <div class="fail"><span>失败</span>1</div>
+            <div class="soft"><span>排队</span>6</div>
+          </div>
+        </div>
+        <div class="filters">
+          <span class="pill active">全部</span><span class="pill">图</span><span class="pill">视频</span><span class="pill">口型</span><span class="pill">音频</span><span class="pill">数字人</span>
+          <span class="pill active">运行中</span><span class="pill">成功</span><span class="pill">失败</span>
+        </div>
+        <div class="result-list">
+          <div class="result"><div class="result-top">商品口播视频 <span>2 分钟前</span></div><div class="bar"><i style="width:72%;background:var(--green)"></i></div><div class="result-foot">RunningHub · 视频 <span class="badge ok">72%</span></div></div>
+          <div class="result"><div class="result-top">声音克隆训练 <span>8 分钟前</span></div><div class="bar"><i style="width:44%;background:var(--cyan)"></i></div><div class="result-foot">云端音色 <span class="badge blue">排队</span></div></div>
+          <div class="result"><div class="result-top">图生图优化 <span>15:10</span></div><div class="bar"><i style="width:100%"></i></div><div class="result-foot">GPT Image 2 <span class="badge ok">已完成</span></div></div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="section-title">
+      <h2>03 / 每一页设计</h2>
+      <span class="note">以下每个画板都保留同一外壳和排期结果栏，只替换中间业务区</span>
+    </div>
+
+    <section class="app-frame">
+      <div class="titlebar"><div class="brand">AI</div><strong>AigcPanel Pro</strong><span class="note">首页</span><div class="window-actions">－ □ ×</div></div>
+      <div class="workspace">
+        <nav class="rail"><div class="avatar">U</div><div class="nav active">⌂</div><div class="nav">AI</div><div class="nav">▶</div><div class="nav">♪</div><div class="nav">✦</div><div class="nav">◇</div><div class="nav" style="margin-top:auto">⚙</div></nav>
+        <main class="content scroll">
+          <div class="cards-2">
+            <div class="panel hero">
+              <div><span class="badge blue">AI 创作控制台</span><h1>把视频、声音、数字人直播放进同一个生产流程</h1><p>首页优先展示今日任务、常用能力和运行状态，减少跳转成本。</p><div class="actions"><span class="btn primary">新建创作</span><span class="btn">打开直播中控</span><span class="btn">导入素材</span></div></div>
+              <div class="meter"><span class="note">今日完成率</span><strong>86%</strong><div class="bar"><i style="width:86%"></i></div></div>
+            </div>
+            <div class="panel" style="background:var(--dark);color:#fff"><span class="badge blue">推荐流程</span><h2>短视频带货直播</h2><p style="color:#b8c1d3;line-height:1.7">商品脚本 -> 讲解音频 -> 数字人形象 -> 直播控制台。</p><span class="btn primary">一键创建流程</span></div>
+          </div>
+          <div class="cards-4">
+            <div class="panel cap-card"><div><div class="cap-icon" style="background:var(--blue)">V</div><h3>视频生成</h3><p>数字人口播、图生视频、口型同步。</p></div><span class="btn">开始</span></div>
+            <div class="panel cap-card"><div><div class="cap-icon" style="background:var(--cyan)">S</div><h3>声音工作室</h3><p>语音合成、声音克隆、字幕配音。</p></div><span class="btn">开始</span></div>
+            <div class="panel cap-card"><div><div class="cap-icon" style="background:var(--green)">L</div><h3>数字人直播</h3><p>知识库、互动、控制台和播报历史。</p></div><span class="btn">进入</span></div>
+            <div class="panel cap-card"><div><div class="cap-icon" style="background:var(--violet)">M</div><h3>模型与服务</h3><p>本地服务、远程平台、模型配置。</p></div><span class="btn">配置</span></div>
+          </div>
+          <div class="cards-2">
+            <div class="panel"><h2>直播中控</h2><div class="live-grid"><div class="preview"><strong>数字人预览</strong><div><h1>18:42</h1><span>已连续播报</span></div></div><div><div class="actions"><span class="pill active">知识库</span><span class="pill">互动</span><span class="pill">控制台</span><span class="pill">历史</span></div><div class="field textarea">欢迎来到直播间。系统会根据评论自动选择知识片段并生成口播。</div><div class="actions"><span class="field" style="flex:1">输入临时播报内容</span><span class="btn primary">插播</span></div></div></div></div>
+            <div class="panel"><h2>近期任务</h2><div class="result-list" style="padding:0"><div class="result"><div class="result-top">商品口播视频 <span>72%</span></div><div class="bar"><i style="width:72%;background:var(--green)"></i></div></div><div class="result"><div class="result-top">字幕配音导出 <span>完成</span></div><div class="bar"><i style="width:100%"></i></div></div></div></div>
+          </div>
+        </main>
+        <aside class="scheduler"><div class="scheduler-head"><h2>排期结果</h2><p>全部云端任务与产出</p><div class="summary"><div class="blue"><span>运行</span>3</div><div class="ok"><span>成功</span>18</div><div class="fail"><span>失败</span>1</div><div class="soft"><span>排队</span>6</div></div></div><div class="filters"><span class="pill active">全部</span><span class="pill">视频</span><span class="pill">音频</span><span class="pill">成功</span></div><div class="result-list"><div class="result"><div class="result-top">商品口播视频 <span>2 分钟前</span></div><div class="bar"><i style="width:72%;background:var(--green)"></i></div><div class="result-foot">视频 <span class="badge ok">72%</span></div></div><div class="result"><div class="result-top">声音克隆训练 <span>8 分钟前</span></div><div class="bar"><i style="width:44%;background:var(--cyan)"></i></div><div class="result-foot">音色 <span class="badge blue">排队</span></div></div></div></aside>
+      </div>
+    </section>
+
+    <section class="app-frame">
+      <div class="titlebar"><div class="brand">AI</div><strong>AigcPanel Pro</strong><span class="note">模型服务器</span><div class="window-actions">－ □ ×</div></div>
+      <div class="workspace">
+        <nav class="rail"><div class="avatar">U</div><div class="nav">⌂</div><div class="nav">AI</div><div class="nav">▶</div><div class="nav">♪</div><div class="nav">✦</div><div class="nav active">◇</div><div class="nav" style="margin-top:auto">⚙</div></nav>
+        <main class="content scroll">
+          <div class="page-head"><div><h1>模型与服务</h1><p>管理本地模型目录、远程服务器、OpenAI 兼容平台和云端能力。</p></div><div class="actions"><span class="btn">模型与平台</span><span class="btn">添加远程</span><span class="btn primary">添加本地</span></div></div>
+          <div class="cards-3">
+            <div class="panel"><h2>服务概览</h2><strong style="font-size:28px">6</strong><p class="note">已接入服务</p></div>
+            <div class="panel"><h2>运行中</h2><strong style="font-size:28px;color:var(--green)">3</strong><p class="note">含本地与远程服务</p></div>
+            <div class="panel"><h2>平台状态</h2><strong style="font-size:28px;color:var(--blue)">正常</strong><p class="note">API Key 与模板可用</p></div>
+          </div>
+          <div class="cards-3">
+            <div class="panel server-card"><div class="server-top"><strong>Local ComfyUI</strong><span class="badge ok">运行中</span></div><div class="tag-list"><span class="badge soft">视频</span><span class="badge soft">生图</span><span class="badge soft">口型</span></div><div class="actions"><span class="btn">日志</span><span class="btn">设置</span><span class="btn">停止</span></div></div>
+            <div class="panel server-card"><div class="server-top"><strong>RunningHub Cloud</strong><span class="badge blue">远程</span></div><div class="tag-list"><span class="badge soft">云模板</span><span class="badge soft">数字人</span></div><div class="actions"><span class="btn">信息</span><span class="btn">配置</span></div></div>
+            <div class="panel server-card"><div class="server-top"><strong>OpenAI Compatible</strong><span class="badge ok">可用</span></div><div class="tag-list"><span class="badge soft">文本</span><span class="badge soft">图像</span></div><div class="actions"><span class="btn">测试</span><span class="btn">编辑</span></div></div>
+          </div>
+          <div class="table"><div class="tr th"><div>服务名称</div><div>类型</div><div>版本</div><div>能力</div><div>操作</div></div><div class="tr"><div>Local Live Server</div><div>本地目录</div><div>v1.4.2</div><div>直播 / 音频</div><div><span class="badge ok">运行中</span></div></div><div class="tr"><div>Seedance Proxy</div><div>远程</div><div>v0.9</div><div>视频</div><div><span class="badge warn">待启动</span></div></div></div>
+        </main>
+        <aside class="scheduler"><div class="scheduler-head"><h2>排期结果</h2><p>服务页也可查看任务</p><div class="summary"><div class="blue"><span>运行</span>3</div><div class="ok"><span>成功</span>18</div><div class="fail"><span>失败</span>1</div><div class="soft"><span>排队</span>6</div></div></div><div class="filters"><span class="pill active">全部</span><span class="pill">失败</span><span class="pill">服务相关</span></div><div class="result-list"><div class="result"><div class="result-top">服务健康检查 <span>刚刚</span></div><div class="result-foot">本地服务 <span class="badge ok">通过</span></div></div></div></aside>
+      </div>
+    </section>
+
+    <section class="app-frame">
+      <div class="titlebar"><div class="brand">AI</div><strong>AigcPanel Pro</strong><span class="note">视频</span><div class="window-actions">－ □ ×</div></div>
+      <div class="workspace">
+        <nav class="rail"><div class="avatar">U</div><div class="nav">⌂</div><div class="nav">AI</div><div class="nav active">▶</div><div class="nav">♪</div><div class="nav">✦</div><div class="nav">◇</div><div class="nav" style="margin-top:auto">⚙</div></nav>
+        <main class="page-with-tabs">
+          <aside class="subnav"><div class="subnav-item active">▶ 一键合成</div><div class="subnav-item">▣ 云端生视频</div><div class="subnav-item">◌ 云端对口型</div><div class="subnav-item">AI 普通数字人</div><div class="subnav-item">片段素材</div><div class="subnav-item">执行配置</div><div class="subnav-item">直播编排</div></aside>
+          <div class="content scroll">
+            <div class="page-head"><div><h1>视频生成</h1><p>从脚本、音频、形象到成片的完整生成流程。</p></div><div class="actions"><span class="btn">模板库</span><span class="btn primary">新建视频</span></div></div>
+            <div class="form-grid">
+              <div class="panel"><h2>生成参数</h2><div class="field">选择视频模板：商品讲解 / 直播切片</div><div class="field">选择数字人身份：默认女主播</div><div class="field">选择声音来源：合成音频 / 上传音频</div><div class="field textarea">请输入口播脚本，支持批量换行生成多个视频任务。</div><div class="actions"><span class="btn">保存草稿</span><span class="btn primary">提交排期</span></div></div>
+              <div class="preview"><strong>视频预览</strong><div><h1>9:16</h1><span>数字人口播 · 1080p</span></div></div>
+            </div>
+            <div class="panel" style="margin-top:16px"><h2>视频任务记录</h2><div class="table"><div class="tr th"><div>标题</div><div>模板</div><div>时长</div><div>状态</div><div>操作</div></div><div class="tr"><div>618 商品口播</div><div>商品讲解</div><div>00:42</div><div><span class="badge ok">完成</span></div><div>下载</div></div><div class="tr"><div>直播暖场片段</div><div>待机片</div><div>01:20</div><div><span class="badge blue">生成中</span></div><div>查看</div></div></div></div>
+          </div>
+        </main>
+        <aside class="scheduler"><div class="scheduler-head"><h2>排期结果</h2><p>视频任务与产出</p><div class="summary"><div class="blue"><span>运行</span>2</div><div class="ok"><span>成功</span>9</div><div class="fail"><span>失败</span>0</div><div class="soft"><span>排队</span>4</div></div></div><div class="filters"><span class="pill active">视频</span><span class="pill">口型</span><span class="pill">数字人</span></div><div class="result-list"><div class="result"><div class="result-top">直播暖场片段 <span>72%</span></div><div class="bar"><i style="width:72%;background:var(--green)"></i></div><div class="result-foot">视频 <span class="badge blue">运行中</span></div></div></div></aside>
+      </div>
+    </section>
+
+    <section class="app-frame">
+      <div class="titlebar"><div class="brand">AI</div><strong>AigcPanel Pro</strong><span class="note">声音</span><div class="window-actions">－ □ ×</div></div>
+      <div class="workspace">
+        <nav class="rail"><div class="avatar">U</div><div class="nav">⌂</div><div class="nav">AI</div><div class="nav">▶</div><div class="nav active">♪</div><div class="nav">✦</div><div class="nav">◇</div><div class="nav" style="margin-top:auto">⚙</div></nav>
+        <main class="page-with-tabs">
+          <aside class="subnav"><div class="subnav-item active">♪ 云端生音频</div><div class="subnav-item">◎ 云端克隆音色</div></aside>
+          <div class="content scroll">
+            <div class="page-head"><div><h1>声音工作室</h1><p>语音合成、音色克隆、字幕配音和长文本分段生成。</p></div><div class="actions"><span class="btn">音色库</span><span class="btn primary">新建音频</span></div></div>
+            <div class="cards-3"><div class="panel"><h2>默认音色</h2><strong>温暖女声</strong><p class="note">适合直播讲解</p></div><div class="panel"><h2>今日生成</h2><strong style="font-size:28px">28</strong><p class="note">+6 较昨日</p></div><div class="panel"><h2>克隆任务</h2><strong style="font-size:28px;color:var(--cyan)">2</strong><p class="note">正在训练</p></div></div>
+            <div class="form-grid"><div class="panel"><h2>合成文本</h2><div class="field">选择模板：直播讲解 / 短视频旁白 / 字幕配音</div><div class="field">选择音色：温暖女声</div><div class="field textarea">请输入要合成的文本。长文本会自动分段并加入排期。</div><div class="actions"><span class="btn">试听 5 秒</span><span class="btn primary">提交合成</span></div></div><div class="panel"><h2>音频预览</h2><div class="bar"><i style="width:42%;background:var(--cyan)"></i></div><p class="note">00:18 / 00:43</p><div class="actions"><span class="btn">播放</span><span class="btn">下载</span></div></div></div>
+          </div>
+        </main>
+        <aside class="scheduler"><div class="scheduler-head"><h2>排期结果</h2><p>音频与音色任务</p><div class="summary"><div class="blue"><span>运行</span>1</div><div class="ok"><span>成功</span>12</div><div class="fail"><span>失败</span>1</div><div class="soft"><span>排队</span>3</div></div></div><div class="filters"><span class="pill active">音频</span><span class="pill">音色</span><span class="pill">失败</span></div><div class="result-list"><div class="result"><div class="result-top">长文本配音 <span>44%</span></div><div class="bar"><i style="width:44%;background:var(--cyan)"></i></div><div class="result-foot">音频 <span class="badge blue">运行中</span></div></div></div></aside>
+      </div>
+    </section>
+
+    <section class="app-frame">
+      <div class="titlebar"><div class="brand">AI</div><strong>AigcPanel Pro</strong><span class="note">工具</span><div class="window-actions">－ □ ×</div></div>
+      <div class="workspace">
+        <nav class="rail"><div class="avatar">U</div><div class="nav">⌂</div><div class="nav">AI</div><div class="nav">▶</div><div class="nav">♪</div><div class="nav active">✦</div><div class="nav">◇</div><div class="nav" style="margin-top:auto">⚙</div></nav>
+        <main class="page-with-tabs">
+          <aside class="subnav"><div class="subnav-item active">✦ Seedance</div><div class="subnav-item">▣ GPT Image 2</div><div class="subnav-item">□ 云端生图</div></aside>
+          <div class="content scroll">
+            <div class="page-head"><div><h1>工具流</h1><p>面向单点能力的轻量工作台，适合快速调用云端模板和兼容接口。</p></div><div class="actions"><span class="btn">导入配置</span><span class="btn primary">新建任务</span></div></div>
+            <div class="cards-3"><div class="panel tool-card"><div><span class="badge blue">视频</span><h2>Seedance</h2><p class="note">ExchangeToken 视频生成</p></div><span class="btn primary">使用</span></div><div class="panel tool-card"><div><span class="badge blue">图像</span><h2>GPT Image 2</h2><p class="note">OpenAI 兼容生图</p></div><span class="btn">使用</span></div><div class="panel tool-card"><div><span class="badge blue">图像</span><h2>云端生图</h2><p class="note">按模板提交图片生成任务</p></div><span class="btn">使用</span></div></div>
+            <div class="form-grid"><div class="panel"><h2>Seedance 参数</h2><div class="field">选择平台：ExchangeToken</div><div class="field">画幅：16:9 / 9:16 / 1:1</div><div class="field textarea">输入视频提示词，支持引用图片或上一次生成结果。</div><div class="actions"><span class="btn">保存模板</span><span class="btn primary">提交排期</span></div></div><div class="panel"><h2>产物引用</h2><div class="message">可从右侧排期结果栏拖入已生成图片/视频作为下一步输入。</div></div></div>
+          </div>
+        </main>
+        <aside class="scheduler"><div class="scheduler-head"><h2>排期结果</h2><p>工具任务与结果复用</p><div class="summary"><div class="blue"><span>运行</span>2</div><div class="ok"><span>成功</span>7</div><div class="fail"><span>失败</span>0</div><div class="soft"><span>排队</span>2</div></div></div><div class="filters"><span class="pill active">工具</span><span class="pill">图</span><span class="pill">视频</span></div><div class="result-list"><div class="result"><div class="result-top">Seedance 视频 <span>排队</span></div><div class="result-foot">工具流 <span class="badge warn">等待</span></div></div></div></aside>
+      </div>
+    </section>
+
+    <section class="app-frame">
+      <div class="titlebar"><div class="brand">AI</div><strong>AigcPanel Pro</strong><span class="note">数字人直播</span><div class="window-actions">－ □ ×</div></div>
+      <div class="workspace">
+        <nav class="rail"><div class="avatar">U</div><div class="nav">⌂</div><div class="nav active">AI</div><div class="nav">▶</div><div class="nav">♪</div><div class="nav">✦</div><div class="nav">◇</div><div class="nav" style="margin-top:auto">⚙</div></nav>
+        <main class="page-with-tabs">
+          <aside class="subnav"><div class="subnav-item active">📚 直播知识库</div><div class="subnav-item">⌘ 直播控制台</div><div class="subnav-item">💬 直播互动</div><div class="subnav-item">↺ 播报历史</div></aside>
+          <div class="content scroll">
+            <div class="page-head"><div><h1>数字人直播</h1><p>管理知识库、互动规则、播报队列和直播执行状态。</p></div><div class="actions"><span class="btn">同步知识库</span><span class="btn primary">开始直播</span></div></div>
+            <div class="live-grid"><div class="preview"><strong>直播预览</strong><div><h1>在线</h1><span>默认女主播 · 竖屏</span></div></div><div class="panel"><h2>知识库片段</h2><div class="message-list"><div class="message"><strong>商品卖点</strong><br><span class="note">适合回答价格、规格、优惠问题。</span></div><div class="message"><strong>售后说明</strong><br><span class="note">退换货、发票、物流时效。</span></div><div class="message"><strong>直播黑词</strong><br><span class="note">自动拦截不合规回复。</span></div></div></div></div>
+            <div class="cards-3" style="margin-top:16px"><div class="panel"><h2>评论待回复</h2><strong style="font-size:28px">23</strong></div><div class="panel"><h2>自动播报</h2><strong style="font-size:28px;color:var(--green)">开启</strong></div><div class="panel"><h2>知识命中率</h2><strong style="font-size:28px;color:var(--blue)">91%</strong></div></div>
+          </div>
+        </main>
+        <aside class="scheduler"><div class="scheduler-head"><h2>排期结果</h2><p>直播片段、口播和素材</p><div class="summary"><div class="blue"><span>运行</span>1</div><div class="ok"><span>成功</span>5</div><div class="fail"><span>失败</span>0</div><div class="soft"><span>排队</span>3</div></div></div><div class="filters"><span class="pill active">数字人</span><span class="pill">视频</span><span class="pill">音频</span></div><div class="result-list"><div class="result"><div class="result-top">知识库同步 <span>完成</span></div><div class="result-foot">直播 <span class="badge ok">可用</span></div></div></div></aside>
+      </div>
+    </section>
+
+    <section class="app-frame">
+      <div class="titlebar"><div class="brand">AI</div><strong>AigcPanel Pro</strong><span class="note">设置</span><div class="window-actions">－ □ ×</div></div>
+      <div class="workspace">
+        <nav class="rail"><div class="avatar">U</div><div class="nav">⌂</div><div class="nav">AI</div><div class="nav">▶</div><div class="nav">♪</div><div class="nav">✦</div><div class="nav">◇</div><div class="nav active" style="margin-top:auto">⚙</div></nav>
+        <main class="content scroll">
+          <div class="page-head"><div><h1>设置</h1><p>基础偏好、数据配置、数字人资产、环境和关于。</p></div><div class="actions"><span class="btn">导出配置</span><span class="btn primary">保存</span></div></div>
+          <div class="settings-layout">
+            <aside class="subnav" style="width:auto;border:0;border-radius:12px"><div class="subnav-item active">⚙ 基础设置</div><div class="subnav-item">✦ 数据配置</div><div class="subnav-item">☁ 数字人资产</div><div class="subnav-item">⌘ 环境</div><div class="subnav-item">ⓘ 关于软件</div></aside>
+            <div class="panel"><h2>基础设置</h2><div class="setting-row"><div><strong>主题模式</strong><p>跟随系统 / 浅色 / 深色</p></div><span class="badge blue">跟随系统</span></div><div class="setting-row"><div><strong>默认保存目录</strong><p>D:\\AigcPanel\\exports</p></div><span class="btn">选择</span></div><div class="setting-row"><div><strong>任务完成通知</strong><p>云端任务完成后提醒</p></div><span class="badge ok">开启</span></div><div class="setting-row"><div><strong>直播违规词</strong><p>配置黑词和自动回复提示词</p></div><span class="btn">编辑</span></div><div class="setting-row"><div><strong>环境检测</strong><p>FFmpeg、Python、本地服务端口</p></div><span class="badge ok">正常</span></div></div>
+          </div>
+        </main>
+        <aside class="scheduler"><div class="scheduler-head"><h2>排期结果</h2><p>设置页保持可折叠</p><div class="summary"><div class="blue"><span>运行</span>3</div><div class="ok"><span>成功</span>18</div><div class="fail"><span>失败</span>1</div><div class="soft"><span>排队</span>6</div></div></div><div class="filters"><span class="pill active">全部</span><span class="pill">失败</span></div><div class="result-list"><div class="result"><div class="result-top">配置备份 <span>今天</span></div><div class="result-foot">系统 <span class="badge ok">完成</span></div></div></div></aside>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

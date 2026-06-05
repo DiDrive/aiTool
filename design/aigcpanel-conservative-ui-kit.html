@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AigcPanel Conservative UI Kit</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --soft: #f9fafc;
+      --ink: #161b26;
+      --muted: #667085;
+      --line: #e5e8ef;
+      --primary: #265bd7;
+      --primary-soft: #e9f0ff;
+      --green: #16a06a;
+      --cyan: #00a7b5;
+      --amber: #d58a00;
+      --red: #d84a4a;
+      --shadow: 0 18px 52px rgba(28, 39, 67, .12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #e8edf5;
+      color: var(--ink);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+
+    .board {
+      width: 1540px;
+      margin: 0 auto;
+      padding: 40px;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: 32px; line-height: 1.22; margin-bottom: 8px; }
+    h2 { font-size: 22px; margin: 34px 0 14px; }
+    h3 { font-size: 16px; margin-bottom: 8px; }
+    p { color: var(--muted); line-height: 1.65; }
+
+    .intro {
+      width: 760px;
+      margin-bottom: 28px;
+    }
+
+    .kit-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .card, .screen, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    .card {
+      padding: 16px;
+      min-height: 138px;
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .swatch {
+      height: 42px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,.04);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 34px;
+      min-width: 72px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      font-weight: 700;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.ok { color: #08764d; background: #e8f7f0; }
+    .badge.run { color: var(--primary); background: var(--primary-soft); }
+    .badge.wait { color: #946000; background: #fff4da; }
+    .badge.fail { color: #a42e2e; background: #fdecec; }
+    .badge.soft { color: #495468; background: var(--soft); border: 1px solid var(--line); }
+
+    .field {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      color: var(--muted);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+    }
+
+    .field.textarea {
+      min-height: 118px;
+      align-items: flex-start;
+      padding-top: 12px;
+      line-height: 1.6;
+    }
+
+    .screen {
+      width: 1360px;
+      height: 820px;
+      margin-bottom: 34px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 42px 1fr;
+      box-shadow: var(--shadow);
+    }
+
+    .titlebar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.94);
+    }
+
+    .logo {
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+    }
+
+    .window-actions {
+      margin-left: auto;
+      color: #4c5567;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 72px 1fr 400px;
+      background: var(--bg);
+      min-height: 0;
+    }
+
+    .nav {
+      background: #fff;
+      border-right: 1px solid var(--line);
+      padding: 18px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar, .nav-item {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      color: #344054;
+    }
+
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: linear-gradient(145deg, #dce8ff, #fff);
+      color: var(--primary);
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+      background: var(--primary-soft);
+      position: relative;
+    }
+
+    .nav-item.active::before {
+      content: "";
+      position: absolute;
+      left: -10px;
+      width: 3px;
+      height: 24px;
+      border-radius: 4px;
+      background: var(--primary);
+    }
+
+    .content {
+      min-width: 0;
+      padding: 24px;
+      overflow: hidden;
+    }
+
+    .content.scroll { overflow-y: auto; }
+
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .page-head h1 {
+      font-size: 28px;
+      margin-bottom: 6px;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 16px; }
+
+    .panel { padding: 16px; min-width: 0; }
+
+    .stat-value {
+      display: block;
+      font-size: 30px;
+      line-height: 1.1;
+      font-weight: 800;
+      margin: 12px 0 8px;
+    }
+
+    .entry-card {
+      min-height: 142px;
+      display: grid;
+      align-content: space-between;
+    }
+
+    .entry-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .side-page {
+      display: grid;
+      grid-template-columns: 204px 1fr;
+      height: 100%;
+      background: #fff;
+    }
+
+    .subnav {
+      border-right: 1px solid var(--line);
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .subnav-item {
+      min-height: 38px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      color: #344054;
+      font-weight: 700;
+    }
+
+    .subnav-item.active {
+      color: var(--primary);
+      background: var(--primary-soft);
+    }
+
+    .form-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
+    }
+
+    .form-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .preview {
+      min-height: 278px;
+      border-radius: 12px;
+      padding: 16px;
+      background: #101828;
+      color: #fff;
+      display: grid;
+      align-content: space-between;
+    }
+
+    .table {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .tr {
+      display: grid;
+      grid-template-columns: 1.3fr .9fr .8fr .9fr .7fr;
+      align-items: center;
+      gap: 10px;
+      min-height: 52px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tr:last-child { border-bottom: 0; }
+    .th { color: var(--muted); background: var(--soft); font-size: 12px; font-weight: 700; }
+
+    .taskbar {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      background: rgba(255,255,255,.75);
+      border-left: 1px solid var(--line);
+      min-width: 0;
+    }
+
+    .taskbar-head {
+      padding: 16px;
+      border-bottom: 1px solid rgba(255,255,255,.9);
+      background: rgba(255,255,255,.88);
+    }
+
+    .taskbar-head h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .summary div {
+      border-radius: 12px;
+      padding: 9px 8px;
+      font-weight: 800;
+    }
+
+    .summary span {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      opacity: .75;
+    }
+
+    .filter-row {
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255,255,255,.9);
+      background: rgba(255,255,255,.58);
+    }
+
+    .pill {
+      height: 26px;
+      border-radius: 999px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .pill.active {
+      color: #fff;
+      border-color: var(--primary);
+      background: var(--primary);
+    }
+
+    .task-list {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      overflow: hidden;
+    }
+
+    .task-card {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      display: grid;
+      gap: 8px;
+    }
+
+    .task-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 800;
+    }
+
+    .task-title span, .task-meta {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 12px;
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 8px;
+      background: #e8edf6;
+      overflow: hidden;
+    }
+
+    .bar i {
+      display: block;
+      height: 100%;
+      border-radius: 8px;
+      background: var(--primary);
+    }
+
+    .server-card {
+      min-height: 154px;
+      display: grid;
+      align-content: space-between;
+      gap: 12px;
+    }
+
+    .server-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .settings-layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 16px;
+    }
+
+    .setting-menu {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .setting-row {
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .setting-row:last-child { border-bottom: 0; }
+    .setting-row p { margin: 4px 0 0; }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <section class="intro">
+      <h1>AigcPanel 保守版 UI 整理稿</h1>
+      <p>这版严格贴合现有功能：保留主导航、二级 tab、动态组件区域、表单提交和右侧任务结果栏，只整理视觉层级、间距、状态、卡片和部件拆分。</p>
+    </section>
+
+    <h2>01 / 共用部件</h2>
+    <section class="kit-grid">
+      <div class="card">
+        <h3>色彩</h3>
+        <p>沿用蓝色主色，增加状态色用于任务结果和能力区分。</p>
+        <div class="swatches">
+          <div class="swatch" style="background:var(--primary)"></div>
+          <div class="swatch" style="background:var(--green)"></div>
+          <div class="swatch" style="background:var(--cyan)"></div>
+          <div class="swatch" style="background:var(--amber)"></div>
+          <div class="swatch" style="background:var(--red)"></div>
+          <div class="swatch" style="background:var(--line)"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>按钮和状态</h3>
+        <div class="actions">
+          <span class="btn primary">主要操作</span>
+          <span class="btn">次要操作</span>
+          <span class="badge ok">成功</span>
+          <span class="badge run">运行中</span>
+          <span class="badge wait">排队</span>
+        </div>
+        <p style="margin-top:12px">用于替换散落的按钮和 tag 视觉，不改变点击行为。</p>
+      </div>
+      <div class="card">
+        <h3>二级导航</h3>
+        <div class="subnav-item active">当前 tab</div>
+        <div class="subnav-item">其他 tab</div>
+        <p style="margin-top:10px">视频、声音、工具、直播、设置都继续使用左侧二级导航。</p>
+      </div>
+      <div class="card">
+        <h3>任务结果项</h3>
+        <div class="task-card">
+          <div class="task-title">任务标题 <span>2 分钟前</span></div>
+          <div class="bar"><i style="width:72%;background:var(--green)"></i></div>
+          <div class="task-meta">RunningHub · 视频 <span class="badge run" style="float:right">72%</span></div>
+        </div>
+      </div>
+    </section>
+
+    <h2>02 / 首页：保留功能入口 + 数据统计 + 工具集合</h2>
+    <section class="screen">
+      <div class="titlebar"><div class="logo">AI</div><strong>AigcPanel Pro</strong><span style="color:var(--muted)">首页</span><div class="window-actions">- □ x</div></div>
+      <div class="layout">
+        <nav class="nav"><div class="avatar">U</div><div class="nav-item active">首页</div><div class="nav-item">数字人</div><div class="nav-item">模型</div><div class="nav-item">视频</div><div class="nav-item">声音</div><div class="nav-item">工具</div><div class="nav-item" style="margin-top:auto">设置</div></nav>
+        <section class="content scroll">
+          <div class="page-head">
+            <div><h1>欢迎使用 AigcPanel</h1><p>常用能力入口、任务统计和工具集合仍放在首页。</p></div>
+            <div class="actions"><span class="btn">帮助文档</span><span class="btn primary">问题反馈</span></div>
+          </div>
+          <div class="grid-4">
+            <div class="panel entry-card"><div><div class="entry-icon">声</div><h3>声音合成</h3><p>多种音色支持，开放模型接入。</p></div><span class="btn primary">立即使用</span></div>
+            <div class="panel entry-card"><div><div class="entry-icon">克</div><h3>声音克隆</h3><p>云端克隆音色，生成专属声音。</p></div><span class="btn primary">立即使用</span></div>
+            <div class="panel entry-card"><div><div class="entry-icon">视</div><h3>视频合成</h3><p>本地和云端模型生成视频。</p></div><span class="btn primary">立即使用</span></div>
+            <div class="panel entry-card"><div><div class="entry-icon">播</div><h3>数字人直播</h3><p>知识库、互动和自动播报。</p></div><span class="btn primary">立即使用</span></div>
+          </div>
+          <div class="panel">
+            <h3>数据统计</h3>
+            <div class="grid-4" style="margin-bottom:0">
+              <div><span>声音合成</span><strong class="stat-value">193</strong><span class="badge ok">今日 +3</span></div>
+              <div><span>声音克隆</span><strong class="stat-value">95</strong><span class="badge ok">今日 +1</span></div>
+              <div><span>视频合成</span><strong class="stat-value">145</strong><span class="badge ok">今日 +4</span></div>
+              <div><span>任务总数</span><strong class="stat-value">433</strong><span class="badge ok">今日 +8</span></div>
+            </div>
+          </div>
+          <div class="grid-3">
+            <div class="panel"><h3>云端模型</h3><p>模型运行在云端，避免本地资源不足。</p></div>
+            <div class="panel"><h3>模型市场</h3><p>多种开源模型持续更新。</p></div>
+            <div class="panel"><h3>工单反馈</h3><p>遇到问题随时反馈，记得提交日志。</p></div>
+          </div>
+          <div class="panel"><h3>工具集合</h3><div class="grid-3" style="margin-bottom:0"><div class="panel"><h3>云端生音频</h3><p>按模板提交云端音频生成任务。</p></div><div class="panel"><h3>一键视频合成</h3><p>文本到数字人口播视频。</p></div><div class="panel"><h3>Seedance</h3><p>ExchangeToken 视频生成。</p></div></div></div>
+        </section>
+        <aside class="taskbar">
+          <div class="taskbar-head"><h2>任务结果</h2><p>云端任务排期、运行状态与产出结果</p><div class="summary"><div class="badge run"><span>运行</span>3</div><div class="badge ok"><span>成功</span>18</div><div class="badge fail"><span>失败</span>1</div><div class="badge soft"><span>排队</span>6</div></div></div>
+          <div class="filter-row"><span class="pill active">全部</span><span class="pill">图</span><span class="pill">视频</span><span class="pill">音频</span><span class="pill">成功</span></div>
+          <div class="task-list"><div class="task-card"><div class="task-title">商品口播视频 <span>2 分钟前</span></div><div class="bar"><i style="width:72%;background:var(--green)"></i></div><div class="task-meta">视频 <span class="badge run" style="float:right">运行中</span></div></div><div class="task-card"><div class="task-title">声音克隆训练 <span>8 分钟前</span></div><div class="bar"><i style="width:44%;background:var(--cyan)"></i></div><div class="task-meta">音色 <span class="badge wait" style="float:right">排队</span></div></div></div>
+        </aside>
+      </div>
+    </section>
+
+    <h2>03 / 模型页：保留服务卡片和添加入口</h2>
+    <section class="screen">
+      <div class="titlebar"><div class="logo">AI</div><strong>AigcPanel Pro</strong><span style="color:var(--muted)">模型</span><div class="window-actions">- □ x</div></div>
+      <div class="layout">
+        <nav class="nav"><div class="avatar">U</div><div class="nav-item">首页</div><div class="nav-item">数字人</div><div class="nav-item active">模型</div><div class="nav-item">视频</div><div class="nav-item">声音</div><div class="nav-item">工具</div><div class="nav-item" style="margin-top:auto">设置</div></nav>
+        <section class="content scroll">
+          <div class="page-head"><div><h1>模型</h1><p>管理本地模型、远程模型、云端模型和平台配置。</p></div><div class="actions"><span class="btn">模型与平台</span><span class="btn">添加远程</span><span class="btn primary">添加本地</span></div></div>
+          <div class="grid-3">
+            <div class="panel server-card"><div class="server-top"><strong>Local Live Server</strong><span class="badge ok">运行中</span></div><p>v1.4.2 · 本地目录</p><div class="actions"><span class="badge soft">直播</span><span class="badge soft">音频</span><span class="badge soft">数字人</span></div><div class="actions"><span class="btn">日志</span><span class="btn">信息</span><span class="btn">设置</span></div></div>
+            <div class="panel server-card"><div class="server-top"><strong>RunningHub Cloud</strong><span class="badge run">远程</span></div><p>云端模板和任务提交。</p><div class="actions"><span class="badge soft">视频</span><span class="badge soft">图片</span></div><div class="actions"><span class="btn">日志</span><span class="btn">信息</span></div></div>
+            <div class="panel server-card"><div class="server-top"><strong>Seedance Proxy</strong><span class="badge wait">待启动</span></div><p>ExchangeToken 视频生成。</p><div class="actions"><span class="badge soft">视频</span></div><div class="actions"><span class="btn">启动</span><span class="btn">删除</span></div></div>
+          </div>
+          <div class="table"><div class="tr th"><div>服务名称</div><div>类型</div><div>版本</div><div>能力</div><div>状态</div></div><div class="tr"><div>Local Live Server</div><div>本地</div><div>v1.4.2</div><div>直播/音频</div><div><span class="badge ok">运行中</span></div></div><div class="tr"><div>OpenAI Compatible</div><div>平台</div><div>-</div><div>图像/文本</div><div><span class="badge ok">可用</span></div></div></div>
+        </section>
+        <aside class="taskbar"><div class="taskbar-head"><h2>任务结果</h2><p>跨页面任务状态</p><div class="summary"><div class="badge run"><span>运行</span>3</div><div class="badge ok"><span>成功</span>18</div><div class="badge fail"><span>失败</span>1</div><div class="badge soft"><span>排队</span>6</div></div></div><div class="filter-row"><span class="pill active">全部</span><span class="pill">失败</span></div><div class="task-list"><div class="task-card"><div class="task-title">服务健康检查 <span>刚刚</span></div><div class="task-meta">模型服务 <span class="badge ok" style="float:right">通过</span></div></div></div></aside>
+      </div>
+    </section>
+
+    <h2>04 / 视频页：保留 VideoApps 左侧二级导航</h2>
+    <section class="screen">
+      <div class="titlebar"><div class="logo">AI</div><strong>AigcPanel Pro</strong><span style="color:var(--muted)">视频</span><div class="window-actions">- □ x</div></div>
+      <div class="layout">
+        <nav class="nav"><div class="avatar">U</div><div class="nav-item">首页</div><div class="nav-item">数字人</div><div class="nav-item">模型</div><div class="nav-item active">视频</div><div class="nav-item">声音</div><div class="nav-item">工具</div><div class="nav-item" style="margin-top:auto">设置</div></nav>
+        <main class="side-page">
+          <aside class="subnav"><div class="subnav-item active">一键合成</div><div class="subnav-item">云端生视频</div><div class="subnav-item">云端对口型</div><div class="subnav-item">云端普通数字人</div><div class="subnav-item">数字人直播片段</div><div class="subnav-item">直播执行配置</div><div class="subnav-item">数字人直播编排</div></aside>
+          <section class="content scroll"><div class="page-head"><div><h1>一键合成</h1><p>保持现有动态组件区域，只整理参数表单和预览布局。</p></div><div class="actions"><span class="btn">模板</span><span class="btn primary">提交任务</span></div></div><div class="form-layout"><div class="panel form-stack"><h3>生成参数</h3><div class="field">选择模板</div><div class="field">选择音频 / 上传音频</div><div class="field">选择数字人身份</div><div class="field textarea">输入口播脚本或批量文本。</div><div class="actions"><span class="btn">保存草稿</span><span class="btn primary">提交排期</span></div></div><div class="preview"><strong>视频预览</strong><div><h1>9:16</h1><p>数字人口播 · 1080p</p></div></div></div><div class="panel" style="margin-top:16px"><h3>最近视频任务</h3><div class="table"><div class="tr th"><div>标题</div><div>模板</div><div>时长</div><div>状态</div><div>操作</div></div><div class="tr"><div>商品口播</div><div>讲解模板</div><div>00:42</div><div><span class="badge ok">完成</span></div><div>下载</div></div></div></div></section>
+        </main>
+        <aside class="taskbar"><div class="taskbar-head"><h2>任务结果</h2><p>视频、口型、数字人任务</p><div class="summary"><div class="badge run"><span>运行</span>2</div><div class="badge ok"><span>成功</span>9</div><div class="badge fail"><span>失败</span>0</div><div class="badge soft"><span>排队</span>4</div></div></div><div class="filter-row"><span class="pill active">视频</span><span class="pill">口型</span><span class="pill">数字人</span></div><div class="task-list"><div class="task-card"><div class="task-title">直播暖场片段 <span>72%</span></div><div class="bar"><i style="width:72%;background:var(--green)"></i></div><div class="task-meta">视频 <span class="badge run" style="float:right">运行中</span></div></div></div></aside>
+      </div>
+    </section>
+
+    <h2>05 / 声音、工具、直播、设置：同样保留现有 tab 模式</h2>
+    <section class="screen">
+      <div class="titlebar"><div class="logo">AI</div><strong>AigcPanel Pro</strong><span style="color:var(--muted)">其余页面模式</span><div class="window-actions">- □ x</div></div>
+      <div class="layout">
+        <nav class="nav"><div class="avatar">U</div><div class="nav-item">首页</div><div class="nav-item active">数字人</div><div class="nav-item">模型</div><div class="nav-item">视频</div><div class="nav-item">声音</div><div class="nav-item">工具</div><div class="nav-item" style="margin-top:auto">设置</div></nav>
+        <section class="content scroll">
+          <div class="grid-2">
+            <div class="panel">
+              <h3>声音页</h3>
+              <p>保留左侧二级导航：云端生音频、云端克隆音色。右侧区域继续渲染当前组件。</p>
+              <div class="subnav-item active">云端生音频</div>
+              <div class="subnav-item">云端克隆音色</div>
+            </div>
+            <div class="panel">
+              <h3>工具页</h3>
+              <p>保留左侧二级导航：Seedance、GPT Image 2、云端生图。</p>
+              <div class="subnav-item active">Seedance</div>
+              <div class="subnav-item">GPT Image 2</div>
+              <div class="subnav-item">云端生图</div>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>数字人直播页</h3>
+              <p>保留四个 tab：直播知识库、直播控制台、直播互动、播报历史。</p>
+              <div class="grid-2" style="margin-bottom:0"><div class="preview"><strong>直播预览</strong><div><h1>在线</h1><p>竖屏数字人</p></div></div><div class="form-stack"><div class="field">知识库片段</div><div class="field">自动回复规则</div><div class="field textarea">临时播报内容。</div></div></div>
+            </div>
+            <div class="panel">
+              <h3>设置页</h3>
+              <p>保留滚动锚点：基础设置、数据配置、数字人资产、环境、关于软件。</p>
+              <div class="settings-layout"><div class="setting-menu"><div class="subnav-item active">基础设置</div><div class="subnav-item">数据配置</div><div class="subnav-item">数字人资产</div><div class="subnav-item">环境</div></div><div><div class="setting-row"><div><strong>主题模式</strong><p>跟随系统 / 浅色 / 深色</p></div><span class="badge run">跟随系统</span></div><div class="setting-row"><div><strong>默认保存目录</strong><p>D:\\AigcPanel\\exports</p></div><span class="btn">选择</span></div></div></div>
+            </div>
+          </div>
+        </section>
+        <aside class="taskbar"><div class="taskbar-head"><h2>任务结果</h2><p>所有页面共用同一侧栏</p><div class="summary"><div class="badge run"><span>运行</span>3</div><div class="badge ok"><span>成功</span>18</div><div class="badge fail"><span>失败</span>1</div><div class="badge soft"><span>排队</span>6</div></div></div><div class="filter-row"><span class="pill active">全部</span><span class="pill">音频</span><span class="pill">工具</span><span class="pill">直播</span></div><div class="task-list"><div class="task-card"><div class="task-title">长文本配音 <span>44%</span></div><div class="bar"><i style="width:44%;background:var(--cyan)"></i></div><div class="task-meta">音频 <span class="badge run" style="float:right">运行中</span></div></div></div></aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
