@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { Dialog } from "../../lib/dialog";
 import {
     DirectApiPlatformRecord,
@@ -27,6 +27,7 @@ type MentionAsset = {
     source: "first_frame" | "last_frame" | "asset";
 };
 
+const route = useRoute();
 const router = useRouter();
 const platforms = ref<DirectApiPlatformRecord[]>([]);
 const platformId = ref(0);
@@ -57,6 +58,23 @@ const modeOptions: Array<{ label: string; value: CreationMode; desc: string }> =
 const modelOptions = ["seedance-2.0", "seedance-2.0-fast"];
 const ratioOptions = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"];
 const resolutionOptions = ["480p", "720p"];
+const durationOptions = [
+    { label: "自动", value: -1 },
+    ...Array.from({ length: 12 }, (_, index) => {
+        const value = index + 4;
+        return { label: `${value}s`, value };
+    }),
+];
+const referenceRoleMap = {
+    image: "reference_image",
+    video: "reference_video",
+    audio: "reference_audio",
+} as const;
+const referenceFilters = {
+    image: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff"] }],
+    video: [{ name: "Video", extensions: ["mp4", "mov"] }],
+    audio: [{ name: "Audio", extensions: ["wav", "mp3"] }],
+};
 
 const currentPlatform = computed(() => {
     return platforms.value.find(item => item.id === platformId.value) || null;
@@ -68,23 +86,69 @@ const loadPlatforms = async () => {
     platformId.value = defaultPlatform?.id || platforms.value[0]?.id || 0;
 };
 
-onMounted(loadPlatforms);
+const hydrateFromTask = async () => {
+    const editTaskId = Number(route.query.editTaskId || 0);
+    if (!editTaskId) {
+        return;
+    }
+    const record = await TaskService.get(editTaskId);
+    if (!record || record.biz !== "DirectApiTask") {
+        return;
+    }
+    const body = JSON.parse(String(record.modelConfig?.requestBodyJson || "{}"));
+    const input = record.param?.input || {};
+    platformId.value = Number(record.modelConfig?.providerProfileId || platformId.value || 0);
+    title.value = String(record.title || "");
+    mode.value = input.mode === "frames" ? "frames" : "reference";
+    prompt.value = String(input.prompt || "");
+    model.value = String(body.model || model.value);
+    ratio.value = String(body.ratio || ratio.value);
+    resolution.value = String(body.resolution || resolution.value);
+    duration.value = normalizeDuration(body.duration);
+    generateAudio.value = body.generate_audio !== false;
+    watermark.value = !!body.watermark;
+    webSearch.value = Array.isArray(body.tools) && body.tools.some((item: any) => item?.type === "web_search");
+    firstFrame.value = String(input.firstFrame || "");
+    lastFrame.value = String(input.lastFrame || "");
+    assets.value = Array.isArray(input.assets) ? input.assets : [];
+    if (!firstFrame.value || !lastFrame.value) {
+        const content = Array.isArray(body.content) ? body.content : [];
+        firstFrame.value =
+            firstFrame.value ||
+            String(content.find((item: any) => item?.role === "first_frame")?.image_url?.url || "");
+        lastFrame.value =
+            lastFrame.value ||
+            String(content.find((item: any) => item?.role === "last_frame")?.image_url?.url || "");
+    }
+};
+
+onMounted(async () => {
+    await loadPlatforms();
+    await hydrateFromTask();
+});
+
+const isLocalFilePath = (value: string) => {
+    return /^[a-zA-Z]:[\\/]/.test(value) || /^\\\\/.test(value);
+};
 
 const isPreviewableImage = (value: string) => {
-    return /^https?:\/\//i.test(value) || /^file:\/\//i.test(value) || /^[a-zA-Z]:[\\/]/.test(value);
+    return /^https?:\/\//i.test(value) || /^file:\/\//i.test(value) || isLocalFilePath(value);
 };
 
 const isPreviewableVideo = (value: string) => {
-    return /^https?:\/\//i.test(value) || /^file:\/\//i.test(value) || /^[a-zA-Z]:[\\/]/.test(value);
+    return /^https?:\/\//i.test(value) || /^file:\/\//i.test(value) || isLocalFilePath(value);
 };
 
 const isPlayableAudio = (value: string) => {
-    return /^https?:\/\//i.test(value) || /^file:\/\//i.test(value) || /^[a-zA-Z]:[\\/]/.test(value);
+    return /^https?:\/\//i.test(value) || /^file:\/\//i.test(value) || isLocalFilePath(value);
 };
 
 const displayUrl = (value: string) => {
     if (/^[a-zA-Z]:[\\/]/.test(value)) {
         return `file:///${value.replace(/\\/g, "/")}`;
+    }
+    if (/^\\\\/.test(value)) {
+        return `file:${value.replace(/\\/g, "/")}`;
     }
     return value;
 };
@@ -101,6 +165,24 @@ const assetTypeText = (type: MentionAsset["type"]) => {
     return ({ image: "图片", video: "视频", audio: "音频", frame: "帧" } as const)[type];
 };
 
+const normalizeDuration = (value: unknown) => {
+    const numeric = Number(value);
+    if (numeric === -1) {
+        return -1;
+    }
+    if (!Number.isFinite(numeric)) {
+        return 4;
+    }
+    return Math.min(15, Math.max(4, Math.round(numeric)));
+};
+
+watch(duration, value => {
+    const normalized = normalizeDuration(value);
+    if (duration.value !== normalized) {
+        duration.value = normalized;
+    }
+});
+
 const pickFrame = async (target: "first" | "last") => {
     const filePath = await window.$mapi.file.openFile({
         filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff"] }],
@@ -115,33 +197,25 @@ const pickFrame = async (target: "first" | "last") => {
     }
 };
 
+const addReferenceAsset = (type: SeedanceAssetType, url: string) => {
+    assets.value.push({
+        id: `${Date.now()}-${Math.random()}`,
+        type,
+        role: referenceRoleMap[type],
+        url,
+    });
+};
+
 const pickReference = async (type: SeedanceAssetType) => {
-    const filters = {
-        image: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff"] }],
-        video: [{ name: "Video", extensions: ["mp4", "mov"] }],
-        audio: [{ name: "Audio", extensions: ["wav", "mp3"] }],
-    };
     const filePath = await window.$mapi.file.openFile({
-        filters: filters[type],
+        filters: referenceFilters[type],
         properties: ["multiSelections"],
     });
     if (!filePath) {
         return;
     }
     const list = Array.isArray(filePath) ? filePath : [filePath];
-    const roleMap = {
-        image: "reference_image",
-        video: "reference_video",
-        audio: "reference_audio",
-    } as const;
-    assets.value.push(
-        ...list.map(url => ({
-            id: `${Date.now()}-${Math.random()}`,
-            type,
-            role: roleMap[type],
-            url,
-        }))
-    );
+    list.forEach(url => addReferenceAsset(type, url));
 };
 
 const removeAsset = (id: string) => {
@@ -356,7 +430,7 @@ const submit = async () => {
         generate_audio: generateAudio.value,
         resolution: resolution.value,
         ratio: ratio.value,
-        duration: Number(duration.value || 4),
+        duration: normalizeDuration(duration.value),
         watermark: watermark.value,
     };
     if (webSearch.value) {
@@ -386,7 +460,7 @@ const submit = async () => {
         serverTitle: "",
         serverVersion: "",
         modelConfig,
-        param: { input: { mode: mode.value, prompt: prompt.value, assets: assets.value } },
+        param: { input: { mode: mode.value, prompt: prompt.value, firstFrame: firstFrame.value, lastFrame: lastFrame.value, assets: assets.value } },
     };
     await TaskService.submit(record);
     Dialog.tipSuccess("任务已提交");
@@ -394,7 +468,7 @@ const submit = async () => {
 </script>
 
 <template>
-    <div class="relative flex h-full min-h-[720px] flex-col bg-[#f6f7f9]">
+    <div class="relative flex h-full min-h-[720px] flex-col overflow-hidden bg-[#f6f7f9]">
         <div class="flex-shrink-0 border-b border-gray-100 bg-white px-8 py-5">
             <div class="flex items-center gap-3">
                 <div class="min-w-0 flex-grow">
@@ -409,7 +483,7 @@ const submit = async () => {
             </div>
         </div>
 
-        <div class="flex-grow overflow-y-auto px-4 py-6 pb-48 xl:px-8">
+        <div class="min-h-0 flex-grow overflow-y-auto px-4 py-6 xl:px-8">
             <div v-if="!platforms.length" class="rounded-lg border border-dashed border-gray-200 bg-white p-8 text-center">
                 <div class="text-lg font-semibold text-gray-900">还没有可用平台</div>
                 <div class="mt-1 text-sm text-gray-500">先到模型栏配置 ExchangeToken 或其他支持 Seedance 的平台。</div>
@@ -524,8 +598,9 @@ const submit = async () => {
             </div>
         </div>
 
-        <div class="absolute bottom-5 left-4 right-4 z-10 mx-auto max-w-[840px] rounded-[22px] border border-gray-100 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.14)] xl:left-8 xl:right-8">
-            <div class="relative">
+        <div class="flex-shrink-0 border-t border-gray-100 bg-[#f6f7f9] px-4 py-4 xl:px-8">
+            <div class="relative mx-auto max-w-[840px] rounded-[22px] border border-gray-100 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]">
+                <div class="relative">
                 <div
                     v-if="assetPickerVisible"
                     class="absolute bottom-full left-0 mb-2 w-72 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
@@ -582,49 +657,52 @@ const submit = async () => {
                         </a-popover>
                         <button class="h-8 w-8 rounded-full bg-white text-lg text-gray-500 shadow-sm hover:text-blue-600" type="button" @click="openMentionPicker">+</button>
                     </div>
-                    <a-textarea
-                        ref="promptTextareaRef"
-                        v-model="prompt"
-                        :auto-size="{ minRows: 2, maxRows: 5 }"
-                        placeholder="描述画面、角色、动作和镜头。输入 @ 选择已上传素材。"
-                        @input="syncMentionPicker"
-                        @keyup="syncMentionPicker"
-                        @click="syncMentionPicker"
-                        @focus="syncMentionPicker"
-                        @blur="hideMentionPickerLater"
-                    />
+                        <a-textarea
+                            ref="promptTextareaRef"
+                            v-model="prompt"
+                            :auto-size="{ minRows: 2, maxRows: 5 }"
+                            placeholder="描述画面、角色、动作和镜头。输入 @ 选择已上传素材。"
+                            @input="syncMentionPicker"
+                            @keyup="syncMentionPicker"
+                            @click="syncMentionPicker"
+                            @focus="syncMentionPicker"
+                            @blur="hideMentionPickerLater"
+                        />
+                    </div>
                 </div>
-            </div>
-            <div class="mt-3 flex flex-wrap items-center gap-2">
-                <a-select v-model="model" class="!w-44">
-                    <a-option v-for="item in modelOptions" :key="item" :value="item">{{ item }}</a-option>
-                </a-select>
-                <a-select v-model="mode" class="!w-28">
-                    <a-option v-for="item in modeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
-                </a-select>
-                <a-select v-model="ratio" class="!w-24">
-                    <a-option v-for="item in ratioOptions" :key="item" :value="item">{{ item }}</a-option>
-                </a-select>
-                <a-select v-model="resolution" class="!w-24">
-                    <a-option v-for="item in resolutionOptions" :key="item" :value="item">{{ item }}</a-option>
-                </a-select>
-                <a-input-number v-model="duration" class="!w-28" :min="-1" :max="15" mode="button" />
-                <a-button @click="openMentionPicker">@素材</a-button>
-                <a-popover trigger="click" position="top">
-                    <a-button>更多</a-button>
-                    <template #content>
-                        <div class="w-52 space-y-3">
-                            <div class="flex items-center justify-between"><span>生成音频</span><a-switch v-model="generateAudio" /></div>
-                            <div class="flex items-center justify-between"><span>水印</span><a-switch v-model="watermark" /></div>
-                            <div class="flex items-center justify-between"><span>Web Search</span><a-switch v-model="webSearch" /></div>
-                            <a-input v-model="title" allow-clear placeholder="任务标题" />
-                        </div>
-                    </template>
-                </a-popover>
-                <div class="flex-grow"></div>
-                <a-button type="primary" shape="circle" size="large" @click="submit">
-                    <icon-send />
-                </a-button>
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                    <a-select v-model="model" class="!w-44">
+                        <a-option v-for="item in modelOptions" :key="item" :value="item">{{ item }}</a-option>
+                    </a-select>
+                    <a-select v-model="mode" class="!w-28">
+                        <a-option v-for="item in modeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                    </a-select>
+                    <a-select v-model="ratio" class="!w-24">
+                        <a-option v-for="item in ratioOptions" :key="item" :value="item">{{ item }}</a-option>
+                    </a-select>
+                    <a-select v-model="resolution" class="!w-24">
+                        <a-option v-for="item in resolutionOptions" :key="item" :value="item">{{ item }}</a-option>
+                    </a-select>
+                    <a-select v-model="duration" class="!w-24">
+                        <a-option v-for="item in durationOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                    </a-select>
+                    <a-button @click="openMentionPicker">@素材</a-button>
+                    <a-popover trigger="click" position="top">
+                        <a-button>更多</a-button>
+                        <template #content>
+                            <div class="w-52 space-y-3">
+                                <div class="flex items-center justify-between"><span>生成音频</span><a-switch v-model="generateAudio" /></div>
+                                <div class="flex items-center justify-between"><span>水印</span><a-switch v-model="watermark" /></div>
+                                <div class="flex items-center justify-between"><span>Web Search</span><a-switch v-model="webSearch" /></div>
+                                <a-input v-model="title" allow-clear placeholder="任务标题" />
+                            </div>
+                        </template>
+                    </a-popover>
+                    <div class="flex-grow"></div>
+                    <a-button type="primary" shape="circle" size="large" @click="submit">
+                        <icon-send />
+                    </a-button>
+                </div>
             </div>
         </div>
     </div>

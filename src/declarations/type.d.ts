@@ -219,6 +219,7 @@ type DefsMapi = {
                 name: string;
                 extensions: string[];
             }[],
+            defaultPath?: string;
             properties?: ("multiSelections")[]
         } = {}) => Promise<string | null>;
         openDirectory: (options: {} = {}) => Promise<string | null>;

@@ -24,6 +24,11 @@ const props = defineProps<{
     nowMs?: number;
 }>();
 
+const emit = defineEmits<{
+    (event: "edit-task", record: TaskRecord): void;
+    (event: "regenerate-task", record: TaskRecord): void;
+}>();
+
 type OutputItem = {
     key: string;
     name: string;
@@ -192,6 +197,15 @@ const durationSeconds = computed(() => {
 
 const capability = computed(() => {
     return String((props.record as any)?.modelConfig?.capability || "");
+});
+
+const supportedToolTask = computed(() => {
+    const title = String((props.record as any)?.modelConfig?.templateTitle || "").toLowerCase();
+    const body = String((props.record as any)?.modelConfig?.requestBodyJson || "").toLowerCase();
+    return (
+        props.record.biz === "DirectApiTask" &&
+        (title.includes("seedance") || title.includes("gpt image 2") || body.includes("seedance-2.0") || body.includes("gpt-image-2"))
+    );
 });
 
 const canSaveAsClip = computed(() => {
@@ -434,6 +448,12 @@ const saveAsClip = async () => {
                     下载
                 </a-button>
                 <span v-if="outputItems.length === 0" class="text-xs text-gray-300">-</span>
+            </div>
+
+            <div v-if="supportedToolTask" class="text-xs font-medium text-gray-400">操作</div>
+            <div v-if="supportedToolTask" class="min-w-0 flex flex-wrap gap-2">
+                <a-button size="mini" type="outline" @click="emit('edit-task', record)">重新编辑</a-button>
+                <a-button size="mini" type="outline" @click="emit('regenerate-task', record)">再次生成</a-button>
             </div>
 
             <div class="text-xs font-medium text-gray-400">用时</div>
