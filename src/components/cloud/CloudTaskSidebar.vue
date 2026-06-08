@@ -25,7 +25,7 @@ const SIDEBAR_DEFAULT_WIDTH = 400;
 
 const capabilityTabs = [
     { label: "全部", value: "all" },
-    { label: "图", value: "image" },
+    { label: "生图", value: "image" },
     { label: "视频", value: "video" },
     { label: "口型", value: "lipsync" },
     { label: "音频", value: "audio" },

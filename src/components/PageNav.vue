@@ -96,15 +96,27 @@ const goPage = (event: MouseEvent, path: string) => {
             </a>
             <a
                 class="page-nav-item block text-center py-3"
-                :class="activeTab === 'sound' ? 'active' : ''"
-                data-route-path="/sound"
-                @click="goPage($event, '/sound')"
-                :href="pageHref('/sound')"
+                :class="activeTab === 'live' ? 'active' : ''"
+                data-route-path="/live"
+                @click="goPage($event, '/live')"
+                :href="pageHref('/live')"
             >
                 <div>
-                    <i class="iconfont icon-sound text-xl"></i>
+                    <icon-live-broadcast class="text-xl" />
                 </div>
-                <div class="text-sm">{{ $t("voice.voice") }}</div>
+                <div class="text-sm">数字人</div>
+            </a>
+            <a
+                class="page-nav-item block text-center py-3"
+                :class="activeTab === 'server' ? 'active' : ''"
+                data-route-path="/server"
+                @click="goPage($event, '/server')"
+                :href="pageHref('/server')"
+            >
+                <div>
+                    <i class="iconfont icon-server text-xl"></i>
+                </div>
+                <div class="text-sm">{{ $t("model.model") }}</div>
             </a>
             <a
                 class="page-nav-item block text-center py-3"
@@ -120,15 +132,15 @@ const goPage = (event: MouseEvent, path: string) => {
             </a>
             <a
                 class="page-nav-item block text-center py-3"
-                :class="activeTab === 'live' ? 'active' : ''"
-                data-route-path="/live"
-                @click="goPage($event, '/live')"
-                :href="pageHref('/live')"
+                :class="activeTab === 'sound' ? 'active' : ''"
+                data-route-path="/sound"
+                @click="goPage($event, '/sound')"
+                :href="pageHref('/sound')"
             >
                 <div>
-                    <icon-live-broadcast class="text-xl" />
+                    <i class="iconfont icon-sound text-xl"></i>
                 </div>
-                <div class="text-sm">{{ $t("live.live") }}</div>
+                <div class="text-sm">{{ $t("voice.voice") }}</div>
             </a>
             <a
                 class="page-nav-item block text-center py-3"
@@ -140,19 +152,7 @@ const goPage = (event: MouseEvent, path: string) => {
                 <div>
                     <icon-tool class="text-xl" />
                 </div>
-                <div class="text-sm">{{ $t("nav.toolbox") }}</div>
-            </a>
-            <a
-                class="page-nav-item block text-center py-3"
-                :class="activeTab === 'server' ? 'active' : ''"
-                data-route-path="/server"
-                @click="goPage($event, '/server')"
-                :href="pageHref('/server')"
-            >
-                <div>
-                    <i class="iconfont icon-server text-xl"></i>
-                </div>
-                <div class="text-sm">{{ $t("model.model") }}</div>
+                <div class="text-sm">生图</div>
             </a>
             <a
                 class="page-nav-item block text-center py-3"

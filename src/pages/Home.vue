@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {nextTick, onMounted, ref} from "vue";
-import FeedbackTicketButton from "../components/common/FeedbackTicketButton.vue";
 import {TimeUtil} from "../lib/util";
 import {TaskService} from "../service/TaskService";
 import Router from "../router";
@@ -49,12 +48,6 @@ onMounted(async () => {
         <div class="flex">
             <div class="text-3xl font-bold mb-5 flex-grow">
                 {{ $t("welcome.title") }}
-            </div>
-            <div>
-                <a target="_blank" class="text-red-500" href="https://aigcpanel.com/forum">
-                    <icon-message class="mr-1" />
-                    {{ $t("feedback.help") }}
-                </a>
             </div>
         </div>
         <div class="mb-5">
@@ -190,40 +183,6 @@ onMounted(async () => {
                             }"
                             :value="usageData.taskTotalToday as any"
                         />
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="mb-4">
-            <div class="flex gap-5">
-                <a
-                    href="https://aigcpanel.com/zh/asset"
-                    target="_blank"
-                    class="bg-white rounded-lg p-3 flex items-center flex-grow w-0 hover:shadow-lg"
-                >
-                    <div class="flex-grow">
-                        <div class="font-bold text-xl mb-3">
-                            {{ $t("model.market") }}
-                        </div>
-                        <div class="text-gray-600">
-                            {{ $t("intro.modelsUpdate") }}
-                        </div>
-                    </div>
-                    <div>
-                        <icon-right class="text-2xl text-gray-400" />
-                    </div>
-                </a>
-                <div class="bg-white rounded-lg p-3 flex items-center flex-grow w-0 hover:shadow-lg">
-                    <div class="flex-grow">
-                        <div class="font-bold text-xl mb-3">
-                            {{ $t("nav.feedback") }}
-                        </div>
-                        <div class="text-gray-600">
-                            {{ $t("feedback.anytime") }}
-                        </div>
-                    </div>
-                    <div>
-                        <FeedbackTicketButton />
                     </div>
                 </div>
             </div>

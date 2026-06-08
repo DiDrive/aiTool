@@ -1,9 +1,6 @@
-import {t} from "../../lang";
-
 import CloudAudio from "../Cloud/CloudAudio.vue";
 import CloudVoiceClone from "../Cloud/CloudVoiceClone.vue";
 
-import VideoGenFlow from "./VideoGenFlow/VideoGenFlow.vue";
 import CloudVideo from "../Cloud/CloudVideo.vue";
 import CloudLipSync from "../Cloud/CloudLipSync.vue";
 import CloudDigitalHuman from "../Cloud/CloudDigitalHuman.vue";
@@ -19,8 +16,6 @@ import CloudImage from "../Cloud/CloudImage.vue";
 import ToolGptImage2 from "../Cloud/ToolGptImage2.vue";
 import ToolSeedance from "../Cloud/ToolSeedance.vue";
 import TextToImageIcon from "./TextToImage/assets/icon.svg";
-
-import FeedbackIcon from "./../../assets/image/feedback.svg";
 
 export const SoundApps = [
     {
@@ -41,19 +36,22 @@ export const SoundApps = [
 
 export const VideoApps = [
     {
-        name: "VideoGenFlow",
-        title: t("avatar.oneClickSynthesis"),
-        description: t("intro.textToVideo"),
-        icon: VideoGenFlowIcon,
-        component: VideoGenFlow,
-    },
-    {
         name: "CloudVideo",
         title: "云端生视频",
         description: "按模板提交云端视频生成任务",
         icon: VideoGenFlowIcon,
         component: CloudVideo,
     },
+    {
+        name: "ToolSeedance",
+        title: "Seedance 2.0",
+        description: "ExchangeToken Seedance 视频生成",
+        icon: VideoGenFlowIcon,
+        component: ToolSeedance,
+    },
+];
+
+export const DigitalHumanApps = [
     {
         name: "CloudLipSync",
         title: "云端对口型",
@@ -91,14 +89,7 @@ export const VideoApps = [
     },
 ];
 
-export const ToolApps = [
-    {
-        name: "ToolSeedance",
-        title: "Seedance",
-        description: "ExchangeToken Seedance 视频生成",
-        icon: VideoGenFlowIcon,
-        component: ToolSeedance,
-    },
+export const ImageApps = [
     {
         name: "ToolGptImage2",
         title: "GPT Image 2",
@@ -115,7 +106,7 @@ export const ToolApps = [
     },
 ];
 
-export const ImageApps = ToolApps;
+export const ToolApps = ImageApps;
 
 export const AllApps = [
     ...(SoundApps.map(app => ({
@@ -126,14 +117,12 @@ export const AllApps = [
         ...app,
         url: `/video?tab=${app.name}`,
     })) as any),
-    ...(ToolApps.map(app => ({
+    ...(DigitalHumanApps.map(app => ({
+        ...app,
+        url: `/live?tab=${app.name}`,
+    })) as any),
+    ...(ImageApps.map(app => ({
         ...app,
         url: `/tool?tab=${app.name}`,
     })) as any),
-    {
-        title: t("feedback.toolRequest"),
-        description: t("msg.moreTools"),
-        icon: FeedbackIcon,
-        url: "https://aigcpanel.com/wish",
-    },
 ];
