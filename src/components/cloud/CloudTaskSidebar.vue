@@ -73,28 +73,28 @@ const refresh = async () => {
     records.value = [...runningHubRecords, ...directApiRecords].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 };
 
-const directApiToolTab = (record: TaskRecord) => {
+const directApiEditTarget = (record: TaskRecord) => {
     const title = String((record as any)?.modelConfig?.templateTitle || "").toLowerCase();
     const body = String((record as any)?.modelConfig?.requestBodyJson || "").toLowerCase();
     if (title.includes("seedance") || body.includes("seedance-2.0")) {
-        return "ToolSeedance";
+        return { path: "/video", tab: "ToolSeedance" };
     }
     if (title.includes("gpt image 2") || body.includes("gpt-image-2")) {
-        return "ToolGptImage2";
+        return { path: "/tool", tab: "ToolGptImage2" };
     }
-    return "";
+    return null;
 };
 
 const editTask = async (record: TaskRecord) => {
-    const tab = directApiToolTab(record);
-    if (!tab || !record.id) {
+    const target = directApiEditTarget(record);
+    if (!target || !record.id) {
         Dialog.tipError("当前任务暂不支持重新编辑");
         return;
     }
     await router.push({
-        path: "/tool",
+        path: target.path,
         query: {
-            tab,
+            tab: target.tab,
             editTaskId: String(record.id),
             _t: String(Date.now()),
         },
@@ -116,7 +116,7 @@ const cloneTaskRecord = (record: TaskRecord): TaskRecord => {
 };
 
 const regenerateTask = async (record: TaskRecord) => {
-    if (!directApiToolTab(record)) {
+    if (!directApiEditTarget(record)) {
         Dialog.tipError("当前任务暂不支持再次生成");
         return;
     }
