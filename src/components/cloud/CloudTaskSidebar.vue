@@ -125,6 +125,25 @@ const regenerateTask = async (record: TaskRecord) => {
     await refresh();
 };
 
+const deleteTask = async (record: TaskRecord) => {
+    if (!record.id) {
+        Dialog.tipError("任务记录不完整，无法删除");
+        return;
+    }
+    const status = resolveDisplayStatus(record);
+    if (status !== "success" && status !== "fail") {
+        Dialog.tipError("只有已完成或已失败的任务可以删除");
+        return;
+    }
+    try {
+        await TaskService.delete(record);
+        Dialog.tipSuccess("任务记录已删除");
+        await refresh();
+    } catch (e: any) {
+        Dialog.tipError(String(e?.message || e || "删除任务失败"));
+    }
+};
+
 const filteredRecords = computed(() => {
     return records.value.filter(record => {
         if (capabilityFilter.value !== "all" && record.modelConfig?.capability !== capabilityFilter.value) {
@@ -369,6 +388,7 @@ onBeforeUnmount(() => {
                         :now-ms="nowMs"
                         @edit-task="editTask"
                         @regenerate-task="regenerateTask"
+                        @delete-task="deleteTask"
                     />
                 </div>
                 <div

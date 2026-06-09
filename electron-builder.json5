@@ -5,7 +5,7 @@
     "publish": [],
     "asar": true,
     "npmRebuild": true,
-    "productName": "数智印象",
+    "productName": "唯变AI工作台",
     "directories": {
         "output": "dist-release",
         "buildResources": "electron/resources/build"
@@ -53,7 +53,7 @@
     "appx": {
         "identityName": "ShuzhiYinxiang",
         "publisher": "CN=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXX",
-        "publisherDisplayName": "数智印象",
+        "publisherDisplayName": "唯变AI工作台",
         "languages": [
             "zh-CN",
             "en-US",

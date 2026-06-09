@@ -27,6 +27,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     (event: "edit-task", record: TaskRecord): void;
     (event: "regenerate-task", record: TaskRecord): void;
+    (event: "delete-task", record: TaskRecord): void;
 }>();
 
 type OutputItem = {
@@ -206,6 +207,10 @@ const supportedToolTask = computed(() => {
         props.record.biz === "DirectApiTask" &&
         (title.includes("seedance") || title.includes("gpt image 2") || body.includes("seedance-2.0") || body.includes("gpt-image-2"))
     );
+});
+
+const canDeleteTask = computed(() => {
+    return props.displayStatus === "success" || props.displayStatus === "fail";
 });
 
 const canSaveAsClip = computed(() => {
@@ -454,6 +459,16 @@ const saveAsClip = async () => {
             <div v-if="supportedToolTask" class="min-w-0 flex flex-wrap gap-2">
                 <a-button size="mini" type="outline" @click="emit('edit-task', record)">重新编辑</a-button>
                 <a-button size="mini" type="outline" @click="emit('regenerate-task', record)">再次生成</a-button>
+            </div>
+
+            <div v-if="canDeleteTask" class="text-xs font-medium text-gray-400">管理</div>
+            <div v-if="canDeleteTask" class="min-w-0 flex flex-wrap gap-2">
+                <a-popconfirm
+                    content="确认删除这条任务记录？本地保存的产出文件也会一起清理。"
+                    @ok="emit('delete-task', record)"
+                >
+                    <a-button size="mini" status="danger" type="outline">删除记录</a-button>
+                </a-popconfirm>
             </div>
 
             <div class="text-xs font-medium text-gray-400">用时</div>

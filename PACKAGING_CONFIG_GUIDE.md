@@ -1,4 +1,4 @@
-# 数智印象配置与打包说明
+# 唯变AI工作台配置与打包说明
 
 本文档用于把当前应用打包后分发到其他 Windows 电脑，并说明首次使用需要配置哪些内容。
 
@@ -16,7 +16,7 @@
 
 ### ExchangeToken
 
-- API Key：ExchangeToken 控制台创建的密钥（sk-wCMQWUoB8KrSpCLO5qH61eIJruJEnSc6Bpp8ucDXiBtsKInP）。
+- API Key：ExchangeToken 控制台创建的密钥。
 - 代理地址：一般留空；如电脑必须走代理，可填 `http://127.0.0.1:7890`，或按实际代理端口填写。
 - 支持能力：勾选需要启用的模型能力，例如 `Seedance 2.0`、`GPT Image 2`。
 - 默认平台：需要时设为默认，方便工具页自动选中。
@@ -24,10 +24,10 @@
 ### 123 云盘中转
 
 - 开关：启用。
-- Client ID：123 云盘开放平台开发者权益包提供：5353c9140cdd41479971576deef623dd。
-- Client Secret：123 云盘开放平台开发者权益包提供：7c1aa5eb3e424245b4da2333d2c0ddf7。
-- Folder ID：用于上传中转素材的文件夹 ID：46915397。
-- URL 鉴权密钥：123 云盘直链流量包里配置的 URL 鉴权私钥：qwerasd123。
+- Client ID：123 云盘开放平台开发者权益包提供。
+- Client Secret：123 云盘开放平台开发者权益包提供。
+- Folder ID：用于上传中转素材的文件夹 ID。
+- URL 鉴权密钥：123 云盘直链流量包里配置的 URL 鉴权私钥。
 - ExchangeToken 资产入库：真人图片/视频用于 Seedance 时建议启用。
 
 ### Seedance 使用逻辑
@@ -77,7 +77,7 @@ dist-release
 当前配置会生成 NSIS 安装包，文件名类似：
 
 ```text
-数智印象-1.4.0-win-setup-x64.exe
+唯变AI工作台-1.4.0-win-setup-x64.exe
 ```
 
 把这个安装包发给其他 Windows 电脑即可。
