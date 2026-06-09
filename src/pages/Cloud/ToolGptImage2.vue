@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { Dialog } from "../../lib/dialog";
 import {
     DirectApiPlatformRecord,
@@ -16,6 +16,7 @@ type ImageAsset = {
     url: string;
 };
 
+const route = useRoute();
 const router = useRouter();
 const platforms = ref<DirectApiPlatformRecord[]>([]);
 const platformId = ref(0);
@@ -47,7 +48,44 @@ const loadPlatforms = async () => {
     platformId.value = defaultPlatform?.id || platforms.value[0]?.id || 0;
 };
 
-onMounted(loadPlatforms);
+const hydrateFromTask = async () => {
+    const editTaskId = Number(route.query.editTaskId || 0);
+    if (!editTaskId) {
+        return;
+    }
+    const record = await TaskService.get(editTaskId);
+    if (!record || record.biz !== "DirectApiTask") {
+        return;
+    }
+    const body = JSON.parse(String(record.modelConfig?.requestBodyJson || "{}"));
+    const input = record.param?.input || {};
+    platformId.value = Number(record.modelConfig?.providerProfileId || platformId.value || 0);
+    title.value = String(record.title || "");
+    const restoredMode = ["generation", "edit", "blend"].includes(input.mode)
+        ? input.mode
+        : body.image || body["image[]"]
+          ? "edit"
+          : "generation";
+    mode.value = restoredMode as ImageMode;
+    prompt.value = String(input.prompt || body.prompt || "");
+    size.value = String(body.size || size.value);
+    quality.value = String(body.quality || quality.value);
+    count.value = Number(body.n || count.value || 1);
+    images.value = Array.isArray(input.images) ? input.images : [];
+    if (!images.value.length) {
+        const bodyImages = Array.isArray(body["image[]"]) ? body["image[]"] : body.image ? [body.image] : [];
+        images.value = bodyImages.map((url: string) => ({
+            id: `${Date.now()}-${Math.random()}`,
+            url,
+        }));
+    }
+    mask.value = String(input.mask || body.mask || "");
+};
+
+onMounted(async () => {
+    await loadPlatforms();
+    await hydrateFromTask();
+});
 
 const displayUrl = (value: string) => {
     if (/^[a-zA-Z]:[\\/]/.test(value)) {
@@ -171,7 +209,7 @@ const submit = async () => {
         serverTitle: "",
         serverVersion: "",
         modelConfig,
-        param: { input: { mode: mode.value, prompt: prompt.value, images: images.value } },
+        param: { input: { mode: mode.value, prompt: prompt.value, images: images.value, mask: mask.value } },
     };
     await TaskService.submit(record);
     Dialog.tipSuccess("任务已提交");

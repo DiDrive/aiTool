@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useTaskChangeRefresh } from "../../hooks/task";
+import { Dialog } from "../../lib/dialog";
 import { TaskRecord, TaskService } from "../../service/TaskService";
 import CloudTaskSidebarItem from "./CloudTaskSidebarItem.vue";
 
@@ -15,6 +17,7 @@ const records = ref<TaskRecord[]>([]);
 const sidebarWidth = ref(400);
 const isResizing = ref(false);
 const nowMs = ref(Date.now());
+const router = useRouter();
 let resizeStartX = 0;
 let resizeStartWidth = 400;
 let clockTimer = 0;
@@ -68,6 +71,77 @@ const refresh = async () => {
         TaskService.list("DirectApiTask"),
     ]);
     records.value = [...runningHubRecords, ...directApiRecords].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+};
+
+const directApiToolTab = (record: TaskRecord) => {
+    const title = String((record as any)?.modelConfig?.templateTitle || "").toLowerCase();
+    const body = String((record as any)?.modelConfig?.requestBodyJson || "").toLowerCase();
+    if (title.includes("seedance") || body.includes("seedance-2.0")) {
+        return "ToolSeedance";
+    }
+    if (title.includes("gpt image 2") || body.includes("gpt-image-2")) {
+        return "ToolGptImage2";
+    }
+    return "";
+};
+
+const editTask = async (record: TaskRecord) => {
+    const tab = directApiToolTab(record);
+    if (!tab || !record.id) {
+        Dialog.tipError("当前任务暂不支持重新编辑");
+        return;
+    }
+    await router.push({
+        path: "/tool",
+        query: {
+            tab,
+            editTaskId: String(record.id),
+            _t: String(Date.now()),
+        },
+    });
+};
+
+const cloneTaskRecord = (record: TaskRecord): TaskRecord => {
+    const cloned = JSON.parse(JSON.stringify(record || {}));
+    delete cloned.id;
+    delete cloned.status;
+    delete cloned.statusMsg;
+    delete cloned.startTime;
+    delete cloned.endTime;
+    delete cloned.jobResult;
+    delete cloned.result;
+    delete cloned.runtime;
+    cloned.title = `${String(record.title || "任务").replace(/_再次生成\d*$/, "")}_再次生成`;
+    return cloned;
+};
+
+const regenerateTask = async (record: TaskRecord) => {
+    if (!directApiToolTab(record)) {
+        Dialog.tipError("当前任务暂不支持再次生成");
+        return;
+    }
+    await TaskService.submit(cloneTaskRecord(record));
+    Dialog.tipSuccess("已按原配置再次提交");
+    await refresh();
+};
+
+const deleteTask = async (record: TaskRecord) => {
+    if (!record.id) {
+        Dialog.tipError("任务记录不完整，无法删除");
+        return;
+    }
+    const status = resolveDisplayStatus(record);
+    if (status !== "success" && status !== "fail") {
+        Dialog.tipError("只有已完成或已失败的任务可以删除");
+        return;
+    }
+    try {
+        await TaskService.delete(record);
+        Dialog.tipSuccess("任务记录已删除");
+        await refresh();
+    } catch (e: any) {
+        Dialog.tipError(String(e?.message || e || "删除任务失败"));
+    }
 };
 
 const filteredRecords = computed(() => {
@@ -312,6 +386,9 @@ onBeforeUnmount(() => {
                         :record="record"
                         :display-status="resolveDisplayStatus(record)"
                         :now-ms="nowMs"
+                        @edit-task="editTask"
+                        @regenerate-task="regenerateTask"
+                        @delete-task="deleteTask"
                     />
                 </div>
                 <div

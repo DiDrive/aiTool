@@ -145,14 +145,15 @@ const describeHttpSource = (sourceUrl: string) => {
 
 const verifyPublicSourceUrl = async (sourceUrl: string, proxyUrl?: string) => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 45000);
     try {
         await applyProxyRules(proxyUrl);
         const res = await appFetch(sourceUrl, {
             method: "GET",
             headers: {
-                "User-Agent": "AIGCPanel-Electron",
-                "Range": "bytes=0-0",
+                "Accept": "*/*",
+                "User-Agent": "Mozilla/5.0 AIGCPanel-Electron",
+                "Range": "bytes=0-1023",
             },
             signal: controller.signal,
         });
@@ -160,10 +161,14 @@ const verifyPublicSourceUrl = async (sourceUrl: string, proxyUrl?: string) => {
             throw new Error(`HTTP ${res.status}`);
         }
     } catch (e: any) {
-        throw new Error(`123 云盘直链自检失败，ExchangeToken 无法归档这个素材源：${describeHttpSource(sourceUrl)}\n${e?.message || e}`);
+        throw new Error(`123 云盘直链自检失败，素材源可能无法被外部服务访问：${describeHttpSource(sourceUrl)}\n${e?.message || e}`);
     } finally {
         clearTimeout(timeout);
     }
+};
+
+const isSoftPublicSourceCheckError = (e: any) => {
+    return /aborted|timeout|timed out|ERR_TIMED_OUT|ERR_CONNECTION|fetch failed|socket hang up|ECONNRESET/i.test(String(e?.message || e || ""));
 };
 
 const postJsonRaw = async (
@@ -250,11 +255,19 @@ const pickPan123Suid = (url: URL) => {
     return "";
 };
 
-const signPan123DirectUrl = (directUrl: string, authKey?: string) => {
-    const privateKey = String(authKey || "").trim();
-    if (!privateKey) {
-        return directUrl;
-    }
+const pan123SafeUploadName = (filePath: string) => {
+    const ext = path.extname(filePath).toLowerCase() || ".bin";
+    const base = path
+        .basename(filePath, path.extname(filePath))
+        .normalize("NFKD")
+        .replace(/[^\w.-]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 40);
+    const suffix = crypto.randomBytes(3).toString("hex");
+    return `${Date.now()}_${base || "asset"}_${suffix}${ext}`;
+};
+
+const signPan123DirectUrlByPath = (directUrl: string, authKey: string, signPath: string) => {
     const url = new URL(directUrl);
     const suid = pickPan123Suid(url);
     if (!suid) {
@@ -264,10 +277,53 @@ const signPan123DirectUrl = (directUrl: string, authKey?: string) => {
     const rand = crypto.randomBytes(4).toString("hex");
     const md5hash = crypto
         .createHash("md5")
-        .update(`${url.pathname}-${timestamp}-${rand}-${suid}-${privateKey}`)
+        .update(`${signPath}-${timestamp}-${rand}-${suid}-${authKey}`)
         .digest("hex");
     url.searchParams.set("auth_key", `${timestamp}-${rand}-${suid}-${md5hash}`);
     return url.toString();
+};
+
+const signPan123DirectUrlCandidates = (directUrl: string, authKey?: string) => {
+    const privateKey = String(authKey || "").trim();
+    if (!privateKey) {
+        return [directUrl];
+    }
+    const url = new URL(directUrl);
+    const encodedPath = url.pathname;
+    let decodedPath = encodedPath;
+    try {
+        decodedPath = decodeURIComponent(encodedPath);
+    } catch (e) {
+        decodedPath = encodedPath;
+    }
+    const signPaths = Array.from(new Set([
+        decodedPath,
+        encodedPath,
+        decodedPath.replace(/^\/+/, ""),
+        encodedPath.replace(/^\/+/, ""),
+    ].filter(Boolean)));
+    return signPaths.map(signPath => signPan123DirectUrlByPath(directUrl, privateKey, signPath));
+};
+
+const pickVerifiedPan123DirectUrl = async (directUrl: string, authKey?: string, proxyUrl?: string, allowSoftFail = false) => {
+    const candidates = signPan123DirectUrlCandidates(directUrl, authKey);
+    const errors: string[] = [];
+    let softFailCandidate = "";
+    for (const candidate of candidates) {
+        try {
+            await verifyPublicSourceUrl(candidate, proxyUrl);
+            return candidate;
+        } catch (e: any) {
+            if (allowSoftFail && !softFailCandidate && isSoftPublicSourceCheckError(e)) {
+                softFailCandidate = candidate;
+            }
+            errors.push(e?.message || String(e));
+        }
+    }
+    if (softFailCandidate) {
+        return softFailCandidate;
+    }
+    throw new Error(errors[0] || "123 云盘直链自检失败");
 };
 
 const getPan123AccessToken = async (relay: DirectFileRelayOptions, proxyUrl?: string) => {
@@ -316,7 +372,7 @@ const uploadFileToPan123 = async (filePath: string, relay: DirectFileRelayOption
             `${PAN123_BASE_URL}/upload/v1/file/create`,
             {
                 parentFileID,
-                filename: `${Date.now()}_${path.basename(filePath)}`,
+                filename: pan123SafeUploadName(filePath),
                 etag,
                 size: buffer.length,
                 duplicate: 1,
@@ -408,8 +464,7 @@ const uploadFileToPan123 = async (filePath: string, relay: DirectFileRelayOption
     if (!/^https?:\/\//i.test(rawDirectUrl)) {
         throw new Error("123 云盘返回的直链不是有效 HTTP URL");
     }
-    const directUrl = signPan123DirectUrl(rawDirectUrl, relay.urlAuthKey);
-    await verifyPublicSourceUrl(directUrl, proxyUrl);
+    const directUrl = await pickVerifiedPan123DirectUrl(rawDirectUrl, relay.urlAuthKey, proxyUrl, true);
     return { fileID, directUrl };
 };
 

@@ -8,6 +8,7 @@ ipcMain.handle("file:openFile", async (
             name: string;
             extensions: string[];
         }[],
+        defaultPath?: string;
         properties?: ("multiSelections" | "openFile")[]
     } = {}): Promise<string | string[] | null> => {
     options = Object.assign({
@@ -17,11 +18,13 @@ ipcMain.handle("file:openFile", async (
     if (!options.properties.includes("openFile")) {
         options.properties.push("openFile");
     }
-    // @ts-ignore
-    options.properties.push('noResolveAliases');
+    const defaultPath =
+        options.defaultPath ||
+        (process.platform === "win32" ? "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}" : undefined);
     const res = await dialog
         .showOpenDialog({
             ...options,
+            defaultPath,
         })
         .catch(e => {
         });
