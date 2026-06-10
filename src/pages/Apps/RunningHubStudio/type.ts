@@ -83,6 +83,7 @@ export type RunningHubJobResultType = {
             outputType?: string;
             text?: string | null;
             fileUrl?: string;
+            localFile?: string;
         }>;
         usage?: Record<string, any>;
         promptTips?: string;

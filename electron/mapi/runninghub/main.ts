@@ -967,13 +967,15 @@ const appendFormValue = async (form: FormData, key: string, value: any) => {
         if (typeof item === "string" && isLocalFilePath(item)) {
             const filePath = toLocalFilePath(item);
             const buffer = await readFile(filePath);
-            form.append(key, new Blob([buffer], { type: mimeFromFile(filePath) }), path.basename(filePath));
+            const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+            form.append(key, new Blob([new Uint8Array(ab)], { type: mimeFromFile(filePath) }), path.basename(filePath));
             continue;
         }
         if (typeof item === "string" && /^data:image\//i.test(item)) {
             const file = dataUrlToFile(item);
             if (file) {
-                form.append(key, new Blob([file.buffer], { type: file.mime }), file.filename);
+                const fab = file.buffer.buffer.slice(file.buffer.byteOffset, file.buffer.byteOffset + file.buffer.byteLength) as ArrayBuffer;
+                form.append(key, new Blob([new Uint8Array(fab)], { type: file.mime }), file.filename);
                 continue;
             }
         }
@@ -1278,7 +1280,8 @@ const uploadFile = async (
     const form = new FormData();
     form.append("apiKey", apiKey || "");
     form.append("fileType", fileType || "input");
-    form.append("file", new Blob([buffer]), path.basename(filePath));
+    const abUpload = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    form.append("file", new Blob([new Uint8Array(abUpload)]), path.basename(filePath));
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {

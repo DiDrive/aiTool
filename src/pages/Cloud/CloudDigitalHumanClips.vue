@@ -345,21 +345,21 @@ onBeforeUnmount(() => {
                 <div class="preview-box">
                     <video
                         v-if="assetType(selectedRecord) === 'video'"
-                        :key="assetUrl(selectedRecord)"
+                        :key="'video-' + (assetUrl(selectedRecord) || 'empty')"
                         :src="assetUrl(selectedRecord)"
                         controls
                         preload="metadata"
                     ></video>
                     <audio
                         v-else-if="assetType(selectedRecord) === 'audio'"
-                        :key="assetUrl(selectedRecord)"
+                        :key="'audio-' + (assetUrl(selectedRecord) || 'empty')"
                         :src="assetUrl(selectedRecord)"
                         controls
                         preload="metadata"
                     ></audio>
                     <img
                         v-else-if="assetType(selectedRecord) === 'image'"
-                        :key="assetUrl(selectedRecord)"
+                        :key="'image-' + (assetUrl(selectedRecord) || 'empty')"
                         :src="assetUrl(selectedRecord)"
                         alt="片段预览"
                     />

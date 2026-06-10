@@ -1,3 +1,4 @@
+import type { DB } from "./type";
 import StorageMain from "../storage/main";
 import Files from "../file/main";
 

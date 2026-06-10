@@ -30,7 +30,7 @@ const add = () => {
 
 const doSelectFile = async () => {
     const path = await window.$mapi.file.openFile({
-        accept: "video/*",
+        filters: [{ name: "Video", extensions: ["mp4", "mov", "avi", "mkv", "webm"] }],
     });
     if (path) {
         formData.value.video = path;

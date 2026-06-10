@@ -204,7 +204,8 @@ const runningHubUploadBlob = async (
     const form = new FormData();
     form.append("apiKey", apiKey || "");
     form.append("fileType", fileType || "input");
-    form.append("file", new Blob([bytes]), fileName);
+    const blob = new Blob([new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength)]);
+    form.append("file", blob, fileName);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
@@ -346,7 +347,7 @@ ipcMain.handle("live:startMockStream", async (event, options: { rtmpUrl: string;
         try {
             ffmpegProcess.kill();
         } catch (e) {
-            Log.warn("live", "stop stale ffmpeg failed before restart");
+            Log.error("live", "stop stale ffmpeg failed before restart");
         }
         ffmpegProcess = null;
     }

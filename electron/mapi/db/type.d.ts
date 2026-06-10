@@ -1,4 +1,4 @@
-type DB = {
+export type DB = {
     execute(sql: string, params?: any): Promise<any>;
     insert(sql: string, params?: any): Promise<any>;
     first(sql: string, params?: any): Promise<any>;
