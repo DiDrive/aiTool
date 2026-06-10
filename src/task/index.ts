@@ -17,6 +17,7 @@ import {
     RunningHubTask,
     RunningHubTaskCleaner,
 } from "../pages/Apps/RunningHubStudio/task";
+import { MarketingVideoChainTask } from "../pages/Apps/MarketingVideoFlow/task";
 
 const taskStore = useTaskStore();
 const serverStore = useServerStore();
@@ -36,6 +37,7 @@ export const tasks = {
     ImageToImage,
     RunningHubTask,
     DirectApiTask,
+    MarketingVideoChainTask,
 };
 
 export const taskCleaners = {

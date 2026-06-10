@@ -8,6 +8,7 @@ import {
 } from "../../service/DirectApiPlatformService";
 import { TaskRecord, TaskService } from "../../service/TaskService";
 import { RunningHubModelConfigType } from "../Apps/RunningHubStudio/type";
+import { usePageDraft } from "../../hooks/pageDraft";
 
 type CreationMode = "frames" | "reference";
 type SeedanceAssetType = "image" | "video" | "audio";
@@ -49,6 +50,23 @@ const assetPickerVisible = ref(false);
 const assetPickerKeyword = ref("");
 const promptTextareaRef = ref<any>(null);
 const mentionRange = ref<{ start: number; end: number } | null>(null);
+const pageDraft = usePageDraft("ToolSeedance", {
+    platformId,
+    prompt,
+    title,
+    mode,
+    model,
+    ratio,
+    duration,
+    resolution,
+    generateAudio,
+    watermark,
+    webSearch,
+    firstFrame,
+    lastFrame,
+    assets,
+    mentionAssetIds,
+});
 
 const modeOptions: Array<{ label: string; value: CreationMode; desc: string }> = [
     { label: "首尾帧", value: "frames", desc: "控制开始和结束画面" },
@@ -83,7 +101,9 @@ const currentPlatform = computed(() => {
 const loadPlatforms = async () => {
     platforms.value = await DirectApiPlatformService.listByCapability("seedance");
     const defaultPlatform = await DirectApiPlatformService.getDefault("seedance");
-    platformId.value = defaultPlatform?.id || platforms.value[0]?.id || 0;
+    platformId.value = platforms.value.some(item => item.id === platformId.value)
+        ? platformId.value
+        : defaultPlatform?.id || platforms.value[0]?.id || 0;
 };
 
 const hydrateFromTask = async () => {
@@ -123,6 +143,11 @@ const hydrateFromTask = async () => {
 };
 
 onMounted(async () => {
+    if (!route.query.editTaskId) {
+        await pageDraft.restore();
+    } else {
+        pageDraft.restored.value = true;
+    }
     await loadPlatforms();
     await hydrateFromTask();
 });

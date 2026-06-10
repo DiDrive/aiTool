@@ -942,6 +942,20 @@ const maybeJsonArray = (value: any) => {
     return Array.isArray(value) ? value : [value];
 };
 
+const dataUrlToFile = (value: string) => {
+    const match = value.match(/^data:([^;,]+);base64,(.+)$/i);
+    if (!match) {
+        return null;
+    }
+    const mime = match[1] || "application/octet-stream";
+    const ext = mime.split("/")[1]?.replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "bin";
+    return {
+        buffer: Buffer.from(match[2], "base64"),
+        mime,
+        filename: `upload.${ext}`,
+    };
+};
+
 const appendFormValue = async (form: FormData, key: string, value: any) => {
     if (value === null || typeof value === "undefined" || value === "") {
         return;
@@ -956,11 +970,149 @@ const appendFormValue = async (form: FormData, key: string, value: any) => {
             form.append(key, new Blob([buffer], { type: mimeFromFile(filePath) }), path.basename(filePath));
             continue;
         }
+        if (typeof item === "string" && /^data:image\//i.test(item)) {
+            const file = dataUrlToFile(item);
+            if (file) {
+                form.append(key, new Blob([file.buffer], { type: file.mime }), file.filename);
+                continue;
+            }
+        }
         if (typeof item === "object") {
             form.append(key, JSON.stringify(item));
             continue;
         }
         form.append(key, String(item));
+    }
+};
+
+const appendMultipartPart = (
+    chunks: Buffer[],
+    boundary: string,
+    key: string,
+    value: Buffer | string,
+    options: { filename?: string; contentType?: string } = {}
+) => {
+    const disposition = [`form-data; name="${key}"`];
+    if (options.filename) {
+        disposition.push(`filename="${options.filename}"`);
+    }
+    chunks.push(Buffer.from(`--${boundary}\r\n`));
+    chunks.push(Buffer.from(`Content-Disposition: ${disposition.join("; ")}\r\n`));
+    if (options.contentType) {
+        chunks.push(Buffer.from(`Content-Type: ${options.contentType}\r\n`));
+    }
+    chunks.push(Buffer.from("\r\n"));
+    chunks.push(Buffer.isBuffer(value) ? value : Buffer.from(String(value)));
+    chunks.push(Buffer.from("\r\n"));
+};
+
+const appendMultipartValue = async (chunks: Buffer[], boundary: string, key: string, value: any) => {
+    if (value === null || typeof value === "undefined" || value === "") {
+        return;
+    }
+    for (const item of maybeJsonArray(value)) {
+        if (item === null || typeof item === "undefined" || item === "") {
+            continue;
+        }
+        if (typeof item === "string" && isLocalFilePath(item)) {
+            const filePath = toLocalFilePath(item);
+            appendMultipartPart(chunks, boundary, key, await readFile(filePath), {
+                filename: path.basename(filePath),
+                contentType: mimeFromFile(filePath),
+            });
+            continue;
+        }
+        if (typeof item === "string" && /^data:image\//i.test(item)) {
+            const file = dataUrlToFile(item);
+            if (file) {
+                appendMultipartPart(chunks, boundary, key, file.buffer, {
+                    filename: file.filename,
+                    contentType: file.mime,
+                });
+                continue;
+            }
+        }
+        appendMultipartPart(
+            chunks,
+            boundary,
+            key,
+            typeof item === "object" ? JSON.stringify(item) : String(item)
+        );
+    }
+};
+
+const buildMultipartBody = async (body: Record<string, any>) => {
+    const boundary = `----AigcPanelBoundary${crypto.randomBytes(12).toString("hex")}`;
+    const chunks: Buffer[] = [];
+    for (const [key, value] of Object.entries(body || {})) {
+        await appendMultipartValue(chunks, boundary, key, value);
+    }
+    chunks.push(Buffer.from(`--${boundary}--\r\n`));
+    return {
+        boundary,
+        buffer: Buffer.concat(chunks),
+    };
+};
+
+const requestMultipartByNodeHttps = async (
+    requestUrl: string,
+    body: Record<string, any>,
+    headers: Record<string, string>,
+    timeoutMs: number
+) => {
+    const multipart = await buildMultipartBody(body);
+    return await new Promise<{ statusCode: number; text: string }>((resolve, reject) => {
+        const url = new URL(requestUrl);
+        const req = https.request(
+            {
+                method: "POST",
+                hostname: url.hostname,
+                port: url.port || 443,
+                path: `${url.pathname}${url.search}`,
+                headers: {
+                    ...headers,
+                    "Content-Type": `multipart/form-data; boundary=${multipart.boundary}`,
+                    "Content-Length": multipart.buffer.length.toString(),
+                },
+                timeout: timeoutMs,
+            },
+            response => {
+                const chunks: Buffer[] = [];
+                response.on("data", chunk => chunks.push(Buffer.from(chunk)));
+                response.on("end", () => {
+                    resolve({
+                        statusCode: response.statusCode || 0,
+                        text: Buffer.concat(chunks).toString("utf8"),
+                    });
+                });
+                response.on("error", reject);
+            }
+        );
+        req.on("timeout", () => {
+            req.destroy(new Error(`请求超时：${timeoutMs}ms`));
+        });
+        req.on("error", reject);
+        req.write(multipart.buffer);
+        req.end();
+    });
+};
+
+const directApiJsonFromText = (text: string, statusCode: number) => {
+    try {
+        const json = text ? JSON.parse(text) : {};
+        if (typeof json.code === "undefined" && typeof json.status === "undefined") {
+            json.code = statusCode >= 200 && statusCode < 300 ? 0 : statusCode;
+        }
+        if (typeof json.msg === "undefined" && typeof json.errorMessage === "undefined") {
+            json.msg = responseMessageOf(json, statusCode >= 200 && statusCode < 300 ? "" : `HTTP ${statusCode}`);
+        }
+        return json;
+    } catch (e) {
+        return {
+            code: statusCode >= 200 && statusCode < 300 ? 0 : statusCode,
+            msg: text || `HTTP ${statusCode}`,
+            data: {},
+        };
     }
 };
 
@@ -976,6 +1128,11 @@ const requestFormData = async (
     const requestUrl = buildApiUrl(baseUrl, apiPath);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const diagnostics = {
+        requestUrl,
+        method: "POST",
+        requestFormat: "form-data",
+    };
     try {
         await applyProxyRules(proxyUrl);
         const form = new FormData();
@@ -991,38 +1148,43 @@ const requestFormData = async (
             signal: controller.signal,
         });
         const text = await res.text();
-        try {
-            const json = text ? JSON.parse(text) : {};
-            if (typeof json.code === "undefined" && typeof json.status === "undefined") {
-                json.code = res.ok ? 0 : res.status;
-            }
-            if (typeof json.msg === "undefined" && typeof json.errorMessage === "undefined") {
-                json.msg = responseMessageOf(json, res.ok ? "" : `HTTP ${res.status}`);
-            }
-            return attachDiagnostics(json, {
-                requestUrl,
-                method: "POST",
-                requestFormat: "form-data",
-                httpStatus: res.status,
-                ok: res.ok,
-            });
-        } catch (e) {
-            return attachDiagnostics(
-                {
-                    code: res.ok ? 0 : res.status,
-                    msg: text || `HTTP ${res.status}`,
-                    data: {},
-                },
-                {
-                    requestUrl,
-                    method: "POST",
-                    requestFormat: "form-data",
-                    httpStatus: res.status,
-                    ok: res.ok,
-                }
-            );
-        }
+        return attachDiagnostics(directApiJsonFromText(text, res.status), {
+            ...diagnostics,
+            httpStatus: res.status,
+            ok: res.ok,
+        });
     } catch (e: any) {
+        if (shouldRetryByNetRequest(e)) {
+            try {
+                const retry = await requestMultipartByNodeHttps(
+                    requestUrl,
+                    body || {},
+                    apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+                    timeoutMs
+                );
+                return attachDiagnostics(directApiJsonFromText(retry.text, retry.statusCode), {
+                    ...diagnostics,
+                    httpStatus: retry.statusCode,
+                    ok: retry.statusCode >= 200 && retry.statusCode < 300,
+                    fallback: "node-https-multipart",
+                    firstError: errorDetailOf(e),
+                });
+            } catch (retryError: any) {
+                return attachDiagnostics(
+                    {
+                        code: -1,
+                        msg: String(retryError?.message || retryError || e?.message || e || "请求发送失败"),
+                        data: {},
+                    },
+                    {
+                        ...diagnostics,
+                        error: errorDetailOf(retryError),
+                        firstError: errorDetailOf(e),
+                        fallback: "node-https-multipart",
+                    }
+                );
+            }
+        }
         return attachDiagnostics(
             {
                 code: -1,
@@ -1030,9 +1192,7 @@ const requestFormData = async (
                 data: {},
             },
             {
-                requestUrl,
-                method: "POST",
-                requestFormat: "form-data",
+                ...diagnostics,
                 error: errorDetailOf(e),
             }
         );

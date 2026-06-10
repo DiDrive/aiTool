@@ -66,11 +66,12 @@ const resolveDisplayStatus = (record: TaskRecord): DisplayStatus => {
 };
 
 const refresh = async () => {
-    const [runningHubRecords, directApiRecords] = await Promise.all([
+    const [runningHubRecords, directApiRecords, marketingChainRecords] = await Promise.all([
         TaskService.list("RunningHubTask"),
         TaskService.list("DirectApiTask"),
+        TaskService.list("MarketingVideoChainTask"),
     ]);
-    records.value = [...runningHubRecords, ...directApiRecords].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+    records.value = [...runningHubRecords, ...directApiRecords, ...marketingChainRecords].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 };
 
 const directApiEditTarget = (record: TaskRecord) => {
@@ -146,7 +147,8 @@ const deleteTask = async (record: TaskRecord) => {
 
 const filteredRecords = computed(() => {
     return records.value.filter(record => {
-        if (capabilityFilter.value !== "all" && record.modelConfig?.capability !== capabilityFilter.value) {
+        const capability = record.biz === "MarketingVideoChainTask" ? "video" : record.modelConfig?.capability;
+        if (capabilityFilter.value !== "all" && capability !== capabilityFilter.value) {
             return false;
         }
         if (statusFilter.value !== "all" && resolveDisplayStatus(record) !== statusFilter.value) {
@@ -228,6 +230,10 @@ useTaskChangeRefresh("RunningHubTask", () => {
 });
 
 useTaskChangeRefresh("DirectApiTask", () => {
+    refresh();
+});
+
+useTaskChangeRefresh("MarketingVideoChainTask", () => {
     refresh();
 });
 

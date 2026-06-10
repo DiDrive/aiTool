@@ -136,6 +136,9 @@ async function createWindow() {
     AppRuntime.mainWindow.on("closed", () => {
         AppRuntime.mainWindow = null;
     });
+    if (WindowConfig.startMaximized) {
+        AppRuntime.mainWindow.maximize();
+    }
     AppRuntime.mainWindow.on("show", async () => {
         await executeHooks(AppRuntime.mainWindow, "Show");
     });

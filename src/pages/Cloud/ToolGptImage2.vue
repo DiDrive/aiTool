@@ -8,6 +8,7 @@ import {
 } from "../../service/DirectApiPlatformService";
 import { TaskRecord, TaskService } from "../../service/TaskService";
 import { RunningHubModelConfigType } from "../Apps/RunningHubStudio/type";
+import { usePageDraft } from "../../hooks/pageDraft";
 
 type ImageMode = "generation" | "edit" | "blend";
 
@@ -28,6 +29,17 @@ const quality = ref("high");
 const count = ref(1);
 const images = ref<ImageAsset[]>([]);
 const mask = ref("");
+const pageDraft = usePageDraft("ToolGptImage2", {
+    platformId,
+    mode,
+    prompt,
+    title,
+    size,
+    quality,
+    count,
+    images,
+    mask,
+});
 
 const modeOptions: Array<{ label: string; value: ImageMode; desc: string }> = [
     { label: "文生图", value: "generation", desc: "只用提示词生成图片" },
@@ -45,7 +57,9 @@ const currentPlatform = computed(() => {
 const loadPlatforms = async () => {
     platforms.value = await DirectApiPlatformService.listByCapability("gpt-image-2");
     const defaultPlatform = await DirectApiPlatformService.getDefault("gpt-image-2");
-    platformId.value = defaultPlatform?.id || platforms.value[0]?.id || 0;
+    platformId.value = platforms.value.some(item => item.id === platformId.value)
+        ? platformId.value
+        : defaultPlatform?.id || platforms.value[0]?.id || 0;
 };
 
 const hydrateFromTask = async () => {
@@ -83,6 +97,11 @@ const hydrateFromTask = async () => {
 };
 
 onMounted(async () => {
+    if (!route.query.editTaskId) {
+        await pageDraft.restore();
+    } else {
+        pageDraft.restored.value = true;
+    }
     await loadPlatforms();
     await hydrateFromTask();
 });
@@ -119,13 +138,6 @@ const pickImages = async () => {
     );
 };
 
-const addUrlImage = () => {
-    images.value.push({
-        id: `${Date.now()}-${Math.random()}`,
-        url: "",
-    });
-};
-
 const pickMask = async () => {
     const filePath = await window.$mapi.file.openFile({
         filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp"] }],
@@ -138,18 +150,6 @@ const pickMask = async () => {
 
 const removeImage = (id: string) => {
     images.value = images.value.filter(item => item.id !== id);
-};
-
-const insertAssetMention = () => {
-    if (!images.value.length) {
-        Dialog.tipError("请先上传或添加图片素材");
-        return;
-    }
-    const text = images.value
-        .filter(item => item.url)
-        .map(item => `@${shortName(item.url)}`)
-        .join(" ");
-    prompt.value = `${prompt.value}${prompt.value ? " " : ""}${text}`.trim();
 };
 
 const submit = async () => {
@@ -174,7 +174,7 @@ const submit = async () => {
     }
     const body: Record<string, any> = {
         model: "gpt-image-2",
-        prompt: prompt.value.replace(/@\S+/g, "").trim(),
+        prompt: prompt.value.trim(),
         size: size.value,
         quality: quality.value,
     };
@@ -270,7 +270,6 @@ const submit = async () => {
                     <div v-else class="space-y-3">
                         <div class="flex gap-2">
                             <a-button @click="pickImages">上传图片</a-button>
-                            <a-button @click="addUrlImage">添加 URL / 路径</a-button>
                             <a-button v-if="mode === 'edit'" @click="pickMask">选择 mask</a-button>
                         </div>
                         <div v-if="mask" class="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
@@ -287,7 +286,9 @@ const submit = async () => {
                                     <a-tag>image</a-tag>
                                     <a-button size="mini" status="danger" @click="removeImage(item.id)">删除</a-button>
                                 </div>
-                                <a-input v-model="item.url" allow-clear placeholder="本地路径 / URL" />
+                                <div class="truncate rounded-lg bg-white px-2 py-1 text-xs text-gray-500">
+                                    {{ shortName(item.url) }}
+                                </div>
                                 <div class="mt-2 aspect-square rounded-lg bg-white flex items-center justify-center overflow-hidden text-xs text-gray-400">
                                     <img v-if="item.url && canPreview(item.url)" :src="displayUrl(item.url)" class="h-full w-full object-contain" />
                                     <span v-else>{{ shortName(item.url) || "图片素材" }}</span>
@@ -302,14 +303,14 @@ const submit = async () => {
         <div class="absolute bottom-5 left-1/2 z-10 w-[min(820px,calc(100%-80px))] -translate-x-1/2 rounded-[22px] border border-gray-100 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.14)]">
             <div class="flex flex-wrap gap-2 mb-3" v-if="images.some(item => item.url) || mask">
                 <a-tag v-for="item in images.filter(item => item.url)" :key="item.id" closable @close="removeImage(item.id)">
-                    @{{ shortName(item.url) }}
+                    {{ shortName(item.url) }}
                 </a-tag>
-                <a-tag v-if="mask" closable @close="mask = ''">mask @{{ shortName(mask) }}</a-tag>
+                <a-tag v-if="mask" closable @close="mask = ''">mask {{ shortName(mask) }}</a-tag>
             </div>
             <a-textarea
                 v-model="prompt"
                 :auto-size="{ minRows: 2, maxRows: 5 }"
-                placeholder="描述你想生成或编辑的画面。可以点 @ 引用已上传图片。"
+                placeholder="描述你想生成或编辑的画面。已上传图片会作为参考素材提交。"
             />
             <div class="flex flex-wrap items-center gap-2 mt-3">
                 <a-select v-model="mode" class="!w-32">
@@ -322,7 +323,6 @@ const submit = async () => {
                     <a-option v-for="item in qualityOptions" :key="item" :value="item">{{ item }}</a-option>
                 </a-select>
                 <a-input-number v-if="mode === 'generation'" v-model="count" class="!w-28" :min="1" :max="10" mode="button" />
-                <a-button @click="insertAssetMention">@素材</a-button>
                 <a-popover trigger="click" position="top">
                     <a-button>更多</a-button>
                     <template #content>

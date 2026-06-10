@@ -197,7 +197,25 @@ const durationSeconds = computed(() => {
 });
 
 const capability = computed(() => {
+    if (props.record.biz === "MarketingVideoChainTask") {
+        return "video";
+    }
     return String((props.record as any)?.modelConfig?.capability || "");
+});
+
+const isMarketingChainTask = computed(() => props.record.biz === "MarketingVideoChainTask");
+
+const marketingChainProgress = computed(() => {
+    const scenes = Array.isArray((props.record as any)?.jobResult?.scenes)
+        ? (props.record as any).jobResult.scenes
+        : [];
+    const currentIndex = Number((props.record as any)?.jobResult?.currentIndex || 0);
+    const total = scenes.length || Number((props.record as any)?.param?.draft?.scenes?.length || 0);
+    return {
+        current: Math.min(currentIndex, total),
+        total,
+        scenes,
+    };
 });
 
 const supportedToolTask = computed(() => {
@@ -387,6 +405,17 @@ const saveAsClip = async () => {
 
             <div class="text-xs font-medium text-gray-400">结果产出物</div>
             <div class="min-w-0 space-y-2">
+                <div v-if="isMarketingChainTask" class="rounded-xl bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
+                    <div class="font-medium">
+                        图生视频链路：{{ marketingChainProgress.current }}/{{ marketingChainProgress.total || "-" }} 个分镜已提交视频任务
+                    </div>
+                    <div v-for="(scene, index) in marketingChainProgress.scenes" :key="scene.sceneId || index" class="mt-1 text-blue-600/80">
+                        镜头 {{ index + 1 }}：
+                        {{ scene.status || "queue" }}
+                        <span v-if="scene.imageTaskId"> · 图 #{{ scene.imageTaskId }}</span>
+                        <span v-if="scene.videoTaskId"> · 视频 #{{ scene.videoTaskId }}</span>
+                    </div>
+                </div>
                 <div
                     v-for="item in outputItems"
                     :key="item.key"
@@ -427,7 +456,7 @@ const saveAsClip = async () => {
                         当前文件类型暂不支持内嵌预览，请直接下载查看
                     </div>
                 </div>
-                <div v-if="outputItems.length === 0" class="rounded-xl bg-slate-50 px-3 py-2 text-xs text-gray-400">
+                <div v-if="outputItems.length === 0 && !isMarketingChainTask" class="rounded-xl bg-slate-50 px-3 py-2 text-xs text-gray-400">
                     {{ displayStatus === "success" ? "已完成，暂未返回文件" : "等待产出中" }}
                 </div>
             </div>

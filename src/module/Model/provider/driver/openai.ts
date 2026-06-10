@@ -27,7 +27,18 @@ export class OpenAiModelProvider extends AbstractModelProvider {
         if (chatParam.systemPrompt) {
             messages.push({role: "system", content: chatParam.systemPrompt})
         }
-        messages.push({role: "user", content: prompt})
+        const contentParts = chatParam.contentParts || [];
+        if (contentParts.length) {
+            messages.push({
+                role: "user",
+                content: [
+                    {type: "text", text: prompt},
+                    ...contentParts,
+                ],
+            })
+        } else {
+            messages.push({role: "user", content: prompt})
+        }
         const response = await fetch(this.config.url, {
             method: "POST",
             headers: {

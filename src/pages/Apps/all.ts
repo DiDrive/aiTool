@@ -2,6 +2,7 @@ import CloudAudio from "../Cloud/CloudAudio.vue";
 import CloudVoiceClone from "../Cloud/CloudVoiceClone.vue";
 
 import CloudVideo from "../Cloud/CloudVideo.vue";
+import MarketingVideoFlow from "./MarketingVideoFlow/MarketingVideoFlow.vue";
 import CloudLipSync from "../Cloud/CloudLipSync.vue";
 import CloudDigitalHuman from "../Cloud/CloudDigitalHuman.vue";
 import CloudDigitalHumanClips from "../Cloud/CloudDigitalHumanClips.vue";
@@ -35,6 +36,13 @@ export const SoundApps = [
 ];
 
 export const VideoApps = [
+    {
+        name: "MarketingVideoFlow",
+        title: "营销短视频批量生成",
+        description: "按品牌模板生成脚本、分镜图和视频任务",
+        icon: VideoGenFlowIcon,
+        component: MarketingVideoFlow,
+    },
     {
         name: "CloudVideo",
         title: "云端生视频",

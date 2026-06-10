@@ -21,7 +21,9 @@ export type TaskBiz =
     // runninghub apps
     | "RunningHubTask"
     // direct model APIs
-    | "DirectApiTask";
+    | "DirectApiTask"
+    // marketing video orchestration
+    | "MarketingVideoChainTask";
 
 export type TaskJobResultStepStatus = undefined | "queue" | "pending" | "running" | "success" | "fail";
 

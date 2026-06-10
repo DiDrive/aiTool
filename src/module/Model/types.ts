@@ -2,6 +2,24 @@ export type ProviderType = "openai"; // | 'anthropic' | 'gemini' | 'qwenlm' | 'a
 
 export type ModelType = "text"; // | 'vision' | 'embedding' | 'reasoning' | 'function_calling'
 
+export type ChatContentPart =
+    | {
+          type: "text";
+          text: string;
+      }
+    | {
+          type: "image_url";
+          image_url: {
+              url: string;
+          };
+      }
+    | {
+          type: "video_url";
+          video_url: {
+              url: string;
+          };
+      };
+
 export type Model = {
     id: string;
     provider: string;
@@ -35,4 +53,5 @@ export type Provider = {
 
 export type ChatParam = {
     systemPrompt: string | null;
+    contentParts?: ChatContentPart[];
 }

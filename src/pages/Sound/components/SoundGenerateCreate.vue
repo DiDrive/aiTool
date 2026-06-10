@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onMounted, ref} from "vue";
+import {onMounted, ref, watch} from "vue";
 import {StorageUtil} from "../../../lib/storage";
 import SoundGenerateForm from "./SoundGenerateForm.vue";
 import BatchTextareaInputAction from "../../../components/BatchTextareaInputAction.vue";
@@ -19,6 +19,14 @@ onMounted(async () => {
     const old = StorageUtil.getObject("SoundGenerateCreate.formData");
     formData.value.text = old.text || "";
 });
+
+watch(
+    () => formData.value,
+    value => {
+        StorageUtil.set("SoundGenerateCreate.formData", value);
+    },
+    { deep: true }
+);
 
 const doSubmit = async () => {
     const value = await soundGenerateForm.value?.getValue();
