@@ -1031,36 +1031,38 @@ const clearReferenceVideo = () => {
 };
 
 const buildReferenceContentParts = async () => {
-    const imageParts = referenceImages.value.map(item => ({
-        type: "image_url" as const,
-        image_url: {
-            url: item.dataUrl,
-        },
-    }));
+    const imageParts = referenceImages.value
+        .filter(item => String(item.dataUrl || "").trim())
+        .map(item => ({
+            type: "image_url" as const,
+            image_url: {
+                url: item.dataUrl,
+            },
+        }));
     if (!referenceVideo.value) {
         return imageParts;
     }
     if (referenceVideoMode.value === "frames") {
-        return [
-            ...imageParts,
-            ...referenceVideo.value.frameDataUrls.map(url => ({
-            type: "image_url" as const,
-            image_url: {
-                url,
-            },
-            })),
-        ];
+        const frameParts = referenceVideo.value.frameDataUrls
+            .filter(url => String(url || "").trim())
+            .map(url => ({
+                type: "image_url" as const,
+                image_url: { url },
+            }));
+        return [...imageParts, ...frameParts];
     }
     if (!referenceVideo.value.dataUrl) {
         referenceVideo.value.dataUrl = await pathToDataUrl(referenceVideo.value.path);
+    }
+    const videoUrl = String(referenceVideo.value.dataUrl || "").trim();
+    if (!videoUrl) {
+        return imageParts;
     }
     return [
         ...imageParts,
         {
             type: "video_url" as const,
-            video_url: {
-                url: referenceVideo.value.dataUrl,
-            },
+            video_url: { url: videoUrl },
         },
     ];
 };
@@ -1855,7 +1857,14 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                 </div>
                             </a-form-item>
                             <a-form-item label="热点灵感">
-                                <div class="rounded-lg border border-amber-100 bg-amber-50/40 p-3">
+                                <div class="relative rounded-lg border border-amber-100 bg-amber-50/40 p-3">
+                                    <div
+                                        v-if="collectingHotTrends"
+                                        class="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-amber-50/70"
+                                    >
+                                        <a-spin />
+                                        <div class="mt-2 text-sm font-medium text-amber-700">{{ hotTrendLoadingText || "正在加载..." }}</div>
+                                    </div>
                                     <div class="flex min-w-0 flex-wrap items-center gap-2">
                                         <a-input
                                             v-model="hotTrendKeyword"
