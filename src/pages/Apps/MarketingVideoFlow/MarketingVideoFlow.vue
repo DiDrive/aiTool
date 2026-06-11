@@ -19,6 +19,9 @@ type AngleType = "pain" | "desire" | "contrast" | "scene" | "conversion";
 type GenerationChannel = "direct" | "cloud";
 type FrameDensity = "light" | "standard" | "detailed";
 type NarrationMode = "voiceover" | "character";
+type HotTrendRisk = "low" | "medium" | "high";
+type HotTrendFuseMode = "light" | "medium" | "strong";
+type HotTrendMode = "meme" | "topic";
 
 type ReferenceVideo = {
     path: string;
@@ -31,6 +34,50 @@ type ReferenceImage = {
     path: string;
     name: string;
     dataUrl: string;
+};
+
+type DouyinImportResult = {
+    sourceUrl: string;
+    resolvedUrl: string;
+    awemeId?: string;
+    title?: string;
+    desc?: string;
+    author?: string;
+    coverUrl?: string;
+    videoUrl?: string;
+    localVideoPath?: string;
+    imageUrls?: string[];
+    adapter?: "dy-downloader" | "custom-api" | "builtin";
+};
+
+type HotTrendCandidate = {
+    id: string;
+    source: string;
+    title: string;
+    url?: string;
+    summary?: string;
+    heat?: string;
+    rank?: number;
+    raw?: any;
+};
+
+type HotTrendCard = {
+    id: string;
+    source: string;
+    title: string;
+    summary: string;
+    category: string;
+    heat: string;
+    fitScore: number;
+    risk: HotTrendRisk;
+    usableAngle: string;
+    integration: string;
+    forcedAngle?: string;
+    hookExample?: string;
+    playIdea?: string;
+    avoid: string;
+    selected: boolean;
+    analyzed?: boolean;
 };
 
 type SceneDraft = {
@@ -79,6 +126,21 @@ const referenceImages = ref<ReferenceImage[]>([]);
 const referenceVideoMode = ref<"frames" | "video">("frames");
 const referenceFrameDensity = ref<FrameDensity>("standard");
 const extractingFrames = ref(false);
+const importingDouyin = ref(false);
+const douyinUrl = ref("");
+const douyinCookie = ref("");
+const douyinCustomApiUrl = ref("");
+const douyinImportResult = ref<DouyinImportResult | null>(null);
+const collectingHotTrends = ref(false);
+const hotTrendLoadingText = ref("");
+const hotTrendKeyword = ref("");
+const hotTrendMode = ref<HotTrendMode>("meme");
+const hotTrendSources = ref<string[]>(["meme", "douyin", "baidu", "weibo", "bilibili"]);
+const hotTrendFuseMode = ref<HotTrendFuseMode>("light");
+const hotTrendCandidates = ref<HotTrendCandidate[]>([]);
+const hotTrendCards = ref<HotTrendCard[]>([]);
+const hotTrendErrors = ref<Array<{ source: string; message: string }>>([]);
+const hotTrendSourceCounts = ref<Record<string, number>>({});
 const form = ref({
     brandName: "",
     brandBrief: "",
@@ -104,6 +166,19 @@ const pageDraft = usePageDraft("MarketingVideoFlow", {
     referenceImages,
     referenceVideoMode,
     referenceFrameDensity,
+    douyinUrl,
+    douyinCookie,
+    douyinCustomApiUrl,
+    douyinImportResult,
+    hotTrendKeyword,
+    hotTrendMode,
+    hotTrendSources,
+    hotTrendFuseMode,
+    hotTrendCandidates,
+    hotTrendCards,
+    hotTrendErrors,
+    hotTrendSourceCounts,
+    hotTrendLoadingText,
     imagePlatformId,
     videoPlatformId,
     imageTemplateId,
@@ -126,6 +201,22 @@ const videoModelOptions = ["seedance-2.0-fast", "seedance-2.0"];
 const narrationModeOptions: Array<{ label: string; value: NarrationMode }> = [
     { label: "画外音", value: "voiceover" },
     { label: "角色说", value: "character" },
+];
+const hotTrendSourceOptions = [
+    { label: "全网梗", value: "meme" },
+    { label: "抖音", value: "douyin" },
+    { label: "百度", value: "baidu" },
+    { label: "微博", value: "weibo" },
+    { label: "B站", value: "bilibili" },
+];
+const hotTrendModeOptions: Array<{ label: string; value: HotTrendMode }> = [
+    { label: "热梗优先", value: "meme" },
+    { label: "热点优先", value: "topic" },
+];
+const hotTrendFuseModeOptions: Array<{ label: string; value: HotTrendFuseMode }> = [
+    { label: "轻融合", value: "light" },
+    { label: "中融合", value: "medium" },
+    { label: "强融合", value: "strong" },
 ];
 const frameDensityOptions: Array<{ label: string; value: FrameDensity; count: number; desc: string }> = [
     { label: "少量", value: "light", count: 5, desc: "快速参考整体风格" },
@@ -155,6 +246,28 @@ const currentVideoTemplate = computed(() => {
 
 const selectedDraft = computed(() => {
     return drafts.value.find(item => item.id === selectedDraftId.value) || drafts.value[0] || null;
+});
+
+const selectedHotTrendCards = computed(() => {
+    return hotTrendCards.value.filter(item => item.selected && item.risk !== "high").slice(0, 10);
+});
+
+const visibleHotTrendCards = computed(() => {
+    return hotTrendCards.value.slice(0, 15);
+});
+
+const hotTrendStatusText = computed(() => {
+    if (!hotTrendCandidates.value.length && !hotTrendCards.value.length) {
+        return "";
+    }
+    return `已采集 ${hotTrendCandidates.value.length} 条，模型筛选 ${hotTrendCards.value.length} 条，当前选中 ${selectedHotTrendCards.value.length} 条会进入脚本`;
+});
+
+const hotTrendSourceCountTags = computed(() => {
+    return hotTrendSourceOptions.map(item => ({
+        ...item,
+        count: Number(hotTrendSourceCounts.value?.[item.value] || 0),
+    }));
 });
 
 const referenceFrameCount = computed(() => {
@@ -290,6 +403,308 @@ const buildVideoPromptWithSpeech = (scene: SceneDraft) => {
 
 const safeJsonString = (value: unknown) => {
     return JSON.stringify(String(value ?? ""));
+};
+
+const sourceLabel = (source: string) => {
+    return hotTrendSourceOptions.find(item => item.value === source)?.label || source;
+};
+
+const riskLabel = (risk: HotTrendRisk) => {
+    const map: Record<HotTrendRisk, string> = {
+        low: "低风险",
+        medium: "谨慎使用",
+        high: "不建议",
+    };
+    return map[risk] || "待判断";
+};
+
+const riskColor = (risk: HotTrendRisk) => {
+    const map: Record<HotTrendRisk, string> = {
+        low: "green",
+        medium: "orange",
+        high: "red",
+    };
+    return map[risk] || "gray";
+};
+
+const normalizeHotTrendCard = (raw: any, index: number): HotTrendCard | null => {
+    if (!raw || typeof raw !== "object") {
+        return null;
+    }
+    const title = String(raw.title || "").trim();
+    if (!title) {
+        return null;
+    }
+    const risk = raw.risk === "high" || raw.risk === "medium" ? raw.risk : "low";
+    const fitScore = Math.max(0, Math.min(100, Number(raw.fitScore || raw.score || 0)));
+    return {
+        id: String(raw.id || makeHotTrendCardId(title, index)),
+        source: String(raw.source || ""),
+        title,
+        summary: String(raw.summary || ""),
+        category: String(raw.category || "热点话题"),
+        heat: String(raw.heat || ""),
+        fitScore,
+        risk,
+        usableAngle: String(raw.usableAngle || ""),
+        integration: String(raw.integration || ""),
+        forcedAngle: String(raw.forcedAngle || raw.hardSellAngle || ""),
+        hookExample: String(raw.hookExample || raw.openingExample || ""),
+        playIdea: String(raw.playIdea || raw.idea || ""),
+        avoid: String(raw.avoid || ""),
+        selected: Boolean(raw.selected ?? (risk !== "high" && fitScore >= 70)),
+        analyzed: true,
+    };
+};
+
+const makeHotTrendCardId = (title: string, index: number) => {
+    return `${Date.now()}-${index}-${title.slice(0, 12)}`;
+};
+
+const candidateToBackupHotTrendCard = (item: HotTrendCandidate, index: number): HotTrendCard => ({
+    id: item.id || makeHotTrendCardId(item.title, index),
+    source: item.source,
+    title: item.title,
+    summary: item.summary || "原始热榜候选，模型未判定为优先推荐，可手动勾选作为借势灵感。",
+    category: "热门备选",
+    heat: item.heat || "",
+    fitScore: 50,
+    risk: "medium",
+    usableAngle: "",
+    integration: "",
+    forcedAngle: "",
+    hookExample: "",
+    playIdea: "",
+    avoid: "",
+    selected: false,
+    analyzed: false,
+});
+
+const mergeAnalyzedHotTrendCards = (cards: HotTrendCard[], candidates: HotTrendCandidate[]) => {
+    const byId = new Map(cards.map(card => [card.id, card]));
+    const usedTitles = new Set(cards.map(card => `${card.source}:${card.title}`.toLowerCase()));
+    for (const candidate of candidates) {
+        const key = `${candidate.source}:${candidate.title}`.toLowerCase();
+        if (byId.has(candidate.id) || usedTitles.has(key)) {
+            continue;
+        }
+        const card = candidateToBackupHotTrendCard(candidate, byId.size);
+        byId.set(card.id, card);
+        usedTitles.add(key);
+    }
+    const sourceOrder = new Map(hotTrendSourceOptions.map((item, index) => [item.value, index]));
+    return Array.from(byId.values())
+        .filter(card => {
+            if (card.risk === "high") {
+                return false;
+            }
+            const text = [card.title, card.summary, card.category, card.integration, card.forcedAngle, card.hookExample].join(" ");
+            const memeLike = /梗|挑战|口头禅|名场面|流行语|评论区|模板|反转|沉浸式|显眼包|电子榨菜|谁懂|不是.*而是|发疯|抽象|整活/.test(text);
+            return card.fitScore >= 35 || memeLike;
+        })
+        .sort((a, b) => {
+        if (a.selected !== b.selected) {
+            return a.selected ? -1 : 1;
+        }
+        const riskWeight: Record<HotTrendRisk, number> = { low: 0, medium: 1, high: 2 };
+        if (riskWeight[a.risk] !== riskWeight[b.risk]) {
+            return riskWeight[a.risk] - riskWeight[b.risk];
+        }
+        if (b.fitScore !== a.fitScore) {
+            return b.fitScore - a.fitScore;
+        }
+            return (sourceOrder.get(a.source) ?? 99) - (sourceOrder.get(b.source) ?? 99);
+        });
+};
+
+const buildHotTrendAnalysisPrompt = (items: HotTrendCandidate[]) => {
+    const compactItems = items.slice(0, 12).map(item => ({
+        id: item.id,
+        source: item.source,
+        title: item.title,
+        summary: item.summary || "",
+        heat: item.heat || "",
+        rank: item.rank || "",
+    }));
+    const modeRule =
+        hotTrendMode.value === "meme"
+            ? "本次优先寻找“梗”：包括短视频流行表达、口头禅、评论区话术、挑战模板、反转句式、名场面结构、情绪梗。新闻事件/热搜热点只能作为备选，不要把普通新闻当成梗。"
+            : "本次优先寻找热点话题：可以包含热搜事件、热门内容和公共讨论，但仍需筛掉高风险内容。";
+    return `
+请根据品牌信息，筛选最近热梗/热点是否适合融入营销短视频脚本。
+${modeRule}
+
+品牌/产品/账号：${safeJsonString(form.value.brandName)}
+品牌说明：${safeJsonString(form.value.brandBrief)}
+目标人群：${safeJsonString(form.value.targetAudience)}
+核心卖点：${safeJsonString(form.value.productSellingPoints)}
+大致思路：${safeJsonString(form.value.idea)}
+希望关注的热点关键词：${safeJsonString(hotTrendKeyword.value)}
+采集模式：${hotTrendMode.value === "meme" ? "热梗优先" : "热点优先"}
+
+候选热点：
+${JSON.stringify(compactItems, null, 2)}
+
+请只输出如下 JSON：
+{
+  "trends": [
+    {
+      "id": "候选热点 id",
+      "source": "来源",
+      "title": "热点标题",
+      "summary": "用一句话解释这个梗/话题的情绪或传播点",
+      "category": "热梗|社会热点|生活方式|娱乐内容|知识技巧|其他",
+      "heat": "热度信息，可为空",
+      "fitScore": 0,
+      "risk": "low|medium|high",
+      "usableAngle": "为什么适合/不适合这个品牌",
+      "integration": "自然融合玩法：怎么把这个梗改成品牌脚本里的表达",
+      "forcedAngle": "硬蹭脑洞：如果强行结合，可以怎么蹭，允许脑洞但要说清楚风险",
+      "hookExample": "可以直接启发脚本的开头示例，20字以内，口语化",
+      "playIdea": "一个具体短视频玩法，比如评论区梗、反转开场、挑战模板、类比桥段",
+      "avoid": "需要避开的表达、争议、侵权或事实风险",
+      "selected": true
+    }
+  ]
+}
+
+判断规则：
+1. fitScore 代表“可玩性+可结合度”，不是只看主题匹配；有传播感、能改写成短视频开头的梗，即使主题不相关也可以给 50-70 分。
+2. 涉及政治、灾害伤亡、刑事案件、真实个人隐私、未成年人争议、仇恨歧视、造谣或强争议社会事件，risk 必须为 high，selected 必须为 false。
+3. 不要写成风控报告。每条都要给一个可执行的玩法，尤其是 forcedAngle、hookExample、playIdea。
+4. 如果是热梗优先，优先返回可迁移的表达结构，例如“不是X而是Y”“谁懂啊”“沉浸式”“显眼包”“电子榨菜”这类可改写模板；普通新闻热搜只能作为备选。
+5. 如果候选热点不少于 10 条，至少返回 10 条，最多返回 12 条；不要只返回最适合的两三条。
+6. 非常火但不一定贴合品牌的热梗也要返回一部分，作为备选灵感，fitScore 可以较低，selected=false，但必须给“硬蹭脑洞”。
+7. 实在不相干、没有可迁移句式、不能形成短视频玩法的内容不要返回。
+8. selected 只给低风险且 fitScore >= 70 的热点；中等风险或明显硬蹭的内容 selected=false，让用户自己选。
+9. 每条的 hookExample、playIdea、forcedAngle 必须针对该热点标题单独写，禁止使用同一句模板套所有候选。
+`.trim();
+};
+
+const analyzeHotTrends = async (items: HotTrendCandidate[]) => {
+    if (!modelGenerator.value) {
+        throw new Error("请先选择脚本大模型，再分析热点匹配度");
+    }
+    const ret = await modelGenerator.value.chat(
+        buildHotTrendAnalysisPrompt(items),
+        {
+            systemPrompt: [
+                "你是短视频爆款梗策划，不是风控审核员。",
+                "你必须输出严格 JSON，不要输出 Markdown、解释、注释或代码块。",
+                "你的目标是筛掉完全不能用的垃圾项，并给出可执行的自然融合、硬蹭脑洞、开头示例和短视频玩法。",
+                "允许脑洞和轻微硬蹭，但要标记风险，不要编造事实或照搬原梗。",
+            ].join("\n"),
+        },
+        {},
+        {
+            format: "json",
+        }
+    );
+    if (ret.code) {
+        throw new Error(ret.msg || "热点分析失败");
+    }
+    const trends = Array.isArray(ret.data?.json?.trends) ? ret.data.json.trends : [];
+    const cards = trends
+        .map((item: any, index: number) => normalizeHotTrendCard(item, index))
+        .filter(Boolean) as HotTrendCard[];
+    if (!cards.length) {
+        throw new Error("模型没有返回可用热点建议");
+    }
+    hotTrendCards.value = mergeAnalyzedHotTrendCards(cards, items);
+};
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise<T>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+            }),
+        ]);
+    } finally {
+        if (timer) {
+            clearTimeout(timer);
+        }
+    }
+};
+
+const collectHotTrends = async () => {
+    if (!modelGenerator.value) {
+        Dialog.tipError("请先选择脚本大模型，用于判断热点是否匹配");
+        return;
+    }
+    if (!form.value.brandName.trim() && !form.value.idea.trim()) {
+        Dialog.tipError("请先填写品牌或大致思路，才能判断热点是否适配");
+        return;
+    }
+    try {
+        collectingHotTrends.value = true;
+        hotTrendLoadingText.value = "正在采集热梗...";
+        hotTrendErrors.value = [];
+        hotTrendSourceCounts.value = {};
+        hotTrendCards.value = [];
+        const ret = await window.$mapi.hottrend.collect({
+            keyword: String(hotTrendKeyword.value || ""),
+            sources: [...hotTrendSources.value],
+            limit: 15,
+            mode: hotTrendMode.value,
+        });
+        hotTrendCandidates.value = JSON.parse(JSON.stringify(ret.items || []));
+        hotTrendErrors.value = JSON.parse(JSON.stringify(ret.errors || []));
+        hotTrendSourceCounts.value = JSON.parse(JSON.stringify(ret.sourceCounts || {}));
+        if (!hotTrendCandidates.value.length) {
+            throw new Error("没有采集到热点内容");
+        }
+        const fallbackCards = mergeAnalyzedHotTrendCards([], hotTrendCandidates.value).slice(0, 15);
+        hotTrendLoadingText.value = "正在让 AI 生成玩法...";
+        try {
+            await withTimeout(analyzeHotTrends(hotTrendCandidates.value.slice(0, 15)), 30000, "AI 精修超时，已先展示原始候选");
+            hotTrendCards.value = hotTrendCards.value.slice(0, 15);
+            Dialog.tipSuccess("热梗已采集并完成 AI 精修");
+        } catch (e: any) {
+            hotTrendCards.value = fallbackCards;
+            Dialog.tipError(e?.message || "AI 精修失败，已先展示原始候选");
+        }
+    } catch (e: any) {
+        Dialog.tipError(e?.message || "热点采集失败");
+    } finally {
+        collectingHotTrends.value = false;
+        hotTrendLoadingText.value = "";
+    }
+};
+
+const buildHotTrendPromptSection = () => {
+    const selected = selectedHotTrendCards.value;
+    if (!selected.length) {
+        return "热点融合：未选择热点。";
+    }
+    const modeText: Record<HotTrendFuseMode, string> = {
+        light: "轻融合：只借用情绪、表达方式或开头语感，不直接写热点名称。",
+        medium: "中融合：可把热点作为开头钩子或场景背景，但品牌价值仍是主线。",
+        strong: "强融合：可围绕安全热点设计剧情，但不得编造事实、消费争议或照搬原梗。",
+    };
+    return [
+        `热点融合模式：${modeText[hotTrendFuseMode.value]}`,
+        "已选热点灵感：",
+        JSON.stringify(
+            selected.map(item => ({
+                title: item.title,
+                source: sourceLabel(item.source),
+                summary: item.summary,
+                fitScore: item.fitScore,
+                usableAngle: item.usableAngle,
+                integration: item.integration,
+                forcedAngle: item.forcedAngle,
+                hookExample: item.hookExample,
+                playIdea: item.playIdea,
+                avoid: item.avoid,
+            })),
+            null,
+            2
+        ),
+        "热点使用规则：自然借势，不硬蹭；不要复刻原梗原句；不要提及平台热榜来源；不要使用高风险社会事件；如果热点与产品价值冲突，以品牌价值为准。",
+    ].join("\n");
 };
 
 const pathToFileUrl = (path: string) => {
@@ -564,6 +979,53 @@ const pickReferenceVideo = async () => {
     }
 };
 
+const setReferenceVideoFromPath = async (filePath: string, displayName?: string) => {
+    extractingFrames.value = true;
+    const frameDataUrls = await extractVideoFrames(filePath);
+    referenceVideo.value = {
+        path: filePath,
+        name: displayName || FileUtil.getBaseName(filePath, true),
+        dataUrl: "",
+        frameDataUrls,
+    };
+};
+
+const importDouyinVideo = async () => {
+    const url = douyinUrl.value.trim() || form.value.referenceUrl.trim();
+    if (!url) {
+        Dialog.tipError("请先填写抖音视频链接");
+        return;
+    }
+    try {
+        importingDouyin.value = true;
+        const result = await window.$mapi.douyin.importVideo({
+            url,
+            cookie: douyinCookie.value.trim(),
+            customApiUrl: douyinCustomApiUrl.value.trim(),
+            download: true,
+        });
+        douyinImportResult.value = result;
+        douyinUrl.value = result.resolvedUrl || url;
+        form.value.referenceUrl = result.resolvedUrl || url;
+        if (!form.value.idea.trim()) {
+            form.value.idea = [result.title, result.desc].filter(Boolean).join("\n");
+        }
+        if (!form.value.brandBrief.trim() && result.author) {
+            form.value.brandBrief = `参考账号：${result.author}`;
+        }
+        if (result.localVideoPath) {
+            await setReferenceVideoFromPath(result.localVideoPath, `${result.title || result.awemeId || "douyin-video"}.mp4`);
+            referenceVideoMode.value = "frames";
+        }
+        Dialog.tipSuccess(result.localVideoPath ? "抖音视频已导入并完成抽帧" : "抖音内容已导入");
+    } catch (e: any) {
+        Dialog.tipError(e?.message || "抖音链接导入失败，请尝试填写 Cookie 或上传本地视频");
+    } finally {
+        importingDouyin.value = false;
+        extractingFrames.value = false;
+    }
+};
+
 const clearReferenceVideo = () => {
     referenceVideo.value = null;
 };
@@ -634,6 +1096,14 @@ const buildScriptPrompt = () => {
     const angleGuide = selectedAngles
         .map(item => `${item.value}: ${item.label}，${item.desc}`)
         .join("\n");
+    const douyinInfo = douyinImportResult.value
+        ? [
+              `抖音导入标题：${safeJsonString(douyinImportResult.value.title || "")}`,
+              `抖音导入作者：${safeJsonString(douyinImportResult.value.author || "")}`,
+              `抖音导入文案：${safeJsonString(douyinImportResult.value.desc || "")}`,
+              `抖音解析来源：${safeJsonString(douyinImportResult.value.adapter || "")}`,
+          ].join("\n")
+        : "抖音导入：未导入";
     return `
 请根据以下输入，生成 ${form.value.count} 条品牌营销短视频方案。
 
@@ -646,7 +1116,10 @@ const buildScriptPrompt = () => {
 参考链接：${safeJsonString(form.value.referenceUrl)}
 参考视频：${referenceVideo.value ? safeJsonString(referenceVideo.value.name) : "未上传"}
 参考视频抽帧说明：${referenceFrameRule.value || "未提供参考帧"}
+参考图片：${referenceImages.value.length ? `已上传 ${referenceImages.value.length} 张` : "未上传"}
+${douyinInfo}
 参考链接使用规则：只参考主题、情绪、节奏和标签方向，不复刻人物、画面、音乐、动作或原台词。
+${buildHotTrendPromptSection()}
 画面风格：${safeJsonString(form.value.visualStyle)}
 画幅：${form.value.ratio}
 单条总时长：${form.value.duration} 秒
@@ -688,7 +1161,69 @@ ${angleGuide}
 6. 每条视频的所有 imagePrompt 必须复用同一个主角设定和视觉风格；同一场景的分镜必须明确写出一致的场景空间、道具、光线方向和色调；不同场景也必须保持统一品牌质感。
 7. hook、voiceover、cta 不是备注，必须被分配到 scenes[].voiceoverLine 中：第一镜说 hook，中间镜说口播主体，最后一镜说 cta；scenes[].subtitle 必须与 voiceoverLine 完全一致。
 8. scenes[].narrationMode 默认使用 ${form.value.narrationMode}，除非该镜头明显更适合角色开口或画外音。
+9. 如果提供了已选热点灵感，必须把它转化为自然的短视频切入角度，优先融入 hook、场景冲突或口播语气；不要把热点当作孤立标签堆在文案里。
 `.trim();
+};
+
+const isVisionInputUnsupportedError = (msg?: string) => {
+    const value = String(msg || "").toLowerCase();
+    return (
+        value.includes("not a vlm") ||
+        value.includes("vision language model") ||
+        value.includes("text-only prompts") ||
+        (value.includes("image") && value.includes("not support"))
+    );
+};
+
+const showVisionModelRequiredDialog = async () => {
+    const info = modelGenerator.value?.getSelectedModelInfo?.();
+    const selected = info?.modelName || info?.modelId || "当前模型";
+    await Dialog.alertError(
+        [
+            `当前选择的脚本大模型「${selected}」不支持或未标记支持图片/视频输入，无法分析抖音视频抽帧或参考图片。`,
+            "",
+            "请在“脚本大模型”里切换为支持视觉输入的模型，例如名称中带 Vision、VL、VLM、GPT-4o、Gemini、Qwen-VL、InternVL、GLM-4.5V 等能力的模型，然后重新点击“AI 生成脚本”。",
+        ].join("\n"),
+        "请切换视觉模型"
+    );
+};
+
+const selectedScriptModelSupportsVision = () => {
+    const info = modelGenerator.value?.getSelectedModelInfo?.();
+    const model = info?.model as any;
+    if (Array.isArray(model?.types) && model.types.includes("vision")) {
+        return true;
+    }
+    const text = [info?.providerId, info?.providerTitle, info?.modelId, info?.modelName]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+    if (!text.trim()) {
+        return false;
+    }
+    const visionPatterns = [
+        "vision",
+        "vlm",
+        "qwen-vl",
+        "qwen2-vl",
+        "qwen2.5-vl",
+        "internvl",
+        "llava",
+        "yi-vision",
+        "grok-vision",
+        "hunyuan-vision",
+        "gemini",
+        "gpt-4o",
+        "gpt-4.1",
+        "o4-mini",
+        "omni",
+    ];
+    const visionRegexPatterns = [
+        /\bglm[-\s]*4(?:\.\d+)?v\b/i,
+        /\bglm[-\s]*4v\b/i,
+        /\bglm[-\s]*\d+(?:\.\d+)?[-\s]*vision\b/i,
+    ];
+    return visionPatterns.some(pattern => text.includes(pattern)) || visionRegexPatterns.some(pattern => pattern.test(text));
 };
 
 const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
@@ -870,17 +1405,26 @@ const generateDrafts = async () => {
     }
     try {
         generatingScripts.value = true;
+        const contentParts = await buildReferenceContentParts();
+        if (contentParts.length && !selectedScriptModelSupportsVision()) {
+            await showVisionModelRequiredDialog();
+            return;
+        }
         const ret = await modelGenerator.value.chat(
             buildScriptPrompt(),
             {
                 systemPrompt: buildScriptSystemPrompt(),
-                contentParts: await buildReferenceContentParts(),
+                contentParts,
             },
             {},
             {
                 format: "json",
             }
         );
+        if (ret.code && contentParts.length && isVisionInputUnsupportedError(ret.msg)) {
+            await showVisionModelRequiredDialog();
+            return;
+        }
         if (ret.code) {
             Dialog.tipError(ret.msg);
             return;
@@ -1180,6 +1724,51 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                     <a-input v-model="form.brandName" placeholder="例如：他趣 / XX 健身房 / 情感教练 IP" />
                                 </a-form-item>
                             </div>
+                            <a-form-item label="抖音链接导入">
+                                <div class="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+                                    <div class="flex min-w-0 flex-wrap items-center gap-2">
+                                        <a-input
+                                            v-model="douyinUrl"
+                                            class="min-w-[260px] flex-1"
+                                            placeholder="粘贴抖音视频链接或分享短链"
+                                            allow-clear
+                                        />
+                                        <a-button type="primary" :loading="importingDouyin || extractingFrames" @click="importDouyinVideo">
+                                            导入并抽帧
+                                        </a-button>
+                                    </div>
+                                    <div class="mt-2 text-xs leading-5 text-gray-500">
+                                        会尝试解析公开视频并下载到本地缓存，再复用下方参考视频抽帧；失败时可填写 Cookie、接第三方解析 API，或直接上传本地视频。
+                                    </div>
+                                    <a-collapse class="mt-2 !bg-transparent" :bordered="false">
+                                        <a-collapse-item key="douyin-advanced" header="高级设置：Cookie / 自定义解析 API">
+                                            <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                                <a-textarea
+                                                    v-model="douyinCookie"
+                                                    :auto-size="{ minRows: 2, maxRows: 4 }"
+                                                    placeholder="可选：抖音网页登录后的 Cookie，用于增强公开视频解析成功率"
+                                                />
+                                                <a-input
+                                                    v-model="douyinCustomApiUrl"
+                                                    placeholder="可选：第三方解析 API，POST { url, cookie }"
+                                                    allow-clear
+                                                />
+                                            </div>
+                                        </a-collapse-item>
+                                    </a-collapse>
+                                    <div v-if="douyinImportResult" class="mt-3 rounded-md bg-white px-3 py-2 text-xs leading-5 text-gray-600">
+                                        <div class="flex flex-wrap gap-x-4 gap-y-1">
+                                            <span>标题：{{ douyinImportResult.title || "-" }}</span>
+                                            <span>作者：{{ douyinImportResult.author || "-" }}</span>
+                                            <span>ID：{{ douyinImportResult.awemeId || "-" }}</span>
+                                            <span>解析：{{ douyinImportResult.adapter || "-" }}</span>
+                                        </div>
+                                        <div v-if="douyinImportResult.desc" class="mt-1 line-clamp-2 text-gray-500">
+                                            原文案：{{ douyinImportResult.desc }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </a-form-item>
                             <a-form-item label="参考视频">
                                 <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
                                     <div class="flex min-w-0 flex-wrap items-center gap-2">
@@ -1260,6 +1849,87 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                             </button>
                                             <div class="absolute bottom-0 left-0 right-0 truncate bg-black/45 px-1.5 py-1 text-[10px] text-white">
                                                 {{ image.name }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </a-form-item>
+                            <a-form-item label="热点灵感">
+                                <div class="rounded-lg border border-amber-100 bg-amber-50/40 p-3">
+                                    <div class="flex min-w-0 flex-wrap items-center gap-2">
+                                        <a-input
+                                            v-model="hotTrendKeyword"
+                                            class="min-w-[220px] flex-1"
+                                            placeholder="可选：净水器/社交/职场/养生等关键词"
+                                            allow-clear
+                                        />
+                                        <a-checkbox-group v-model="hotTrendSources" class="flex flex-wrap gap-2">
+                                            <a-checkbox v-for="source in hotTrendSourceOptions" :key="source.value" :value="source.value">
+                                                {{ source.label }}
+                                            </a-checkbox>
+                                        </a-checkbox-group>
+                                        <a-radio-group v-model="hotTrendMode" type="button" class="shrink-0">
+                                            <a-radio v-for="mode in hotTrendModeOptions" :key="mode.value" :value="mode.value">
+                                                {{ mode.label }}
+                                            </a-radio>
+                                        </a-radio-group>
+                                        <a-radio-group v-model="hotTrendFuseMode" type="button" class="shrink-0">
+                                            <a-radio v-for="mode in hotTrendFuseModeOptions" :key="mode.value" :value="mode.value">
+                                                {{ mode.label }}
+                                            </a-radio>
+                                        </a-radio-group>
+                                        <a-button type="primary" :loading="collectingHotTrends" @click="collectHotTrends">
+                                            自动搜集热梗
+                                        </a-button>
+                                    </div>
+                                    <div class="mt-2 text-xs leading-5 text-gray-500">
+                                        热梗优先会偏向口头禅、评论区话术、挑战模板和短视频表达结构；高风险内容不会自动进入脚本。
+                                    </div>
+                                    <div v-if="hotTrendStatusText" class="mt-2 rounded-md bg-white px-3 py-2 text-xs leading-5 text-gray-600">
+                                        {{ hotTrendStatusText }}。勾选状态会自动影响下一次“AI 生成脚本”，无需再点其他应用按钮。
+                                    </div>
+                                    <div v-if="hotTrendCandidates.length || Object.keys(hotTrendSourceCounts).length" class="mt-2 flex flex-wrap gap-2">
+                                        <a-tag v-for="source in hotTrendSourceCountTags" :key="source.value" :color="source.count ? 'arcoblue' : 'gray'">
+                                            {{ source.label }} {{ source.count }} 条
+                                        </a-tag>
+                                    </div>
+                                    <div v-if="hotTrendErrors.length" class="mt-2 flex flex-wrap gap-2">
+                                        <a-tag v-for="error in hotTrendErrors" :key="`${error.source}-${error.message}`" color="orange">
+                                            {{ sourceLabel(error.source) }}失败：{{ error.message }}
+                                        </a-tag>
+                                    </div>
+                                    <div v-if="hotTrendCards.length" class="mt-3 grid max-h-[230px] grid-cols-1 gap-2 overflow-y-auto pr-1 xl:grid-cols-2">
+                                        <div
+                                            v-for="card in visibleHotTrendCards"
+                                            :key="card.id"
+                                            class="rounded-lg border border-white bg-white p-2 shadow-sm"
+                                        >
+                                            <div class="flex items-start gap-2">
+                                                <a-checkbox v-model="card.selected" :disabled="card.risk === 'high'" class="mt-0.5" />
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="flex min-w-0 flex-wrap items-center gap-2">
+                                                        <div class="truncate text-sm font-medium text-gray-900">{{ card.title }}</div>
+                                                        <a-tag size="small">{{ sourceLabel(card.source) }}</a-tag>
+                                                        <a-tag size="small" :color="riskColor(card.risk)">{{ riskLabel(card.risk) }}</a-tag>
+                                                        <a-tag size="small" color="arcoblue">{{ card.fitScore }}分</a-tag>
+                                                        <a-tag v-if="!card.analyzed" size="small" color="gray">待精修</a-tag>
+                                                    </div>
+                                                    <div class="mt-1 line-clamp-1 text-xs leading-5 text-gray-600">
+                                                        {{ card.summary || card.usableAngle || "原始候选，可手动勾选后交给脚本模型发挥。" }}
+                                                    </div>
+                                                    <div v-if="card.analyzed && card.hookExample" class="mt-1 line-clamp-1 text-xs leading-5 text-blue-600">
+                                                        开头：{{ card.hookExample }}
+                                                    </div>
+                                                    <div v-if="card.analyzed && (card.playIdea || card.integration)" class="mt-1 line-clamp-1 text-xs leading-5 text-gray-500">
+                                                        玩法：{{ card.playIdea || card.integration }}
+                                                    </div>
+                                                    <div v-if="card.analyzed && card.forcedAngle" class="mt-1 line-clamp-1 text-xs leading-5 text-orange-500">
+                                                        硬蹭：{{ card.forcedAngle }}
+                                                    </div>
+                                                    <div v-if="card.analyzed && card.avoid" class="mt-1 line-clamp-1 text-[11px] leading-5 text-gray-400">
+                                                        避免：{{ card.avoid }}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

@@ -74,6 +74,7 @@
         "date-and-time": "^3.4.1",
         "date-fns": "^4.1.0",
         "dayjs": "^1.11.12",
+        "dy-downloader": "^0.2.3",
         "electron-context-menu": "^4.0.4",
         "fix-path": "^4.0.0",
         "hls.js": "^1.6.2",

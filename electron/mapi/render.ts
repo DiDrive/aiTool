@@ -13,6 +13,8 @@ import updater from "./updater/render";
 import statistics from "./statistics/render";
 import user from "./user/render";
 import misc from "./misc/render";
+import douyin from "./douyin/render";
+import hottrend from "./hottrend/render";
 
 import server from "./server/render";
 
@@ -33,6 +35,8 @@ export const MAPI = {
                 statistics,
                 user,
                 misc,
+                douyin,
+                hottrend,
                 server,
             });
             db.init();

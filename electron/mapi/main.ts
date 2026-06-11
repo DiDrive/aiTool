@@ -13,6 +13,8 @@ import updater from "./updater/main";
 import server from "./server/main";
 import live from "./live/main";
 import runninghub from "./runninghub/main";
+import douyin from "./douyin/main";
+import hottrend from "./hottrend/main";
 
 const $mapi = {
     app,
@@ -30,6 +32,8 @@ const $mapi = {
     server,
     live,
     runninghub,
+    douyin,
+    hottrend,
 };
 
 export const MAPI = {

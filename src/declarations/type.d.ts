@@ -349,6 +349,50 @@ type DefsMapi = {
             data?: any;
         }) => Promise<any>;
     };
+    douyin: {
+        importVideo: (option: {
+            url: string;
+            cookie?: string;
+            customApiUrl?: string;
+            download?: boolean;
+        }) => Promise<{
+            sourceUrl: string;
+            resolvedUrl: string;
+            awemeId?: string;
+            title?: string;
+            desc?: string;
+            author?: string;
+            coverUrl?: string;
+            videoUrl?: string;
+            localVideoPath?: string;
+            imageUrls?: string[];
+            adapter?: "dy-downloader" | "custom-api" | "builtin";
+            raw?: any;
+        }>;
+    };
+    hottrend: {
+        collect: (option?: {
+            keyword?: string;
+            sources?: string[];
+            limit?: number;
+            mode?: "meme" | "topic";
+        }) => Promise<{
+            items: Array<{
+                id: string;
+                source: string;
+                title: string;
+                url?: string;
+                summary?: string;
+                heat?: string;
+                rank?: number;
+                raw?: any;
+            }>;
+            errors?: Array<{ source: string; message: string }>;
+            sourceCounts?: Record<string, number>;
+            collectedAt: string;
+            keyword?: string;
+        }>;
+    };
     server: {
         listGpus: () => Promise<
             {

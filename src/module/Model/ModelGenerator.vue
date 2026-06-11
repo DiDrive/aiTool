@@ -57,12 +57,7 @@ const chat = async (
             return ret;
         }
         content = content.trim();
-        // ```json xxx ``` replace
-        if (/^```json/.test(content)) {
-            content = content.replace(/^```json/, '').replace(/```$/, '').trim();
-        } else if (/^```/.test(content)) {
-            content = content.replace(/^```/, '').replace(/```$/, '').trim();
-        }
+        content = normalizeJsonLikeContent(content);
         try {
             ret.data!.json = JSON.parse(content);
         } catch (e) {
@@ -72,8 +67,54 @@ const chat = async (
     }
     return ret;
 };
+
+const normalizeJsonLikeContent = (content: string) => {
+    let result = content.trim();
+    result = result
+        .replace(/^<\|begin_of_box\|>/i, "")
+        .replace(/<\|end_of_box\|>$/i, "")
+        .replace(/^<\|begin_of_text\|>/i, "")
+        .replace(/<\|end_of_text\|>$/i, "")
+        .trim();
+    if (/^```json/i.test(result)) {
+        result = result.replace(/^```json/i, "").replace(/```$/i, "").trim();
+    } else if (/^```/.test(result)) {
+        result = result.replace(/^```/, "").replace(/```$/i, "").trim();
+    }
+    if (/^[\[{]/.test(result)) {
+        return result;
+    }
+    const objectStart = result.indexOf("{");
+    const objectEnd = result.lastIndexOf("}");
+    const arrayStart = result.indexOf("[");
+    const arrayEnd = result.lastIndexOf("]");
+    const objectCandidate = objectStart >= 0 && objectEnd > objectStart ? result.slice(objectStart, objectEnd + 1) : "";
+    const arrayCandidate = arrayStart >= 0 && arrayEnd > arrayStart ? result.slice(arrayStart, arrayEnd + 1) : "";
+    if (objectCandidate && (!arrayCandidate || objectStart < arrayStart)) {
+        return objectCandidate;
+    }
+    if (arrayCandidate) {
+        return arrayCandidate;
+    }
+    return result;
+};
+
+const getSelectedModelInfo = () => {
+    const [providerId, modelId] = (selectedModel.value || "|").split("|");
+    const provider = modelStore.providers.find(item => item.id === providerId);
+    const model = provider?.data.models.find(item => item.id === modelId) || null;
+    return {
+        providerId,
+        providerTitle: provider?.title || "",
+        modelId,
+        modelName: model?.name || "",
+        model,
+    };
+};
+
 defineExpose({
     chat,
+    getSelectedModelInfo,
 });
 </script>
 
