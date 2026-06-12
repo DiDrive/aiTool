@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import {ref} from "vue";
-import FeedbackTicketButton from "../components/common/FeedbackTicketButton.vue";
-import UpdaterButton from "../components/common/UpdaterButton.vue";
 import {AppConfig} from "../config";
 import {t} from "../lang";
 import {useSettingStore} from "../store/modules/setting";
@@ -10,9 +8,6 @@ const setting = useSettingStore();
 const licenseYear = new Date().getFullYear();
 const devSettingVisible = ref(false);
 
-const doOpenLog = async () => {
-    await window.$mapi.app.openPath(window.$mapi.log.root());
-};
 let clickTimes = 0;
 let clickLastTime = 0;
 const doDevSettingTriggerClick = () => {
@@ -51,52 +46,12 @@ const doDevSettingTriggerClick = () => {
                 <div class="flex-grow">
                     <div class="inline-block">v{{ AppConfig.version }} Build {{ setting.buildInfo.buildId }}</div>
                 </div>
-                <div class="inline-block ml-3">
-                    <UpdaterButton />
-                </div>
-            </div>
-            <div class="flex mb-3 items-center">
-                <div class="w-20">{{ t("common.officialSite") }}</div>
-                <div class="flex-grow">
-                    <a :href="AppConfig.website" target="_blank" class="text-link">
-                        {{ AppConfig.website }}
-                    </a>
-                </div>
-                <div>
-                    <div class="inline-block ml-3">
-                        <FeedbackTicketButton />
-                    </div>
-                    <a-button class="ml-3" size="mini" @click="doOpenLog">
-                        <template #icon>
-                            <icon-file />
-                        </template>
-                        {{ t("nav.log") }}
-                    </a-button>
-                </div>
             </div>
             <div class="flex mb-3 items-center">
                 <div class="w-20">{{ t("about.disclaimer") }}</div>
                 <div class="flex-grow">
                     {{ t("about.license") }}
                 </div>
-            </div>
-            <div class="mb-3 mt-6 flex items-center">
-                <a
-                    :href="AppConfig.websiteGithub"
-                    target="_blank"
-                    class="bg-gray-100 dark:bg-gray-700 w-0 flex-grow mr-1 rounded-lg py-2 px-8 inline-flex items-center hover:shadow-lg"
-                >
-                    <img src="./../assets/image/github.svg" class="w-6 h-6 mr-2 object-contain" />
-                    <div class="flex-grow">Github</div>
-                </a>
-                <a
-                    :href="AppConfig.websiteGitee"
-                    target="_blank"
-                    class="bg-gray-100 dark:bg-gray-700 w-0 flex-grow mr-1 rounded-lg py-2 px-8 inline-flex items-center hover:shadow-lg"
-                >
-                    <img src="./../assets/image/gitee.svg" class="w-6 h-6 mr-2 object-contain" />
-                    <div class="flex-grow">Gitee</div>
-                </a>
             </div>
             <div v-if="devSettingVisible" class="bg-gray-100 p-3 rounded-lg">
                 <div class="flex mb-4 items-center">

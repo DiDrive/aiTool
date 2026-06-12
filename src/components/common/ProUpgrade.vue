@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import {AppConfig} from "../../config";
-import {t} from "../../lang";
-
 const props = defineProps({
     desc: {
         type: String,
@@ -28,16 +25,6 @@ const props = defineProps({
             </div>
             <h3 class="text-xl font-bold text-gray-800 mb-3">{{ $t("proUpgrade.title") }}</h3>
             <p class="text-gray-500 mb-8 leading-relaxed">{{ desc || $t("proUpgrade.defaultDesc") }}</p>
-            <div>
-                <a
-                    class="arco-btn arco-btn-size-large arco-btn-primary px-8 rounded-full shadow-blue-200 shadow-lg hover:shadow-xl transition-all"
-                    :href="AppConfig.website"
-                    target="_blank"
-                >
-                    <icon-link/>
-                    <span class="ml-2">{{ $t("proUpgrade.downloadButton") }}</span>
-                </a>
-            </div>
         </div>
     </div>
 </template>

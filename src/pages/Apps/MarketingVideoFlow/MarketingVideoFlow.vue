@@ -613,22 +613,6 @@ const analyzeHotTrends = async (items: HotTrendCandidate[]) => {
     hotTrendCards.value = mergeAnalyzedHotTrendCards(cards, items);
 };
 
-const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    try {
-        return await Promise.race([
-            promise,
-            new Promise<T>((_, reject) => {
-                timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-            }),
-        ]);
-    } finally {
-        if (timer) {
-            clearTimeout(timer);
-        }
-    }
-};
-
 const collectHotTrends = async () => {
     if (!modelGenerator.value) {
         Dialog.tipError("请先选择脚本大模型，用于判断热点是否匹配");
@@ -657,9 +641,10 @@ const collectHotTrends = async () => {
             throw new Error("没有采集到热点内容");
         }
         const fallbackCards = mergeAnalyzedHotTrendCards([], hotTrendCandidates.value).slice(0, 15);
+        hotTrendCards.value = fallbackCards;
         hotTrendLoadingText.value = "正在让 AI 生成玩法...";
         try {
-            await withTimeout(analyzeHotTrends(hotTrendCandidates.value.slice(0, 15)), 30000, "AI 精修超时，已先展示原始候选");
+            await analyzeHotTrends(hotTrendCandidates.value.slice(0, 15));
             hotTrendCards.value = hotTrendCards.value.slice(0, 15);
             Dialog.tipSuccess("热梗已采集并完成 AI 精修");
         } catch (e: any) {
@@ -1007,10 +992,11 @@ const importDouyinVideo = async () => {
         douyinImportResult.value = result;
         douyinUrl.value = result.resolvedUrl || url;
         form.value.referenceUrl = result.resolvedUrl || url;
-        if (!form.value.idea.trim()) {
-            form.value.idea = [result.title, result.desc].filter(Boolean).join("\n");
+        const newIdea = [result.title, result.desc].filter(Boolean).join("\n");
+        if (newIdea) {
+            form.value.idea = newIdea;
         }
-        if (!form.value.brandBrief.trim() && result.author) {
+        if (result.author) {
             form.value.brandBrief = `参考账号：${result.author}`;
         }
         if (result.localVideoPath) {

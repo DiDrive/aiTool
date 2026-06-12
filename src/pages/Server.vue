@@ -8,7 +8,6 @@ import ServerActionStartStop from "../components/Server/ServerActionStartStop.vu
 import ServerAddDialog from "../components/Server/ServerAddDialog.vue";
 import ServerStartTime from "../components/Server/ServerStartTime.vue";
 import ServerStatus from "../components/Server/ServerStatus.vue";
-import {AppConfig} from "../config";
 import {t} from "../lang";
 import {functionToLabels} from "../lib/aigcpanel";
 import ModelSettingDialog from "../module/Model/ModelSettingDialog.vue";
@@ -21,10 +20,6 @@ const remoteAddDialog = ref<InstanceType<typeof ServerRemoteAddDialog> | null>(n
 const modelSettingDialog = ref<InstanceType<typeof ModelSettingDialog> | null>(null);
 const serverStore = useServerStore();
 const helpShow = ref(false);
-
-const doHelp = () => {
-    window.$mapi.app.openExternal(AppConfig.helpUrl);
-};
 
 const doRefresh = async () => {
     await serverStore.refresh();
@@ -106,15 +101,8 @@ const typeName = (type: string) => {
                 </div>
                 <div v-if="helpShow" class="pt-5 text-center">
                     <div class="inline-block bg-gray-100 text-left rounded-lg p-6 leading-8">
-                        <div>① {{ $t("model.marketTip") }}</div>
-                        <div>② {{ $t("model.unzipTip") }}</div>
-                        <div class="pt-3">
-                            {{ $t("msg.moreContent") }}
-                            <a href="javascript:;" class="text-link" @click="doHelp">
-                                <icon-book/>
-                                {{ $t("common.onlineDocs") }}
-                            </a>
-                        </div>
+                        <div>① {{ $t("model.unzipTip") }}</div>
+                        <div>② {{ $t("model.selectLocal") }} config.json</div>
                     </div>
                 </div>
             </div>

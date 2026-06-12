@@ -8,8 +8,6 @@ export const AppConfig = {
     slogan: "一站式AI数字人系统",
     version: packageJson.version,
     website: `${BASE_URL}`,
-    websiteGithub: "https://github.com/modstart-lib/aigcpanel",
-    websiteGitee: "https://gitee.com/modstart-lib/aigcpanel",
     apiBaseUrl: `${BASE_URL}/api`,
     updaterUrl: `${BASE_URL}/app_manager/updater/open`,
     downloadUrl: `${BASE_URL}/app_manager/download`,

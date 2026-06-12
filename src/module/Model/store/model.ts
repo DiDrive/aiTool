@@ -12,7 +12,6 @@ import {Dialog} from "../../../lib/dialog";
 import {t} from "../../../lang";
 import {useUserStore} from "../../../store/modules/user";
 import {watch} from "vue";
-import {AppConfig} from "../../../config";
 
 const userStore = useUserStore();
 
@@ -219,9 +218,9 @@ export const modelStore = defineStore("model", {
                         isSystem: true,
                         apiUrl: lmApi.apiUrl,
                         websites: {
-                            official: AppConfig.website,
-                            docs: AppConfig.website,
-                            models: AppConfig.website,
+                            official: "",
+                            docs: "",
+                            models: "",
                         },
                         data: {
                             apiKey: lmApi.apiKey,

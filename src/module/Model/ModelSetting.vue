@@ -160,14 +160,6 @@ watch(
                         >
                             <icon-edit/>
                         </a>
-                        <a
-                            v-if="provider?.websites.official"
-                            class="mr-2"
-                            target="_blank"
-                            :href="provider?.websites.official"
-                        >
-                            <icon-desktop/>
-                        </a>
                     </div>
                     <div>
                         <a-switch
@@ -225,19 +217,6 @@ watch(
                 </div>
                 <div class="mb-3">
                     <div class="mb-2 font-bold">{{ $t("model.model") }}</div>
-                    <div class="mb-2 text-sm text-gray-400" v-if="provider.id !== 'buildIn'">
-                        {{ $t("common.view") }}
-                        <a :href="provider?.websites.docs" target="_blank" class="text-blue-600">
-                            {{ provider.title }}
-                            {{ $t("common.docs") }}
-                        </a>
-                        {{ $t("common.and") }}
-                        <a :href="provider?.websites.models" target="_blank" class="text-blue-600">
-                            {{ provider.title }}
-                            {{ $t("model.list") }}
-                        </a>
-                        {{ $t("common.moreDetails") }}
-                    </div>
                     <div v-for="g in providerModelGroups" :key="provider.id + g.group" class="mb-2">
                         <a-collapse :default-active-key="[g.group]">
                             <a-collapse-item :header="g.group" :key="g.group">

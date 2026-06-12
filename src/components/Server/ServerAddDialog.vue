@@ -220,7 +220,7 @@ const emit = defineEmits({
                         <div>
                             <img class="w-48 h-48 object-contain m-auto" src="./../../assets/image/server-folder.svg"/>
                         </div>
-                        <div class="flex gap-4">
+                        <div>
                             <a-button @click="doSelectLocalDir" class="block w-full" :loading="loading">
                                 <template #icon>
                                     <icon-folder/>
@@ -228,14 +228,6 @@ const emit = defineEmits({
                                 {{ t("model.selectLocal") }}
                                 config.json
                             </a-button>
-                            <a
-                                href="https://aigcpanel.com/zh/asset"
-                                target="_blank"
-                                class="arco-btn arco-btn-secondary arco-btn-shape-square arco-btn-size-medium arco-btn-status-normal block w-full text-center py-1"
-                            >
-                                <icon-cloud/>
-                                {{ t("model.download") }}
-                            </a>
                         </div>
                         <div class="mt-2">
                             <div class="text-sm bg-gray-100 p-5 rounded-lg text-gray-500 leading-6">
@@ -243,10 +235,7 @@ const emit = defineEmits({
                                     {{ $t("model.runInLocalDesc") }}
                                 </div>
                                 <div>
-                                    {{ "① " + $t("model.marketTip") }}
-                                </div>
-                                <div>
-                                    {{ "② " + $t("model.unzipTip") }}
+                                    {{ "① " + $t("model.unzipTip") }}
                                 </div>
                             </div>
                         </div>

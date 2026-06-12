@@ -5,7 +5,6 @@ import {TabContentScroller} from "../lib/ui";
 import SettingBasic from "../components/Setting/SettingBasic.vue";
 import SettingDigitalHumanIdentity from "../components/Setting/SettingDigitalHumanIdentity.vue";
 import SettingEnv from "../components/Setting/SettingEnv.vue";
-import SettingAbout from "../components/Setting/SettingAbout.vue";
 import {LiveBlackWordContent} from "./Live/config/blackWord";
 import {LiveReplyGenerateContent} from "./Live/config/replyGenerate";
 import {
@@ -77,12 +76,6 @@ onBeforeUnmount(() => {
                     {{ t("setting.env") }}
                 </div>
             </div>
-            <div data-section="about" class="p-2 rounded-lg mb-4 cursor-pointer">
-                <div class="text-base">
-                    <icon-user/>
-                    {{ t("about.software") }}
-                </div>
-            </div>
         </div>
         <div class="flex-grow">
             <div
@@ -149,15 +142,6 @@ onBeforeUnmount(() => {
                     <div class="text-base font-bold mb-4">{{ t("setting.env") }}</div>
                     <div>
                         <SettingEnv/>
-                    </div>
-                </div>
-                <div class="border-b border-solid border-gray-200 my-6 dark:border-gray-700"></div>
-                <div data-section="about" class="scroll-mt-4">
-                    <div class="text-base font-bold mb-4">
-                        {{ t("about.software") }}
-                    </div>
-                    <div class="">
-                        <SettingAbout/>
                     </div>
                 </div>
             </div>

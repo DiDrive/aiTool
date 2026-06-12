@@ -134,9 +134,7 @@ export const doCheckForUpdate = async (noticeLatest?: boolean) => {
             }
             return;
         }
-        Dialog.confirm(t("update.newVersionFound", {version: res.data.version})).then(() => {
-            window.$mapi.app.openExternal(AppConfig.downloadUrl);
-        });
+        Dialog.tipSuccess(t("update.newVersionFound", {version: res.data.version}).replace(/，是否立即下载更新？|,\s*download and update now\?/i, ""));
     });
 };
 
