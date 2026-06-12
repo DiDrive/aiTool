@@ -28,6 +28,15 @@ const templateOptions = computed(() => {
     }));
 });
 
+const audioTemplateOptions = computed(() => {
+    return templateRecords.value
+        .filter(item => getTemplateCapabilities(item).some(capability => capability === "audio" || capability === "voice-clone"))
+        .map(item => ({
+            label: `${item.title} · ${item.content.providerProfileTitle || item.content.providerType} · ${getTemplateCapabilities(item).join("/")}`,
+            value: Number(item.id || 0),
+        }));
+});
+
 const templateTitleMap = computed(() => {
     return new Map(templateRecords.value.map(item => [Number(item.id || 0), item.title]));
 });
@@ -67,6 +76,7 @@ const syncTemplateTitles = () => {
     content.talkTemplateTitle = templateTitleMap.value.get(normalizeTemplateId(content.talkTemplateId)) || "";
     content.productTemplateTitle = templateTitleMap.value.get(normalizeTemplateId(content.productTemplateId)) || "";
     content.transitionTemplateTitle = templateTitleMap.value.get(normalizeTemplateId(content.transitionTemplateId)) || "";
+    content.audioTemplateTitle = templateTitleMap.value.get(normalizeTemplateId(content.audioTemplateId)) || "";
 };
 
 const openAdd = () => {
@@ -112,6 +122,9 @@ const doSave = async () => {
                 talkTemplateId: normalizeTemplateId(formData.value.content.talkTemplateId),
                 productTemplateId: normalizeTemplateId(formData.value.content.productTemplateId),
                 transitionTemplateId: normalizeTemplateId(formData.value.content.transitionTemplateId),
+                audioTemplateId: normalizeTemplateId(formData.value.content.audioTemplateId),
+                autoGenerateAudio: formData.value.content.autoGenerateAudio !== false,
+                audioPrompt2: formData.value.content.audioPrompt2 || "",
                 status: formData.value.content.status || "draft",
             },
         };
@@ -183,6 +196,7 @@ onMounted(() => {
                                 <div class="mt-1 text-xs text-slate-500">待机：{{ record.content.idleTemplateTitle || record.content.defaultTemplateTitle || "-" }}</div>
                                 <div class="mt-1 text-xs text-slate-500">讲解：{{ record.content.talkTemplateTitle || record.content.defaultTemplateTitle || "-" }}</div>
                                 <div class="mt-1 text-xs text-slate-500">商品：{{ record.content.productTemplateTitle || record.content.defaultTemplateTitle || "-" }}</div>
+                                <div class="mt-1 text-xs text-slate-500">音频：{{ record.content.audioTemplateTitle || "未绑定" }}</div>
                                 <div class="mt-1 text-xs text-slate-500">状态：{{ record.content.status === "ready" ? "已就绪" : "草稿" }}</div>
                             </div>
                             <div class="flex items-center gap-1">
@@ -280,6 +294,29 @@ onMounted(() => {
                     </a-form-item>
                 </a-col>
             </a-row>
+
+            <div class="mb-4 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+                <div class="mb-3 text-sm font-semibold text-slate-900">音频生成</div>
+                <a-row :gutter="16">
+                    <a-col :span="12">
+                        <a-form-item label="音频生成模板">
+                            <a-select v-model="formData.content.audioTemplateId" allow-clear placeholder="例如：IndexTTS2">
+                                <a-option v-for="item in audioTemplateOptions" :key="item.value" :value="item.value">
+                                    {{ item.label }}
+                                </a-option>
+                            </a-select>
+                        </a-form-item>
+                    </a-col>
+                    <a-col :span="12">
+                        <a-form-item label="情感描述">
+                            <a-input v-model="formData.content.audioPrompt2" placeholder="留空使用模板默认值，例如：害羞的" allow-clear />
+                        </a-form-item>
+                    </a-col>
+                </a-row>
+                <a-checkbox v-model="formData.content.autoGenerateAudio">
+                    片段没有音频时，自动用身份参考音频和片段文本生成音频
+                </a-checkbox>
+            </div>
 
             <a-form-item label="备注">
                 <a-textarea v-model="formData.content.notes" :auto-size="{ minRows: 3, maxRows: 5 }" placeholder="记录这套执行配置适用于哪些供应商、主播或直播间" />

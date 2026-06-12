@@ -26,6 +26,7 @@ const form = ref({
     identityId: "0",
     productTitle: "",
     productId: "",
+    text: "",
     tagsText: "",
     status: "ready" as "draft" | "ready" | "archived",
 });
@@ -139,6 +140,7 @@ const fillForm = (record: DigitalHumanClipRecord | null) => {
             identityId: "0",
             productTitle: "",
             productId: "",
+            text: "",
             tagsText: "",
             status: "ready",
         };
@@ -151,6 +153,7 @@ const fillForm = (record: DigitalHumanClipRecord | null) => {
         identityId: String(Number(record.content.identityId || 0)),
         productTitle: record.content.productTitle || "",
         productId: record.content.productId || "",
+        text: record.content.text || "",
         tagsText: Array.isArray(record.content.tags) ? record.content.tags.join(", ") : "",
         status: record.content.status || "ready",
     };
@@ -240,6 +243,7 @@ const save = async () => {
                 identityTitle: identityTitle(identityId),
                 productTitle: form.value.productTitle.trim(),
                 productId: form.value.productId.trim(),
+                text: form.value.text.trim(),
                 tags: form.value.tagsText
                     .split(",")
                     .map(item => item.trim())
@@ -441,6 +445,10 @@ onBeforeUnmount(() => {
                         <span>标签</span>
                         <input v-model="form.tagsText" placeholder="英文逗号分隔" />
                     </label>
+                    <label class="wide">
+                        <span>口播文本 / 文案</span>
+                        <textarea v-model="form.text" rows="5" placeholder="用于素材生产阶段生成音频和数字人口播视频；直播控制台只播放已审核素材"></textarea>
+                    </label>
                 </div>
 
                 <div class="info-grid">
@@ -552,7 +560,8 @@ h1 {
 
 button,
 select,
-input {
+input,
+textarea {
     height: 34px;
     border: 0;
     border-radius: 8px;
@@ -570,11 +579,20 @@ button:disabled {
 }
 
 select,
-input {
+input,
+textarea {
     min-width: 0;
     background: #f1f5f9;
     padding: 0 12px;
     color: #334155;
+}
+
+textarea {
+    height: auto;
+    min-height: 108px;
+    padding: 10px 12px;
+    line-height: 1.6;
+    resize: vertical;
 }
 
 .plain-button {

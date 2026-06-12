@@ -291,6 +291,27 @@ const runningHubPrepareNodeInfoList = async (
     );
 };
 
+const maskRunningHubNodeInfoListForLog = (nodeInfoList?: Array<Record<string, any>>) => {
+    if (!Array.isArray(nodeInfoList)) return [];
+    return nodeInfoList.map(item => {
+        const fieldValue = item?.fieldValue;
+        const valueText =
+            fieldValue === null || typeof fieldValue === "undefined"
+                ? ""
+                : typeof fieldValue === "object"
+                  ? "[object]"
+                  : String(fieldValue);
+        return {
+            nodeId: item?.nodeId,
+            fieldName: item?.fieldName,
+            description: item?.description,
+            valueType: typeof fieldValue,
+            valueLength: valueText.length,
+            valuePreview: valueText.length > 180 ? `${valueText.slice(0, 180)}...` : valueText,
+        };
+    });
+};
+
 const runningHubRunAiApp = async (options: {
     apiBaseUrl?: string;
     apiKey?: string;
@@ -302,8 +323,16 @@ const runningHubRunAiApp = async (options: {
     const apiBaseUrl = options.apiBaseUrl || RUNNING_HUB_DEFAULT_BASE_URL;
     const webappId = String(options.webappId || "").trim();
     const nodeInfoList = await runningHubPrepareNodeInfoList(apiBaseUrl, options.apiKey || "", options.nodeInfoList);
+    Log.info("live.runninghub.runAiApp.request", {
+        apiBaseUrl,
+        webappId,
+        hasApiKey: !!String(options.apiKey || "").trim(),
+        webhookUrl: !!String(options.webhookUrl || "").trim(),
+        instanceType: options.instanceType || "default",
+        nodeInfoList: maskRunningHubNodeInfoListForLog(nodeInfoList),
+    });
     if (webappId) {
-        return await runningHubPost(
+        const result = await runningHubPost(
             apiBaseUrl,
             `openapi/v2/run/ai-app/${encodeURIComponent(webappId)}`,
             {
@@ -314,8 +343,15 @@ const runningHubRunAiApp = async (options: {
             },
             options.apiKey
         );
+        Log.info("live.runninghub.runAiApp.response", {
+            code: result?.code,
+            msg: result?.msg,
+            taskId: result?.data?.taskId || result?.taskId,
+            taskStatus: result?.data?.taskStatus || result?.taskStatus,
+        });
+        return result;
     }
-    return await runningHubPost(
+    const result = await runningHubPost(
         apiBaseUrl,
         "task/openapi/ai-app/run",
         {
@@ -328,6 +364,13 @@ const runningHubRunAiApp = async (options: {
         },
         options.apiKey
     );
+    Log.info("live.runninghub.runAiApp.response", {
+        code: result?.code,
+        msg: result?.msg,
+        taskId: result?.data?.taskId || result?.taskId,
+        taskStatus: result?.data?.taskStatus || result?.taskStatus,
+    });
+    return result;
 };
 
 const runningHubMapStatus = (raw: any) => {

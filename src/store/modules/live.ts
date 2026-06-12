@@ -9,6 +9,7 @@ import { VideoTemplateService } from "../../service/VideoTemplateService";
 import { VideoActionService } from "../../service/VideoActionService";
 import { CloudProviderProfileService, CloudProviderType } from "../../service/CloudProviderProfileService";
 import { CloudTemplateRecord, CloudTemplateService } from "../../service/CloudTemplateService";
+import { CloudTemplateTaskService } from "../../service/CloudTemplateTaskService";
 import { DigitalHumanClipRecord, DigitalHumanClipService } from "../../service/DigitalHumanClipService";
 import { DigitalHumanIdentityRecord, DigitalHumanIdentityService } from "../../service/DigitalHumanIdentityService";
 import {
@@ -21,6 +22,7 @@ import { EnumServerStatus, ServerRecord } from "../../types/Server";
 import store from "../index";
 import { useServerStore } from "./server";
 import { useModelStore } from "../../module/Model/store/model";
+import { RunningHubRunModelConfigUntilDone } from "../../pages/Apps/RunningHubStudio/task";
 
 const serverStore = useServerStore();
 
@@ -553,6 +555,19 @@ export const liveStore = defineStore("live", {
             }
             const clipHasVideo = !!this.scenePackCurrentVideoUrl();
             const clipHasAudio = !!this.scenePackCurrentAudioUrl();
+            const isSilentIdleClip =
+                this.scenePackRuntime.currentClipType === "idle" &&
+                clipHasVideo &&
+                !clipHasAudio &&
+                !String(this.scenePackRuntime.currentClipText || "").trim();
+            if (isSilentIdleClip) {
+                this.statusMsg = "";
+                return true;
+            }
+            if (clipHasVideo) {
+                this.statusMsg = "";
+                return true;
+            }
             const textOnlyTalk =
                 !clipHasVideo &&
                 !clipHasAudio &&
@@ -1008,6 +1023,21 @@ export const liveStore = defineStore("live", {
             if (!normalized) {
                 return "";
             }
+            const aliasMap: Record<string, string> = {
+                video: "clip.videoUrl",
+                videoUrl: "clip.videoUrl",
+                file: "clip.videoUrl",
+                audio: "clip.audioUrl",
+                audioUrl: "clip.audioUrl",
+                voice: "clip.audioUrl",
+                image: "clip.coverImage",
+                coverImage: "clip.coverImage",
+                prompt: "clip.text",
+                text: "clip.text",
+            };
+            if (aliasMap[normalized]) {
+                return this.cloudSceneTemplateLookup(aliasMap[normalized], context);
+            }
             if (normalized === "provider") {
                 return context.provider;
             }
@@ -1125,13 +1155,187 @@ export const liveStore = defineStore("live", {
                 },
             };
         },
+        resolveSceneClipSpeechText(raw: string, clipType?: string) {
+            const text = String(raw || "").trim();
+            if (!text) {
+                return "";
+            }
+            const quotePatterns = [
+                /(?:说|讲|播报|口播)\s*[：:]\s*[“"]([^”"]+)[”"]/,
+                /(?:说|讲|播报|口播)\s*[：:]\s*[‘']([^’']+)[’']/,
+                /[“"]([^”"]{2,300})[”"]/,
+                /[‘']([^’']{2,300})[’']/,
+            ];
+            for (const pattern of quotePatterns) {
+                const match = text.match(pattern);
+                if (match?.[1]) {
+                    return match[1].trim();
+                }
+            }
+            if (clipType && clipType !== "idle") {
+                return text;
+            }
+            return "";
+        },
+        resolveIdentityDriverVideoUrl(context: any) {
+            const identity = context?.identity || {};
+            const clipType = String(context?.clip?.type || "");
+            if (clipType === "idle") {
+                return String(identity.idleVideo || identity.referenceVideo || "").trim();
+            }
+            if (clipType === "product") {
+                return String(
+                    identity.talkVideo ||
+                    identity.referenceVideo ||
+                    identity.holdBothVideo ||
+                    identity.holdLeftVideo ||
+                    identity.holdRightVideo ||
+                    identity.tableDisplayVideo ||
+                    ""
+                ).trim();
+            }
+            return String(identity.talkVideo || identity.referenceVideo || "").trim();
+        },
+        buildCloudTemplateDefaultInput(template: CloudTemplateRecord | null | undefined) {
+            const fields = CloudTemplateTaskService.parseInputSchema(template?.content?.inputSchemaJson || "[]");
+            const input: Record<string, any> = {};
+            fields.forEach(field => {
+                if (typeof field.defaultValue !== "undefined") {
+                    input[field.name] = field.defaultValue;
+                }
+            });
+            return input;
+        },
+        async ensureSceneClipAudioUrl(context: any, sceneBinding: any) {
+            const speechText = this.resolveSceneClipSpeechText(context?.clip?.text || "", context?.clip?.type || "");
+            const isScriptClip = context?.clip?.type !== "idle" && !!speechText;
+            if (isScriptClip) {
+                const driverVideoUrl = this.resolveIdentityDriverVideoUrl(context);
+                if (!driverVideoUrl) {
+                    throw new Error("数字人口播生成失败：当前数字人身份没有配置参考/讲解视频");
+                }
+                context.clip.sourceVideoUrl = context.clip.videoUrl;
+                context.clip.videoUrl = driverVideoUrl;
+            }
+            if (String(context?.clip?.audioUrl || "").trim()) {
+                return context;
+            }
+            const executionConfig = sceneBinding?.executionConfig as DigitalHumanLiveExecutionConfigRecord | null | undefined;
+            if (!executionConfig?.content?.autoGenerateAudio || !Number(executionConfig.content.audioTemplateId || 0)) {
+                return context;
+            }
+            if (context.provider !== "runninghub") {
+                return context;
+            }
+            const audioTemplate = await CloudTemplateService.get(Number(executionConfig.content.audioTemplateId || 0));
+            if (!audioTemplate) {
+                throw new Error("自动生成音频失败：音频生成模板不存在");
+            }
+            if (!speechText) {
+                throw new Error("自动生成音频失败：当前片段没有口播文本");
+            }
+            const voiceRefAudio = String(context?.identity?.voiceRefAudio || "").trim();
+            if (!voiceRefAudio) {
+                throw new Error("自动生成音频失败：当前数字人身份没有配置参考音频 voiceRefAudio");
+            }
+            this.statusMsg = "正在生成片段音频...";
+            const taskRecord = await CloudTemplateTaskService.buildTaskRecord(Number(audioTemplate.id || 0), {
+                ...this.buildCloudTemplateDefaultInput(audioTemplate),
+                title: `${context.clip.title || "直播片段"}_音频`,
+                selectedCapability: "audio",
+                audio: voiceRefAudio,
+                audioUrl: voiceRefAudio,
+                prompt: speechText,
+                text: speechText,
+                prompt_2: executionConfig.content.audioPrompt2 || this.buildCloudTemplateDefaultInput(audioTemplate).prompt_2 || "",
+                identity: context.identity,
+                identityId: Number(context.identity?.id || 0),
+            });
+            const result = await RunningHubRunModelConfigUntilDone(taskRecord.modelConfig as any, {
+                title: taskRecord.title,
+                timeoutMs: 10 * 60 * 1000,
+                queryIntervalMs: 5000,
+                onStatus: message => {
+                    this.statusMsg = `正在生成片段音频：${message}`;
+                },
+            });
+            const audioUrl = String(result?.audio || result?.url || result?.urls?.[0] || result?.remoteUrls?.[0] || "").trim();
+            if (!audioUrl) {
+                throw new Error("自动生成音频失败：音频模板没有返回音频文件");
+            }
+            context.clip.audioUrl = audioUrl;
+            this.scenePackRuntime.currentClipAudio = audioUrl;
+            this.statusMsg = "片段音频已生成，正在提交数字人模板...";
+            return context;
+        },
         async buildRunningHubSceneNodeInfoList() {
             const sceneBinding = await this.resolveSceneExecutionTemplateBinding();
             const rawList = sceneBinding?.template?.content?.nodeInfoTemplateJson
                 ? this.parseJsonTemplateContent(sceneBinding.template.content.nodeInfoTemplateJson, [], "执行模板的节点参数 JSON 格式不正确")
                 : this.parseRunningHubNodeInfoList();
-            const context = await this.buildSceneClipExecutionContext();
-            return this.cloudApplyTemplateValue(rawList, context);
+            const context = await this.ensureSceneClipAudioUrl(await this.buildSceneClipExecutionContext(), sceneBinding);
+            const nodeInfoList = this.cloudApplyTemplateValue(rawList, context);
+            this.validateRunningHubSceneNodeInfoList(rawList, nodeInfoList, context);
+            return nodeInfoList;
+        },
+        validateRunningHubSceneNodeInfoList(rawList: any[], nodeInfoList: any[], context: any) {
+            if (!Array.isArray(nodeInfoList)) {
+                throw new Error("RunningHub 节点参数必须是数组");
+            }
+            if (!nodeInfoList.length) {
+                throw new Error("RunningHub 节点参数为空，请在云端模板中配置 nodeInfoList");
+            }
+            const missing: string[] = [];
+            const requiredExprLabels: Record<string, string> = {
+                video: "视频素材 videoUrl",
+                videoUrl: "视频素材 videoUrl",
+                file: "视频素材 videoUrl",
+                "clip.videoUrl": "视频素材 videoUrl",
+                audio: "音频素材 audioUrl",
+                audioUrl: "音频素材 audioUrl",
+                voice: "音频素材 audioUrl",
+                "clip.audioUrl": "音频素材 audioUrl",
+                image: "封面/图片素材 coverImage",
+                coverImage: "封面/图片素材 coverImage",
+                "clip.coverImage": "封面/图片素材 coverImage",
+                prompt: "片段文本 text",
+                text: "片段文本 text",
+                "clip.text": "片段文本 text",
+            };
+            const checkExpr = (expr: string, label: string, nodeLabel: string) => {
+                const value = this.cloudSceneTemplateLookup(expr, context);
+                if (value === null || typeof value === "undefined" || String(value).trim() === "") {
+                    missing.push(`${nodeLabel} 缺少${label}`);
+                }
+            };
+            rawList.forEach((rawItem, index) => {
+                const rawValue = typeof rawItem?.fieldValue === "string" ? rawItem.fieldValue : "";
+                const node = nodeInfoList[index] || {};
+                const nodeLabel = `节点 ${node.nodeId || rawItem?.nodeId || index + 1}${node.fieldName || rawItem?.fieldName ? `(${node.fieldName || rawItem?.fieldName})` : ""}`;
+                const matches = rawValue.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g);
+                for (const match of matches) {
+                    const expr = String(match[1] || "").trim();
+                    if (requiredExprLabels[expr]) {
+                        checkExpr(expr, requiredExprLabels[expr], nodeLabel);
+                    } else if (expr.startsWith("binding.")) {
+                        checkExpr(expr, `身份绑定 ${expr}`, nodeLabel);
+                    }
+                }
+                const fieldName = String(node.fieldName || rawItem?.fieldName || "").toLowerCase();
+                const fieldValue = node.fieldValue;
+                if (
+                    (fieldName.includes("video") ||
+                        fieldName.includes("audio") ||
+                        fieldName.includes("voice") ||
+                        fieldName.includes("file")) &&
+                    (fieldValue === null || typeof fieldValue === "undefined" || String(fieldValue).trim() === "")
+                ) {
+                    missing.push(`${nodeLabel} 的 fieldValue 为空`);
+                }
+            });
+            if (missing.length) {
+                throw new Error(`RunningHub 模板参数不完整：${Array.from(new Set(missing)).join("；")}`);
+            }
         },
         async buildCloudSceneBridgeRequestBody() {
             const sceneBinding = await this.resolveSceneExecutionTemplateBinding();
@@ -1166,8 +1370,9 @@ export const liveStore = defineStore("live", {
                   }
                 : await this.resolveCloudApiBaseUrl();
             if (!resolved.apiBaseUrl) {
+                this.statusMsg = "云端片段执行失败：未找到可用云端 API 地址";
                 if (!option.silent) {
-                    Dialog.tipError("云端片段执行失败：未找到可用云端 API 地址");
+                    Dialog.tipError(this.statusMsg);
                 }
                 return false;
             }
@@ -1206,15 +1411,18 @@ export const liveStore = defineStore("live", {
                     this.liveStatus.videoHls = previewUrl;
                 }
                 if (result?.code) {
+                    this.statusMsg = this.mapCloudErrorMessage(result?.code, result?.msg || "云端片段执行失败");
                     if (!option.silent) {
-                        Dialog.tipError(this.mapCloudErrorMessage(result?.code, result?.msg || "云端片段执行失败"));
+                        Dialog.tipError(this.statusMsg);
                     }
                     return false;
                 }
+                this.statusMsg = "";
                 return true;
             } catch (e: any) {
+                this.statusMsg = this.mapCloudInvokeError(e, "云端片段执行失败");
                 if (!option.silent) {
-                    Dialog.tipError(this.mapCloudInvokeError(e, "云端片段执行失败"));
+                    Dialog.tipError(this.statusMsg);
                 }
                 return false;
             }

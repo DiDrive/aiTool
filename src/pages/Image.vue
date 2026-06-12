@@ -26,7 +26,7 @@ const tabHref = (name: string) => `#${route.path}?tab=${encodeURIComponent(name)
 const goTab = (event: MouseEvent, name: string) => {
     event.preventDefault();
     router.replace({
-        path: "/tool",
+        path: "/image",
         query: {
             tab: name,
             _t: String(Date.now()),
@@ -50,13 +50,13 @@ const dynamicComponent = computed(() => {
             <a
                 v-for="s in ImageApps"
                 :href="tabHref(s.name)"
-                data-route-path="/tool"
+                data-route-path="/image"
                 :data-route-tab="s.name"
                 class="block p-2 rounded-lg mb-4 cursor-pointer"
                 :class="tab === s.name ? 'bg-gray-200' : ''"
                 @click="goTab($event, s.name)"
             >
-                <div class="text-base truncate flex items-center" data-route-path="/tool" :data-route-tab="s.name">
+                <div class="text-base truncate flex items-center" data-route-path="/image" :data-route-tab="s.name">
                     <img :src="s.icon" class="w-4 h-4 mr-2 object-contain"/>
                     {{ s.title }}
                 </div>

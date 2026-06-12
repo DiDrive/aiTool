@@ -21,6 +21,10 @@ export type DigitalHumanLiveExecutionConfigContent = {
     productTemplateTitle?: string;
     transitionTemplateId?: number;
     transitionTemplateTitle?: string;
+    audioTemplateId?: number;
+    audioTemplateTitle?: string;
+    audioPrompt2?: string;
+    autoGenerateAudio?: boolean;
     status?: "draft" | "ready";
     notes?: string;
 };
@@ -46,6 +50,10 @@ export const createEmptyDigitalHumanLiveExecutionConfigRecord = (): DigitalHuman
         productTemplateTitle: "",
         transitionTemplateId: 0,
         transitionTemplateTitle: "",
+        audioTemplateId: 0,
+        audioTemplateTitle: "",
+        audioPrompt2: "",
+        autoGenerateAudio: true,
         status: "draft",
         notes: "",
     },
@@ -73,6 +81,11 @@ const decode = (record: StorageRecord | null): DigitalHumanLiveExecutionConfigRe
             productTemplateTitle: record.content?.productTemplateTitle || "",
             transitionTemplateId: Number(record.content?.transitionTemplateId || 0),
             transitionTemplateTitle: record.content?.transitionTemplateTitle || "",
+            audioTemplateId: Number(record.content?.audioTemplateId || 0),
+            audioTemplateTitle: record.content?.audioTemplateTitle || "",
+            audioPrompt2: record.content?.audioPrompt2 || "",
+            autoGenerateAudio:
+                typeof record.content?.autoGenerateAudio === "boolean" ? record.content.autoGenerateAudio : true,
             status: record.content?.status || "draft",
             notes: record.content?.notes || "",
         },

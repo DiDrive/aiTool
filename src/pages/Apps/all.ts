@@ -17,6 +17,8 @@ import CloudImage from "../Cloud/CloudImage.vue";
 import ToolGptImage2 from "../Cloud/ToolGptImage2.vue";
 import ToolSeedance from "../Cloud/ToolSeedance.vue";
 import TextToImageIcon from "./TextToImage/assets/icon.svg";
+import WatermarkInpaint from "./WatermarkInpaint/WatermarkInpaint.vue";
+import WatermarkInpaintIcon from "./WatermarkInpaint/assets/icon.svg";
 
 export const SoundApps = [
     {
@@ -114,7 +116,15 @@ export const ImageApps = [
     },
 ];
 
-export const ToolApps = ImageApps;
+export const ToolApps = [
+    {
+        name: "WatermarkInpaint",
+        title: "水印智能修复",
+        description: "对授权图片/视频素材进行水印区域标记与智能修复",
+        icon: WatermarkInpaintIcon,
+        component: WatermarkInpaint,
+    },
+];
 
 export const AllApps = [
     ...(SoundApps.map(app => ({
@@ -130,6 +140,10 @@ export const AllApps = [
         url: `/live?tab=${app.name}`,
     })) as any),
     ...(ImageApps.map(app => ({
+        ...app,
+        url: `/image?tab=${app.name}`,
+    })) as any),
+    ...(ToolApps.map(app => ({
         ...app,
         url: `/tool?tab=${app.name}`,
     })) as any),

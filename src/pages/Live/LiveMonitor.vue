@@ -236,7 +236,8 @@ const doStart = async () => {
                 return;
             }
             if (!result.ok) {
-                Dialog.tipError(result.msg || "推流启动失败");
+                liveStore.statusMsg = result.msg || "推流启动失败";
+                Dialog.tipError(liveStore.statusMsg);
                 liveStore.status = "error";
                 return;
             }
@@ -255,7 +256,8 @@ const doStart = async () => {
                 silent: true,
             });
         } catch (e: any) {
-            Dialog.tipError("推流启动失败: " + (e.message || e));
+            liveStore.statusMsg = "推流启动失败: " + (e.message || e);
+            Dialog.tipError(liveStore.statusMsg);
             liveStore.status = "error";
         }
         return;

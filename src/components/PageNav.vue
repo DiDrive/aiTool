@@ -23,6 +23,8 @@ const activeTab = computed(() => {
             return "sound";
         case "/video":
             return "video";
+        case "/image":
+            return "image";
         case "/live":
             return "live";
         case "/tool":
@@ -144,6 +146,18 @@ const goPage = (event: MouseEvent, path: string) => {
             </a>
             <a
                 class="page-nav-item block text-center py-3"
+                :class="activeTab === 'image' ? 'active' : ''"
+                data-route-path="/image"
+                @click="goPage($event, '/image')"
+                :href="pageHref('/image')"
+            >
+                <div>
+                    <icon-image class="text-xl" />
+                </div>
+                <div class="text-sm">生图</div>
+            </a>
+            <a
+                class="page-nav-item block text-center py-3"
                 :class="activeTab === 'tool' ? 'active' : ''"
                 data-route-path="/tool"
                 @click="goPage($event, '/tool')"
@@ -152,7 +166,7 @@ const goPage = (event: MouseEvent, path: string) => {
                 <div>
                     <icon-tool class="text-xl" />
                 </div>
-                <div class="text-sm">生图</div>
+                <div class="text-sm">工具</div>
             </a>
             <a
                 class="page-nav-item block text-center py-3"

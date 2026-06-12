@@ -81,7 +81,7 @@ const directApiEditTarget = (record: TaskRecord) => {
         return { path: "/video", tab: "ToolSeedance" };
     }
     if (title.includes("gpt image 2") || body.includes("gpt-image-2")) {
-        return { path: "/tool", tab: "ToolGptImage2" };
+        return { path: "/image", tab: "ToolGptImage2" };
     }
     return null;
 };

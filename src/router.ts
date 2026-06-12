@@ -10,6 +10,7 @@ const routes = [
             {path: "server", component: () => import("./pages/Server.vue")},
             {path: "video", component: () => import("./pages/Video.vue")},
             {path: "sound", component: () => import("./pages/Sound.vue")},
+            {path: "image", component: () => import("./pages/Image.vue")},
             {path: "tool", component: () => import("./pages/Tool.vue")},
             {path: "live", component: () => import("./pages/Live.vue")},
             {path: "setting", component: () => import("./pages/Setting.vue")},

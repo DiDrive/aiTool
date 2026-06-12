@@ -383,6 +383,103 @@ const buildResultPayload = async (
     return result;
 };
 
+export const RunningHubRunModelConfigUntilDone = async (
+    modelConfig: RunningHubModelConfigType,
+    option: {
+        title?: string;
+        timeoutMs?: number;
+        queryIntervalMs?: number;
+        onStatus?: (message: string) => void;
+    } = {}
+) => {
+    const timeoutMs = option.timeoutMs || 10 * 60 * 1000;
+    const queryIntervalMs = option.queryIntervalMs || 5000;
+    const startedAt = Date.now();
+    option.onStatus?.("准备 RunningHub 请求");
+    const prepared = await createPreparedPayload(modelConfig);
+    option.onStatus?.("提交 RunningHub 任务");
+    const submitRes: any = await callRunningHubHandle("runninghub:runTask", {
+        apiBaseUrl: normalizeBaseUrl(modelConfig.baseUrl || DEFAULT_BASE_URL),
+        apiKey: modelConfig.apiKey,
+        connectorType: modelConfig.connectorType,
+        submitPath: modelConfig.submitPath,
+        webappId: modelConfig.webappId,
+        workflowId: modelConfig.workflowId,
+        nodeInfoList: prepared.nodeInfoList || [],
+        requestBody: prepared.requestBody || {},
+        requestFormat: modelConfig.requestFormat || "json",
+        directFileRelay: modelConfig.directFileRelay,
+        webhookUrl: modelConfig.webhookUrl,
+        instanceType: modelConfig.instanceType,
+        accessPassword: modelConfig.accessPassword,
+        addMetadata: modelConfig.addMetadata,
+        retainSeconds: modelConfig.retainSeconds,
+        usePersonalQueue: modelConfig.usePersonalQueue,
+        workflow: modelConfig.workflowJson,
+        proxyUrl: modelConfig.proxyUrl || "",
+    });
+    if (submitRes?.code) {
+        throw new Error(responseMessageOf(submitRes, "任务提交失败"));
+    }
+    const syncResults = normalizeDirectApiResults(submitRes);
+    if (syncResults.length > 0) {
+        const materialized = await materializeDirectApiResults(syncResults);
+        return await buildResultPayload(
+            modelConfig.capability,
+            materialized.localFiles,
+            materialized.results,
+            false,
+            option.title
+        );
+    }
+    const taskId = extractDirectApiTaskId(submitRes);
+    if (!taskId) {
+        throw new Error("RunningHub 未返回 taskId");
+    }
+    while (Date.now() - startedAt < timeoutMs) {
+        option.onStatus?.("等待 RunningHub 任务完成");
+        await new Promise(resolve => setTimeout(resolve, queryIntervalMs));
+        const queryRes: any = await callRunningHubHandle("runninghub:queryTask", {
+            apiBaseUrl: normalizeBaseUrl(modelConfig.baseUrl || DEFAULT_BASE_URL),
+            apiKey: modelConfig.apiKey,
+            connectorType: modelConfig.connectorType,
+            queryPath: modelConfig.queryPath,
+            taskId,
+            proxyUrl: modelConfig.proxyUrl || "",
+        });
+        if (queryRes?.code && !queryRes?.data?.status) {
+            throw new Error(queryRes?.msg || "RunningHub 状态查询失败");
+        }
+        const status = String(queryRes?.data?.status || "").toUpperCase();
+        if (status === "SUCCESS" || status === "SUCCEEDED") {
+            const materialized = await materializeDirectApiResults(queryRes?.data?.results || []);
+            const localFiles: string[] = [...materialized.localFiles];
+            for (const item of materialized.results || []) {
+                const fileUrl = String(item?.url || item?.fileUrl || "").trim();
+                if (!fileUrl || String(item?.localFile || "").trim()) {
+                    continue;
+                }
+                try {
+                    const downloaded = await window.$mapi.file.download(fileUrl);
+                    localFiles.push(await window.$mapi.file.hubSave(downloaded));
+                } catch (e) {
+                }
+            }
+            return await buildResultPayload(
+                modelConfig.capability,
+                localFiles,
+                materialized.results,
+                false,
+                option.title
+            );
+        }
+        if (status === "FAILED" || status === "CANCELLED" || status === "STOPPED") {
+            throw new Error(String(queryRes?.data?.errorMessage || queryRes?.msg || `RunningHub 任务失败: ${status}`));
+        }
+    }
+    throw new Error("RunningHub 任务等待超时");
+};
+
 export const RunningHubTaskRun = async (data: {
     taskId?: string;
     title: string;
