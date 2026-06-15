@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Dialog } from "../../../lib/dialog";
 import {
@@ -18,7 +18,8 @@ import { usePageDraft } from "../../../hooks/pageDraft";
 type AngleType = "pain" | "desire" | "contrast" | "scene" | "conversion";
 type GenerationChannel = "direct" | "cloud";
 type FrameDensity = "light" | "standard" | "detailed";
-type NarrationMode = "voiceover" | "character";
+type NarrationMode = "none" | "voiceover" | "character";
+type SubtitleMode = "none" | "caption";
 type HotTrendRisk = "low" | "medium" | "high";
 type HotTrendFuseMode = "light" | "medium" | "strong";
 type HotTrendMode = "meme" | "topic";
@@ -88,6 +89,7 @@ type SceneDraft = {
     captionOverride?: string;
     voiceoverLine?: string;
     narrationMode?: NarrationMode;
+    subtitleMode?: SubtitleMode;
     imagePrompt: string;
     videoPrompt: string;
     referenceImageUrl?: string;
@@ -103,6 +105,16 @@ type MarketingDraft = {
     hook: string;
     voiceover: string;
     cta: string;
+    referenceAnalysis?: {
+        plot?: string;
+        structure?: string;
+        shotLanguage?: string;
+        visualStyle?: string;
+        rhythm?: string;
+        characterAction?: string;
+        captionAudio?: string;
+        reusableRules?: string;
+    };
     scenes: SceneDraft[];
 };
 
@@ -141,6 +153,9 @@ const hotTrendCandidates = ref<HotTrendCandidate[]>([]);
 const hotTrendCards = ref<HotTrendCard[]>([]);
 const hotTrendErrors = ref<Array<{ source: string; message: string }>>([]);
 const hotTrendSourceCounts = ref<Record<string, number>>({});
+const hotTrendAnalysisError = ref("");
+const DEFAULT_VISUAL_STYLE = "";
+const LEGACY_DEFAULT_VISUAL_STYLE = "真实感短视频，干净都市夜景，人物自然自信，商业广告质感，竖屏构图";
 const form = ref({
     brandName: "",
     brandBrief: "",
@@ -152,10 +167,10 @@ const form = ref({
     count: 3,
     sceneCount: 3,
     ratio: "9:16",
-    duration: 12,
     narrationMode: "voiceover" as NarrationMode,
+    subtitleMode: "caption" as SubtitleMode,
     videoModel: "seedance-2.0-fast",
-    visualStyle: "真实感短视频，干净都市夜景，人物自然自信，商业广告质感，竖屏构图",
+    visualStyle: DEFAULT_VISUAL_STYLE,
 });
 const drafts = ref<MarketingDraft[]>([]);
 const pageDraft = usePageDraft("MarketingVideoFlow", {
@@ -178,6 +193,7 @@ const pageDraft = usePageDraft("MarketingVideoFlow", {
     hotTrendCards,
     hotTrendErrors,
     hotTrendSourceCounts,
+    hotTrendAnalysisError,
     hotTrendLoadingText,
     imagePlatformId,
     videoPlatformId,
@@ -196,11 +212,17 @@ const angles: Array<{ value: AngleType; label: string; desc: string }> = [
 ];
 const countOptions = [1, 2, 3, 4, 5];
 const sceneCountOptions = [1, 2, 3, 4, 5, 6];
-const durationOptions = [8, 10, 12, 15];
+const durationOptions = Array.from({ length: 12 }, (_, index) => index + 4);
+const DEFAULT_SCENE_DURATION = 8;
 const videoModelOptions = ["seedance-2.0-fast", "seedance-2.0"];
 const narrationModeOptions: Array<{ label: string; value: NarrationMode }> = [
+    { label: "无台词", value: "none" },
     { label: "画外音", value: "voiceover" },
     { label: "角色说", value: "character" },
+];
+const subtitleModeOptions: Array<{ label: string; value: SubtitleMode }> = [
+    { label: "不显示字幕", value: "none" },
+    { label: "显示字幕", value: "caption" },
 ];
 const hotTrendSourceOptions = [
     { label: "全网梗", value: "meme" },
@@ -248,6 +270,10 @@ const selectedDraft = computed(() => {
     return drafts.value.find(item => item.id === selectedDraftId.value) || drafts.value[0] || null;
 });
 
+const hasReferenceInput = computed(() => {
+    return Boolean(referenceVideo.value) || Boolean(form.value.referenceUrl.trim()) || Boolean(douyinImportResult.value);
+});
+
 const selectedHotTrendCards = computed(() => {
     return hotTrendCards.value.filter(item => item.selected && item.risk !== "high").slice(0, 10);
 });
@@ -260,7 +286,9 @@ const hotTrendStatusText = computed(() => {
     if (!hotTrendCandidates.value.length && !hotTrendCards.value.length) {
         return "";
     }
-    return `已采集 ${hotTrendCandidates.value.length} 条，模型筛选 ${hotTrendCards.value.length} 条，当前选中 ${selectedHotTrendCards.value.length} 条会进入脚本`;
+    const analyzedCount = hotTrendCards.value.filter(item => item.analyzed).length;
+    const pendingCount = hotTrendCards.value.length - analyzedCount;
+    return `已采集 ${hotTrendCandidates.value.length} 条，AI 精修 ${analyzedCount} 条，待精修 ${pendingCount} 条，当前选中 ${selectedHotTrendCards.value.length} 条会进入脚本`;
 });
 
 const hotTrendSourceCountTags = computed(() => {
@@ -278,7 +306,7 @@ const referenceFrameRule = computed(() => {
     if (!referenceVideo.value || referenceVideoMode.value !== "frames") {
         return "";
     }
-    return `参考视频已按时长均匀抽取 ${referenceVideo.value.frameDataUrls.length} 帧，取样点避开片头片尾，用于判断主题、节奏、构图和情绪变化；不要把这些帧当作连续动作或完整剧情。`;
+    return `参考视频已按时长均匀抽取 ${referenceVideo.value.frameDataUrls.length} 帧，取样点避开片头片尾。请结合这些参考帧拆解剧情走向、分镜结构、镜头景别、主体动作、构图、色彩、光影、字幕/台词呈现和节奏变化；抽帧不是连续视频，不能编造看不见的细节。`;
 });
 
 const referenceSummary = computed(() => {
@@ -289,9 +317,9 @@ const referenceSummary = computed(() => {
         return `已上传参考视频：${referenceVideo.value.name}。会以原视频形式交给支持视频输入的大模型分析。`;
     }
     if (!form.value.referenceUrl.trim()) {
-        return "未使用参考链接，将完全根据品牌信息和台词生成原创方案。";
+        return "未使用参考链接，将根据视频主题、生成要求和台词生成原创方案。";
     }
-    return "参考链接只用于提取主题、标签、节奏和营销角度，不复刻原视频人物、画面或音乐。";
+    return "参考链接用于提取主题、剧情结构、节奏、镜头语言和表达方式；不照搬原视频人物、画面、音乐或台词。";
 });
 
 const loadPlatforms = async () => {
@@ -357,11 +385,18 @@ const buildSceneVoiceoverLine = (draft: MarketingDraft, sceneIndex: number) => {
 
 const ensureDraftVoiceoverLines = (draft: MarketingDraft, overwrite = false) => {
     draft.scenes.forEach((scene, index) => {
-        if (overwrite || !scene.voiceoverLine) {
-            scene.voiceoverLine = buildSceneVoiceoverLine(draft, index);
-        }
         if (!scene.narrationMode) {
             scene.narrationMode = form.value.narrationMode;
+        }
+        if (!scene.subtitleMode) {
+            scene.subtitleMode = form.value.subtitleMode;
+        }
+        if (scene.narrationMode === "none") {
+            if (overwrite) {
+                scene.voiceoverLine = "";
+            }
+        } else if (overwrite || !scene.voiceoverLine) {
+            scene.voiceoverLine = buildSceneVoiceoverLine(draft, index);
         }
         scene.subtitle = effectiveSceneCaption(scene);
     });
@@ -370,6 +405,17 @@ const ensureDraftVoiceoverLines = (draft: MarketingDraft, overwrite = false) => 
 const applyNarrationModeToDraft = (draft: MarketingDraft, mode: NarrationMode) => {
     draft.scenes.forEach(scene => {
         scene.narrationMode = mode;
+        if (mode === "none") {
+            scene.voiceoverLine = "";
+        }
+        scene.subtitle = effectiveSceneCaption(scene);
+    });
+};
+
+const applySubtitleModeToDraft = (draft: MarketingDraft, mode: SubtitleMode) => {
+    draft.scenes.forEach(scene => {
+        scene.subtitleMode = mode;
+        scene.subtitle = effectiveSceneCaption(scene);
     });
 };
 
@@ -378,26 +424,69 @@ const refreshDraftVoiceoverLines = (draft: MarketingDraft) => {
 };
 
 const narrationModeLabel = (mode?: NarrationMode) => {
-    return narrationModeOptions.find(item => item.value === mode)?.label || "画外音";
+    return narrationModeOptions.find(item => item.value === mode)?.label || "无台词";
 };
 
 const effectiveSceneCaption = (scene: SceneDraft) => {
+    if (scene.subtitleMode === "none") {
+        return "";
+    }
     return cleanSentence(scene.captionOverride || scene.voiceoverLine || scene.subtitle || "");
 };
 
-const buildVideoPromptWithSpeech = (scene: SceneDraft) => {
+const buildReferenceAnalysisInstruction = (analysis?: MarketingDraft["referenceAnalysis"]) => {
+    if (!analysis) {
+        return "";
+    }
+    const rows = [
+        analysis.plot ? `剧情推进：${analysis.plot}` : "",
+        analysis.structure ? `分镜结构：${analysis.structure}` : "",
+        analysis.shotLanguage ? `镜头语言：${analysis.shotLanguage}` : "",
+        analysis.visualStyle ? `视觉风格：${analysis.visualStyle}` : "",
+        analysis.rhythm ? `节奏：${analysis.rhythm}` : "",
+        analysis.characterAction ? `主体动作：${analysis.characterAction}` : "",
+        analysis.captionAudio ? `字幕/声音：${analysis.captionAudio}` : "",
+        analysis.reusableRules ? `可复用规则：${analysis.reusableRules}` : "",
+    ].filter(Boolean);
+    if (!rows.length) {
+        return "";
+    }
+    return [
+        "参考视频拆解应用要求：",
+        ...rows,
+        "生成时必须迁移上述剧情结构、镜头节奏、构图/光影/色彩和字幕声音规律；但必须换成当前主题的新人物、新场景和新画面，不能复刻参考视频原人物、原动作细节、原台词或原音乐。",
+    ].join("\n");
+};
+
+const appendReferenceAnalysisToPrompt = (prompt: string, analysis?: MarketingDraft["referenceAnalysis"]) => {
+    const instruction = buildReferenceAnalysisInstruction(analysis);
+    return [prompt, instruction].filter(item => String(item || "").trim()).join("\n\n");
+};
+
+const buildImagePromptWithReferenceAnalysis = (draft: MarketingDraft, scene: SceneDraft) => {
+    return appendReferenceAnalysisToPrompt(scene.imagePrompt, draft.referenceAnalysis);
+};
+
+const buildVideoPromptWithSpeech = (scene: SceneDraft, analysis?: MarketingDraft["referenceAnalysis"]) => {
     const line = cleanSentence(scene.voiceoverLine || "");
     const caption = effectiveSceneCaption(scene);
-    const speechInstruction = line
-        ? scene.narrationMode === "character"
-            ? `音频/台词要求：让画面中的主要角色自然开口说出这句中文台词：“${line}”。需要口型、情绪和语速匹配台词，不要省略，不要改写，不要只显示字幕。`
-            : `音频/台词要求：使用自然普通话画外音完整朗读这句台词：“${line}”。画面角色可以不张口，但必须有清晰旁白，不要省略，不要改写，不要只显示字幕。`
-        : "音频/台词要求：如无明确台词，可使用轻微环境声，不要生成无关对白。";
+    const speechInstruction =
+        scene.narrationMode === "none"
+            ? "音频/台词要求：不要生成对白、旁白或人物开口；只保留自然环境声或轻微氛围音。"
+            : line
+              ? scene.narrationMode === "character"
+                  ? `音频/台词要求：让画面中的主要角色自然开口说出这句中文台词：“${line}”。需要口型、情绪和语速匹配台词，不要省略，不要改写。`
+                  : `音频/台词要求：使用自然普通话画外音完整朗读这句台词：“${line}”。画面角色可以不张口，但必须有清晰旁白，不要省略，不要改写。`
+              : "音频/台词要求：如无明确台词，可使用轻微环境声，不要生成无关对白。";
+    const subtitleInstruction =
+        scene.subtitleMode === "none"
+            ? "字幕要求：不要生成画面字幕、口播字幕、标题条或贴纸文字。"
+            : `字幕要求：画面字幕应与本镜台词一致；当前字幕：${caption || line || "无"}`;
     return [
-        scene.videoPrompt,
+        appendReferenceAnalysisToPrompt(scene.videoPrompt, analysis),
         "",
         speechInstruction,
-        `字幕要求：画面字幕必须与本镜台词一致；当前字幕：${caption || line || "无"}`,
+        subtitleInstruction,
     ].join("\n");
 };
 
@@ -431,28 +520,41 @@ const normalizeHotTrendCard = (raw: any, index: number): HotTrendCard | null => 
     if (!raw || typeof raw !== "object") {
         return null;
     }
-    const title = String(raw.title || "").trim();
+    const title = String(raw.title || raw.hotTitle || raw.name || raw.topic || "").trim();
     if (!title) {
         return null;
     }
-    const risk = raw.risk === "high" || raw.risk === "medium" ? raw.risk : "low";
-    const fitScore = Math.max(0, Math.min(100, Number(raw.fitScore || raw.score || 0)));
+    const rawRisk = String(raw.risk || raw.riskLevel || raw.risk_level || "").toLowerCase();
+    const risk: HotTrendRisk =
+        rawRisk === "high" || rawRisk.includes("高") || rawRisk.includes("不建议")
+            ? "high"
+            : rawRisk === "medium" || rawRisk.includes("中") || rawRisk.includes("谨慎")
+              ? "medium"
+              : "low";
+    const rawScore = raw.fitScore ?? raw.fit_score ?? raw.score ?? raw.fit ?? raw.matchScore ?? raw.match_score ?? 50;
+    const fitScore = Math.max(0, Math.min(100, Number(rawScore) || 50));
+    const rawSelected = raw.selected ?? raw.use ?? raw.usable ?? raw.recommended;
     return {
         id: String(raw.id || makeHotTrendCardId(title, index)),
-        source: String(raw.source || ""),
+        source: String(raw.source || raw.platform || ""),
         title,
-        summary: String(raw.summary || ""),
+        summary: String(raw.summary || raw.reason || raw.description || raw.desc || ""),
         category: String(raw.category || "热点话题"),
         heat: String(raw.heat || ""),
         fitScore,
         risk,
-        usableAngle: String(raw.usableAngle || ""),
-        integration: String(raw.integration || ""),
-        forcedAngle: String(raw.forcedAngle || raw.hardSellAngle || ""),
-        hookExample: String(raw.hookExample || raw.openingExample || ""),
-        playIdea: String(raw.playIdea || raw.idea || ""),
+        usableAngle: String(raw.usableAngle || raw.usable_angle || raw.angle || ""),
+        integration: String(raw.integration || raw.integrationIdea || raw.integration_idea || raw.combineWay || raw.combine_way || ""),
+        forcedAngle: String(raw.forcedAngle || raw.forced_angle || raw.hardSellAngle || raw.hard_sell_angle || ""),
+        hookExample: String(raw.hookExample || raw.hook_example || raw.openingExample || raw.opening_example || ""),
+        playIdea: String(raw.playIdea || raw.play_idea || raw.idea || ""),
         avoid: String(raw.avoid || ""),
-        selected: Boolean(raw.selected ?? (risk !== "high" && fitScore >= 70)),
+        selected:
+            typeof rawSelected === "boolean"
+                ? rawSelected
+                : typeof rawSelected === "string"
+                  ? /true|yes|1|推荐|可用|使用/i.test(rawSelected)
+                  : risk !== "high" && fitScore >= 70,
         analyzed: true,
     };
 };
@@ -482,15 +584,24 @@ const candidateToBackupHotTrendCard = (item: HotTrendCandidate, index: number): 
 
 const mergeAnalyzedHotTrendCards = (cards: HotTrendCard[], candidates: HotTrendCandidate[]) => {
     const byId = new Map(cards.map(card => [card.id, card]));
-    const usedTitles = new Set(cards.map(card => `${card.source}:${card.title}`.toLowerCase()));
+    const usedKeys = new Set(cards.flatMap(card => [`${card.source}:${card.title}`.toLowerCase(), card.title.toLowerCase()]));
     for (const candidate of candidates) {
         const key = `${candidate.source}:${candidate.title}`.toLowerCase();
-        if (byId.has(candidate.id) || usedTitles.has(key)) {
+        const titleKey = candidate.title.toLowerCase();
+        const existing = Array.from(byId.values()).find(card => card.title.toLowerCase() === titleKey);
+        if (existing) {
+            existing.id = existing.id || candidate.id;
+            existing.source = existing.source || candidate.source;
+            existing.heat = existing.heat || candidate.heat || "";
+            continue;
+        }
+        if (byId.has(candidate.id) || usedKeys.has(key) || usedKeys.has(titleKey)) {
             continue;
         }
         const card = candidateToBackupHotTrendCard(candidate, byId.size);
         byId.set(card.id, card);
-        usedTitles.add(key);
+        usedKeys.add(key);
+        usedKeys.add(titleKey);
     }
     const sourceOrder = new Map(hotTrendSourceOptions.map((item, index) => [item.value, index]));
     return Array.from(byId.values())
@@ -531,14 +642,14 @@ const buildHotTrendAnalysisPrompt = (items: HotTrendCandidate[]) => {
             ? "本次优先寻找“梗”：包括短视频流行表达、口头禅、评论区话术、挑战模板、反转句式、名场面结构、情绪梗。新闻事件/热搜热点只能作为备选，不要把普通新闻当成梗。"
             : "本次优先寻找热点话题：可以包含热搜事件、热门内容和公共讨论，但仍需筛掉高风险内容。";
     return `
-请根据品牌信息，筛选最近热梗/热点是否适合融入营销短视频脚本。
+请根据视频主题和生成要求，筛选最近热梗/热点是否适合融入短视频脚本。
 ${modeRule}
 
-品牌/产品/账号：${safeJsonString(form.value.brandName)}
-品牌说明：${safeJsonString(form.value.brandBrief)}
+视频主题 / 对象 / IP：${safeJsonString(form.value.brandName)}
+主题补充（可选）：${safeJsonString(form.value.brandBrief)}
 目标人群：${safeJsonString(form.value.targetAudience)}
-核心卖点：${safeJsonString(form.value.productSellingPoints)}
-大致思路：${safeJsonString(form.value.idea)}
+必须保留的信息（可选）：${safeJsonString(form.value.productSellingPoints)}
+生成要求 / 台词约束（可选）：${safeJsonString(form.value.idea)}
 希望关注的热点关键词：${safeJsonString(hotTrendKeyword.value)}
 采集模式：${hotTrendMode.value === "meme" ? "热梗优先" : "热点优先"}
 
@@ -557,8 +668,8 @@ ${JSON.stringify(compactItems, null, 2)}
       "heat": "热度信息，可为空",
       "fitScore": 0,
       "risk": "low|medium|high",
-      "usableAngle": "为什么适合/不适合这个品牌",
-      "integration": "自然融合玩法：怎么把这个梗改成品牌脚本里的表达",
+      "usableAngle": "为什么适合/不适合这个视频主题",
+      "integration": "自然融合玩法：怎么把这个梗改成当前主题脚本里的表达",
       "forcedAngle": "硬蹭脑洞：如果强行结合，可以怎么蹭，允许脑洞但要说清楚风险",
       "hookExample": "可以直接启发脚本的开头示例，20字以内，口语化",
       "playIdea": "一个具体短视频玩法，比如评论区梗、反转开场、挑战模板、类比桥段",
@@ -574,11 +685,116 @@ ${JSON.stringify(compactItems, null, 2)}
 3. 不要写成风控报告。每条都要给一个可执行的玩法，尤其是 forcedAngle、hookExample、playIdea。
 4. 如果是热梗优先，优先返回可迁移的表达结构，例如“不是X而是Y”“谁懂啊”“沉浸式”“显眼包”“电子榨菜”这类可改写模板；普通新闻热搜只能作为备选。
 5. 如果候选热点不少于 10 条，至少返回 10 条，最多返回 12 条；不要只返回最适合的两三条。
-6. 非常火但不一定贴合品牌的热梗也要返回一部分，作为备选灵感，fitScore 可以较低，selected=false，但必须给“硬蹭脑洞”。
+6. 非常火但不一定贴合主题的热梗也要返回一部分，作为备选灵感，fitScore 可以较低，selected=false，但必须给“硬蹭脑洞”。
 7. 实在不相干、没有可迁移句式、不能形成短视频玩法的内容不要返回。
 8. selected 只给低风险且 fitScore >= 70 的热点；中等风险或明显硬蹭的内容 selected=false，让用户自己选。
 9. 每条的 hookExample、playIdea、forcedAngle 必须针对该热点标题单独写，禁止使用同一句模板套所有候选。
 `.trim();
+};
+
+const sanitizeHotTrendJsonText = (content: string) => {
+    let inString = false;
+    let escaped = false;
+    let result = "";
+    for (const ch of String(content || "").replace(/^\uFEFF/, "")) {
+        if (inString) {
+            if (escaped) {
+                result += ch;
+                escaped = false;
+                continue;
+            }
+            if (ch === "\\") {
+                result += ch;
+                escaped = true;
+                continue;
+            }
+            if (ch === "\"") {
+                result += ch;
+                inString = false;
+                continue;
+            }
+            if (ch === "\n") {
+                result += "\\n";
+                continue;
+            }
+            if (ch === "\r") {
+                result += "\\r";
+                continue;
+            }
+            if (ch === "\t") {
+                result += "\\t";
+                continue;
+            }
+            result += ch;
+            continue;
+        }
+        if (ch === "\"") {
+            inString = true;
+        }
+        if (ch >= " " || ch === "\n" || ch === "\r" || ch === "\t") {
+            result += ch;
+        }
+    }
+    return result.replace(/,\s*([}\]])/g, "$1").trim();
+};
+
+const extractHotTrendJsonText = (content: string) => {
+    const raw = String(content || "").trim();
+    const objectStart = raw.indexOf("{");
+    const objectEnd = raw.lastIndexOf("}");
+    if (objectStart >= 0 && objectEnd > objectStart) {
+        return raw.slice(objectStart, objectEnd + 1);
+    }
+    return raw;
+};
+
+const parseHotTrendAnalysisJson = (value: any) => {
+    if (value && typeof value === "object") {
+        return value;
+    }
+    const raw = String(value || "").trim();
+    if (!raw) {
+        return null;
+    }
+    const candidates = Array.from(
+        new Set([
+            raw,
+            extractHotTrendJsonText(raw),
+            sanitizeHotTrendJsonText(raw),
+            sanitizeHotTrendJsonText(extractHotTrendJsonText(raw)),
+        ].filter(Boolean))
+    );
+    for (const candidate of candidates) {
+        try {
+            return JSON.parse(candidate);
+        } catch (e) {
+        }
+    }
+    return null;
+};
+
+const extractHotTrendAnalysisPayload = (ret: any) => {
+    const msg = String(ret?.msg || "");
+    const parseFailedPayload = msg.includes("解析返回数据失败:")
+        ? msg.slice(msg.indexOf("解析返回数据失败:") + "解析返回数据失败:".length)
+        : "";
+    const candidates = [
+        ret?.data?.json,
+        ret?.data?.json?.trends ? ret.data.json : null,
+        ret?.data,
+        ret?.data?.content,
+        parseFailedPayload,
+    ];
+    for (const candidate of candidates) {
+        const parsed = parseHotTrendAnalysisJson(candidate);
+        if (Array.isArray(parsed?.trends)) {
+            return parsed;
+        }
+        if (Array.isArray(parsed)) {
+            return { trends: parsed };
+        }
+    }
+    return null;
 };
 
 const analyzeHotTrends = async (items: HotTrendCandidate[]) => {
@@ -600,10 +816,11 @@ const analyzeHotTrends = async (items: HotTrendCandidate[]) => {
             format: "json",
         }
     );
-    if (ret.code) {
+    const payload = extractHotTrendAnalysisPayload(ret);
+    if (ret.code && !payload) {
         throw new Error(ret.msg || "热点分析失败");
     }
-    const trends = Array.isArray(ret.data?.json?.trends) ? ret.data.json.trends : [];
+    const trends = Array.isArray(payload?.trends) ? payload.trends : [];
     const cards = trends
         .map((item: any, index: number) => normalizeHotTrendCard(item, index))
         .filter(Boolean) as HotTrendCard[];
@@ -619,13 +836,14 @@ const collectHotTrends = async () => {
         return;
     }
     if (!form.value.brandName.trim() && !form.value.idea.trim()) {
-        Dialog.tipError("请先填写品牌或大致思路，才能判断热点是否适配");
+        Dialog.tipError("请先填写视频主题或生成要求，才能判断热点是否适配");
         return;
     }
     try {
         collectingHotTrends.value = true;
         hotTrendLoadingText.value = "正在采集热梗...";
         hotTrendErrors.value = [];
+        hotTrendAnalysisError.value = "";
         hotTrendSourceCounts.value = {};
         hotTrendCards.value = [];
         const ret = await window.$mapi.hottrend.collect({
@@ -641,15 +859,16 @@ const collectHotTrends = async () => {
             throw new Error("没有采集到热点内容");
         }
         const fallbackCards = mergeAnalyzedHotTrendCards([], hotTrendCandidates.value).slice(0, 15);
-        hotTrendCards.value = fallbackCards;
         hotTrendLoadingText.value = "正在让 AI 生成玩法...";
         try {
             await analyzeHotTrends(hotTrendCandidates.value.slice(0, 15));
             hotTrendCards.value = hotTrendCards.value.slice(0, 15);
+            hotTrendAnalysisError.value = "";
             Dialog.tipSuccess("热梗已采集并完成 AI 精修");
         } catch (e: any) {
             hotTrendCards.value = fallbackCards;
-            Dialog.tipError(e?.message || "AI 精修失败，已先展示原始候选");
+            hotTrendAnalysisError.value = e?.message || "AI 精修失败，已先展示原始候选";
+            Dialog.tipError(hotTrendAnalysisError.value);
         }
     } catch (e: any) {
         Dialog.tipError(e?.message || "热点采集失败");
@@ -666,7 +885,7 @@ const buildHotTrendPromptSection = () => {
     }
     const modeText: Record<HotTrendFuseMode, string> = {
         light: "轻融合：只借用情绪、表达方式或开头语感，不直接写热点名称。",
-        medium: "中融合：可把热点作为开头钩子或场景背景，但品牌价值仍是主线。",
+        medium: "中融合：可把热点作为开头钩子或场景背景，但视频主题仍是主线。",
         strong: "强融合：可围绕安全热点设计剧情，但不得编造事实、消费争议或照搬原梗。",
     };
     return [
@@ -688,7 +907,7 @@ const buildHotTrendPromptSection = () => {
             null,
             2
         ),
-        "热点使用规则：自然借势，不硬蹭；不要复刻原梗原句；不要提及平台热榜来源；不要使用高风险社会事件；如果热点与产品价值冲突，以品牌价值为准。",
+        "热点使用规则：自然借势，不硬蹭；不要复刻原梗原句；不要提及平台热榜来源；不要使用高风险社会事件；如果热点与视频主题冲突，以主题表达为准。",
     ].join("\n");
 };
 
@@ -773,15 +992,16 @@ const exportDraftPrompts = (draft: MarketingDraft) => {
         ...draft.scenes.flatMap((scene, index) => [
             `## 镜头 ${index + 1}：${scene.title}`,
             `时长：${scene.duration}s`,
-            `台词/字幕：${effectiveSceneCaption(scene)}`,
+            `台词：${cleanSentence(scene.voiceoverLine || "") || "-"}`,
             `说话方式：${narrationModeLabel(scene.narrationMode)}`,
+            `字幕：${scene.subtitleMode === "none" ? "不显示" : effectiveSceneCaption(scene) || "-"}`,
             `参考图：${scene.referenceImageName || scene.referenceImageUrl || "-"}`,
             "",
             "图片提示词：",
-            scene.imagePrompt,
+            buildImagePromptWithReferenceAnalysis(draft, scene),
             "",
             "视频提示词：",
-            buildVideoPromptWithSpeech(scene),
+            buildVideoPromptWithSpeech(scene, draft.referenceAnalysis),
             "",
         ]),
     ];
@@ -793,15 +1013,16 @@ const exportScenePrompts = (draft: MarketingDraft, scene: SceneDraft, index: num
         `# ${draft.title} - 镜头 ${index + 1} ${scene.title}`,
         "",
         `时长：${scene.duration}s`,
-        `台词/字幕：${effectiveSceneCaption(scene)}`,
+        `台词：${cleanSentence(scene.voiceoverLine || "") || "-"}`,
         `说话方式：${narrationModeLabel(scene.narrationMode)}`,
+        `字幕：${scene.subtitleMode === "none" ? "不显示" : effectiveSceneCaption(scene) || "-"}`,
         `参考图：${scene.referenceImageName || scene.referenceImageUrl || "-"}`,
         "",
         "图片提示词：",
-        scene.imagePrompt,
+        buildImagePromptWithReferenceAnalysis(draft, scene),
         "",
         "视频提示词：",
-        buildVideoPromptWithSpeech(scene),
+        buildVideoPromptWithSpeech(scene, draft.referenceAnalysis),
         "",
     ];
     DownloadUtil.downloadFile(lines.join("\n"), `${draft.title || "marketing"}_镜头${index + 1}_prompts.md`);
@@ -811,11 +1032,97 @@ const isDataOrRemoteUrl = (value: string) => {
     return /^(data:|https?:\/\/)/i.test(value);
 };
 
+const SEEDANCE_MIN_IMAGE_PIXELS = 409600;
+const SEEDANCE_MAX_IMAGE_PIXELS = 2086876;
+
+const dataUrlToBytes = (value: string) => {
+    const raw = String(value || "").replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
+    const binary = window.atob(raw);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+};
+
+const loadImageElement = async (url: string) => {
+    const img = new Image();
+    img.decoding = "async";
+    await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("参考图读取失败"));
+        img.src = url;
+    });
+    return img;
+};
+
+const normalizeSeedanceLocalImage = async (value: string) => {
+    if (!value || isDataOrRemoteUrl(value)) {
+        return value;
+    }
+    const dataUrl = await pathToDataUrl(value);
+    if (!/^data:image\//i.test(dataUrl)) {
+        return value;
+    }
+    const img = await loadImageElement(dataUrl);
+    const pixels = img.naturalWidth * img.naturalHeight;
+    if (pixels >= SEEDANCE_MIN_IMAGE_PIXELS && pixels <= SEEDANCE_MAX_IMAGE_PIXELS) {
+        return value;
+    }
+    const targetPixels =
+        pixels > SEEDANCE_MAX_IMAGE_PIXELS
+            ? Math.floor(SEEDANCE_MAX_IMAGE_PIXELS * 0.98)
+            : Math.ceil(SEEDANCE_MIN_IMAGE_PIXELS * 1.02);
+    const scale = Math.sqrt(targetPixels / pixels);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        return value;
+    }
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const normalizedDataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    const file = await window.$mapi.file.hubFile("jpg", {
+        returnFullPath: true,
+        saveGroup: "image",
+        savePathParam: {
+            source: "seedance-reference",
+            width: canvas.width,
+            height: canvas.height,
+        },
+    });
+    await window.$mapi.file.writeBuffer(file, dataUrlToBytes(normalizedDataUrl));
+    return file;
+};
+
+const directFileRelayEnabled = (platform: DirectApiPlatformRecord | null) => {
+    const relay = platform?.content.directFileRelay;
+    return Boolean(
+        relay?.enabled &&
+            relay?.provider === "123pan" &&
+            String(relay.clientID || "").trim() &&
+            String(relay.clientSecret || "").trim() &&
+            String(relay.parentFileID || "").trim()
+    );
+};
+
 const resolveDirectApiImageUrl = async (value: string) => {
     if (!value || isDataOrRemoteUrl(value)) {
         return value;
     }
     return await pathToDataUrl(value);
+};
+
+const resolveDirectVideoReferenceImageUrl = async (platform: DirectApiPlatformRecord | null, value: string) => {
+    if (!value || isDataOrRemoteUrl(value)) {
+        return value;
+    }
+    const normalizedValue = await normalizeSeedanceLocalImage(value);
+    if (directFileRelayEnabled(platform)) {
+        return normalizedValue;
+    }
+    throw new Error("123 云盘资产入库失败：当前视频参考图是本地文件，但 Seedance 平台未配置可用的 123 云盘中转。请在平台设置中填写 Client ID、Client Secret、Folder ID 并开启资产模式。");
 };
 
 const collectStringValues = (value: any, result: string[] = []) => {
@@ -992,13 +1299,6 @@ const importDouyinVideo = async () => {
         douyinImportResult.value = result;
         douyinUrl.value = result.resolvedUrl || url;
         form.value.referenceUrl = result.resolvedUrl || url;
-        const newIdea = [result.title, result.desc].filter(Boolean).join("\n");
-        if (newIdea) {
-            form.value.idea = newIdea;
-        }
-        if (result.author) {
-            form.value.brandBrief = `参考账号：${result.author}`;
-        }
         if (result.localVideoPath) {
             await setReferenceVideoFromPath(result.localVideoPath, `${result.title || result.awemeId || "douyin-video"}.mp4`);
             referenceVideoMode.value = "frames";
@@ -1014,6 +1314,22 @@ const importDouyinVideo = async () => {
 
 const clearReferenceVideo = () => {
     referenceVideo.value = null;
+    clearReferenceArtifacts();
+};
+
+const clearReferenceArtifacts = () => {
+    drafts.value.forEach(draft => {
+        draft.referenceAnalysis = undefined;
+    });
+};
+
+const clearAllReferenceInputs = () => {
+    referenceVideo.value = null;
+    referenceImages.value = [];
+    form.value.referenceUrl = "";
+    douyinUrl.value = "";
+    douyinImportResult.value = null;
+    clearReferenceArtifacts();
 };
 
 const buildReferenceContentParts = async () => {
@@ -1070,12 +1386,13 @@ const refreshReferenceFrames = async () => {
 
 const buildScriptSystemPrompt = () => {
     return [
-        "你是资深短视频营销策划和AI视频导演。",
+        "你是资深短视频导演、分镜策划和AI视频提示词工程师。",
         "你必须输出严格 JSON，不要输出 Markdown、解释、注释或代码块。",
-        "任务是为品牌生成原创营销短视频脚本，不复刻参考视频中的人物、画面、音乐、动作或台词。",
+        "任务是基于视频主题、生成要求和参考视频/参考图，生成可编辑的原创短视频方案；可以模仿参考视频的结构、节奏、镜头语言、风格和表达方法，但不能照搬人物身份、原画面、音乐、动作细节或原台词。",
+        "如果提供参考视频或抽帧，必须先拆解它的剧情、分镜、景别、镜头运动、主体动作、画面风格、节奏、字幕/台词规律，并把可迁移要点写入 JSON 的 referenceAnalysis。",
         "每条视频必须适合竖屏短视频，前2秒有钩子，语言口语化，避免夸大承诺、低俗擦边和侵犯第三方权益。",
-        "所有图片提示词和视频提示词必须能直接用于AI生图/生视频。",
-        "同一条视频内必须保持主角、服装基调、品牌视觉风格、色彩、光影和镜头语言一致；如果多个分镜属于同一地点，还必须保持场景空间、道具、背景元素和光线方向一致。",
+        "所有图片提示词和视频提示词必须能直接用于AI生图/生视频，并明确继承 referenceAnalysis 中可迁移的构图、节奏、转场和风格规则。",
+        "同一条视频内必须保持主角、服装基调、视觉风格、色彩、光影和镜头语言一致；如果多个分镜属于同一地点，还必须保持场景空间、道具、背景元素和光线方向一致。",
     ].join("\n");
 };
 
@@ -1093,27 +1410,28 @@ const buildScriptPrompt = () => {
           ].join("\n")
         : "抖音导入：未导入";
     return `
-请根据以下输入，生成 ${form.value.count} 条品牌营销短视频方案。
+请根据以下输入，生成 ${form.value.count} 条原创短视频 / AI 视频方案。
 
-品牌/产品/账号：${safeJsonString(form.value.brandName)}
-品牌说明：${safeJsonString(form.value.brandBrief)}
+视频主题 / 对象 / IP：${safeJsonString(form.value.brandName)}
+主题补充（可选）：${safeJsonString(form.value.brandBrief)}
 目标人群：${safeJsonString(form.value.targetAudience)}
-核心卖点：${safeJsonString(form.value.productSellingPoints)}
-大致思路：${safeJsonString(form.value.idea)}
+必须保留的信息（可选）：${safeJsonString(form.value.productSellingPoints)}
+生成要求 / 台词约束（可选）：${safeJsonString(form.value.idea)}
 优先开头台词：${safeJsonString(form.value.baseLine)}
 参考链接：${safeJsonString(form.value.referenceUrl)}
 参考视频：${referenceVideo.value ? safeJsonString(referenceVideo.value.name) : "未上传"}
 参考视频抽帧说明：${referenceFrameRule.value || "未提供参考帧"}
 参考图片：${referenceImages.value.length ? `已上传 ${referenceImages.value.length} 张` : "未上传"}
 ${douyinInfo}
-参考链接使用规则：只参考主题、情绪、节奏和标签方向，不复刻人物、画面、音乐、动作或原台词。
+参考视频使用规则：必须分析参考视频的剧情走向、分镜结构、镜头景别、镜头运动、主体动作、构图、色彩、光影、字幕/台词呈现和节奏；生成方案要模仿这些“方法”，但换成新主题/新人设/新画面，不复刻原视频人物、画面、音乐、动作细节或原台词。
 ${buildHotTrendPromptSection()}
-画面风格：${safeJsonString(form.value.visualStyle)}
+画面风格：${safeJsonString(form.value.visualStyle)}。如果为空且提供了参考视频/抽帧，请从参考视频中归纳一段可直接回填到“画面风格”的短视觉摘要，并写入 draft.visualStyle 和 referenceAnalysis.visualStyle。
+说话方式：${form.value.narrationMode === "none" ? "无台词/无旁白" : narrationModeLabel(form.value.narrationMode)}
+字幕显示：${form.value.subtitleMode === "none" ? "不显示字幕" : "显示字幕"}
 画幅：${form.value.ratio}
-单条总时长：${form.value.duration} 秒
 每条分镜数：${form.value.sceneCount}
 
-营销角度必须按顺序使用：
+创作角度必须按顺序使用：
 ${angleGuide}
 
 请只输出如下 JSON：
@@ -1123,17 +1441,29 @@ ${angleGuide}
       "angle": "pain|desire|contrast|scene|conversion",
       "title": "短标题",
       "hook": "前2秒钩子，18字以内，口语化",
-      "voiceover": "完整口播文案，适合${form.value.duration}秒，不要包含CTA",
+      "voiceover": "完整口播文案，不要包含CTA；如果说话方式为 none 可写空字符串或只写画面表达思路",
       "cta": "行动引导，简短自然",
+      "visualStyle": "可直接回填到画面风格输入框的短视觉摘要，40-80字，只写画幅、色彩、光线、质感、场景氛围、构图规律",
+      "referenceAnalysis": {
+        "plot": "参考视频剧情/事件推进：按起承转合概括。如果没有参考视频则写空字符串",
+        "structure": "参考视频分镜结构：例如开场钩子-冲突-展示-反转-收束",
+        "shotLanguage": "镜头语言：景别、机位、运镜、转场、画面组织方式",
+        "visualStyle": "视觉风格短摘要：40-80字，只写画幅、色彩、光线、质感、场景氛围、构图规律",
+        "rhythm": "节奏：剪辑速度、镜头时长变化、信息密度、情绪起伏",
+        "characterAction": "人物/主体动作和表演规律：只描述可迁移方法，不复刻具体人物",
+        "captionAudio": "字幕、台词、旁白、音效/音乐的使用规律",
+        "reusableRules": "后续生图/生视频必须复用的可迁移规则，写成具体执行要点"
+      },
       "scenes": [
         {
           "title": "镜头名称",
           "duration": 4,
-          "subtitle": "兼容字段，必须与 voiceoverLine 完全一致",
-          "voiceoverLine": "本分镜实际要说出来的中文台词，也会作为画面字幕；第一镜必须包含开头钩子，最后一镜必须包含行动引导",
-          "narrationMode": "voiceover|character",
-          "imagePrompt": "中文生图提示词，包含主体、统一主角设定、场景连续性、环境、构图、光线、品牌氛围、竖屏安全区；必须原创",
-          "videoPrompt": "中文生视频提示词，包含镜头运动、人物动作、场景连续性、情绪、节奏；字幕必须跟随 voiceoverLine，不复刻参考视频"
+          "subtitle": "字幕文本；如果字幕模式为 none 则写空字符串",
+          "voiceoverLine": "本分镜实际要说出来的中文台词；如果说话方式为 none 则写空字符串",
+          "narrationMode": "none|voiceover|character",
+          "subtitleMode": "none|caption",
+          "imagePrompt": "中文生图提示词，包含主体、统一主角设定、场景连续性、环境、构图、光线、参考视频风格迁移点、竖屏安全区；必须原创",
+          "videoPrompt": "中文生视频提示词，包含镜头运动、人物动作、场景连续性、情绪、节奏、参考视频分镜/运镜/剪辑节奏迁移点；字幕必须跟随 voiceoverLine，不复刻参考视频"
         }
       ]
     }
@@ -1143,13 +1473,15 @@ ${angleGuide}
 硬性要求：
 1. drafts 数量必须等于 ${form.value.count}。
 2. 每个 draft 必须有 ${form.value.sceneCount} 个 scenes。
-3. scene.duration 总和尽量接近 ${form.value.duration} 秒。
+3. 每个 scene.duration 是一个独立 Seedance 视频任务时长，必须在 4-15 秒之间；请根据分镜内容分别设置，不要所有分镜机械相同。没有特殊节奏要求时可用 ${DEFAULT_SCENE_DURATION} 秒。
 4. 不要使用“保证、最好、第一、治愈、百分百”等绝对化或夸大表述。
 5. 不要出现第三方真实 UI、真实人物姓名、原视频人物外貌复刻。
-6. 每条视频的所有 imagePrompt 必须复用同一个主角设定和视觉风格；同一场景的分镜必须明确写出一致的场景空间、道具、光线方向和色调；不同场景也必须保持统一品牌质感。
-7. hook、voiceover、cta 不是备注，必须被分配到 scenes[].voiceoverLine 中：第一镜说 hook，中间镜说口播主体，最后一镜说 cta；scenes[].subtitle 必须与 voiceoverLine 完全一致。
-8. scenes[].narrationMode 默认使用 ${form.value.narrationMode}，除非该镜头明显更适合角色开口或画外音。
-9. 如果提供了已选热点灵感，必须把它转化为自然的短视频切入角度，优先融入 hook、场景冲突或口播语气；不要把热点当作孤立标签堆在文案里。
+6. 如果提供参考视频/抽帧，每个 draft.referenceAnalysis 必须具体，不允许写“无法判断”“仅供参考”这类空话；看不出的细节可以写“未从参考帧确认”，但必须分析可见的构图、主体、景别、色彩和节奏线索。
+7. 每条视频的所有 imagePrompt 必须复用同一个主角设定和视觉风格；同一场景的分镜必须明确写出一致的场景空间、道具、光线方向和色调；不同场景也必须保持统一质感。
+8. 如果当前说话方式不是 none，hook、voiceover、cta 不是备注，必须被分配到 scenes[].voiceoverLine 中：第一镜说 hook，中间镜说口播主体，最后一镜说 cta；如果说话方式为 none，scenes[].voiceoverLine 必须为空。
+9. scenes[].narrationMode 默认使用 ${form.value.narrationMode}，scenes[].subtitleMode 默认使用 ${form.value.subtitleMode}；字幕模式为 none 时 scenes[].subtitle 必须为空。
+10. 如果提供了已选热点灵感，必须把它转化为自然的短视频切入角度，优先融入 hook、场景冲突或口播语气；不要把热点当作孤立标签堆在文案里。
+11. draft.visualStyle 和 referenceAnalysis.visualStyle 必须简短，40-80字，只描述视觉风格：画幅、色彩、光线、构图、镜头质感和场景氛围；不要写剧情、节奏、转场、人物动作、台词或可复用规则。
 `.trim();
 };
 
@@ -1224,21 +1556,46 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
     if (!scenes.length) {
         return null;
     }
+    const titleSeed = form.value.brandName.trim() || referenceVideo.value?.name || douyinImportResult.value?.title || "参考视频";
+    const rawReferenceAnalysis = raw.referenceAnalysis && typeof raw.referenceAnalysis === "object" ? raw.referenceAnalysis : {};
+    const rawVisualStyle =
+        rawReferenceAnalysis.visualStyle ||
+        raw.visualStyle ||
+        raw.style ||
+        raw.pictureStyle ||
+        raw.imageStyle ||
+        raw.videoStyle ||
+        "";
     const draft: MarketingDraft = {
         id: `${angle}-${Date.now()}-${index}`,
         angle,
-        title: String(raw.title || `${form.value.brandName}_${angleLabel(angle)}_营销短视频`),
+        title: String(raw.title || `${titleSeed}_${angleLabel(angle)}_短视频`),
         hook: String(raw.hook || ""),
         voiceover: String(raw.voiceover || ""),
         cta: String(raw.cta || ""),
+        referenceAnalysis: raw.referenceAnalysis && typeof raw.referenceAnalysis === "object"
+            ? {
+                  plot: String(rawReferenceAnalysis.plot || ""),
+                  structure: String(rawReferenceAnalysis.structure || ""),
+                  shotLanguage: String(rawReferenceAnalysis.shotLanguage || ""),
+                  visualStyle: String(rawVisualStyle || ""),
+                  rhythm: String(rawReferenceAnalysis.rhythm || ""),
+                  characterAction: String(rawReferenceAnalysis.characterAction || ""),
+                  captionAudio: String(rawReferenceAnalysis.captionAudio || ""),
+                  reusableRules: String(rawReferenceAnalysis.reusableRules || ""),
+              }
+            : rawVisualStyle
+              ? { visualStyle: String(rawVisualStyle) }
+            : undefined,
         scenes: scenes.map((scene: any, sceneIndex: number) => ({
             id: `${angle}-${index}-${sceneIndex}`,
             title: String(scene?.title || `镜头 ${sceneIndex + 1}`),
-            duration: Math.max(1, Math.min(15, Number(scene?.duration || Math.round(form.value.duration / 3)))),
+            duration: Math.max(4, Math.min(15, Number(scene?.duration || DEFAULT_SCENE_DURATION))),
             subtitle: String(scene?.subtitle || ""),
             captionOverride: String(scene?.captionOverride || ""),
             voiceoverLine: String(scene?.voiceoverLine || ""),
-            narrationMode: scene?.narrationMode === "character" ? "character" : "voiceover",
+            narrationMode: scene?.narrationMode === "none" ? "none" : scene?.narrationMode === "character" ? "character" : "voiceover",
+            subtitleMode: scene?.subtitleMode === "none" ? "none" : "caption",
             imagePrompt: String(scene?.imagePrompt || ""),
             videoPrompt: String(scene?.videoPrompt || ""),
             referenceImageUrl: String(scene?.referenceImageUrl || ""),
@@ -1246,6 +1603,73 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
     };
     ensureDraftVoiceoverLines(draft);
     return draft;
+};
+
+const buildVisualStyleFromReferenceAnalysis = (items: MarketingDraft[]) => {
+    const analysis = items.find(item => item.referenceAnalysis?.visualStyle)?.referenceAnalysis;
+    if (!analysis) {
+        return "";
+    }
+    return summarizeVisualStyleText(analysis.visualStyle || "");
+};
+
+const summarizeVisualStyleText = (value: string) => {
+    const raw = cleanSentence(value)
+        .replace(/^(画面风格|视觉风格|整体风格|风格|视觉风格短摘要)[：:：\s]*/i, "")
+        .replace(/(?:镜头语言|节奏|可复用规则|剧情推进|分镜结构|主体动作|字幕\/声音)[：:][^；。]*[；。]?/g, "");
+    if (!raw) {
+        return "";
+    }
+    const pieces = raw
+        .split(/[；。]/)
+        .map(item => item.trim())
+        .filter(Boolean)
+        .filter(item => !/(剧情|节奏|转场|台词|字幕|动作|人物动作|可复用|镜头语言|分镜结构)/.test(item));
+    const compact = (pieces.length ? pieces : [raw]).join("；");
+    return compact.length > 96 ? `${compact.slice(0, 96)}...` : compact;
+};
+
+const pickVisualStyleTextFromPrompt = (prompt: string) => {
+    const text = cleanSentence(prompt);
+    if (!text) {
+        return "";
+    }
+    const patterns = [
+        /(?:画面风格|视觉风格|整体风格|风格|质感|色彩|光线|构图|镜头质感)[：:，, ]([^。；;\n]{8,120})/,
+        /([^。；;\n]{0,60}(?:竖屏|真实感|电影感|纪录片|写实|卡通|3d|二次元|明亮|暗调|高饱和|低饱和|柔光|硬光|手持|固定机位|推拉|摇移|近景|中景|远景)[^。；;\n]{0,80})/,
+    ];
+    for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match?.[1]) {
+            return summarizeVisualStyleText(match[1]);
+        }
+    }
+    return summarizeVisualStyleText(text);
+};
+
+const buildVisualStyleFromScenePrompts = (items: MarketingDraft[]) => {
+    const scene = items.flatMap(item => item.scenes).find(item => item.imagePrompt || item.videoPrompt);
+    if (!scene) {
+        return "";
+    }
+    const imageStyle = pickVisualStyleTextFromPrompt(scene.imagePrompt);
+    const videoStyle = pickVisualStyleTextFromPrompt(scene.videoPrompt);
+    return summarizeVisualStyleText(imageStyle || videoStyle);
+};
+
+const shouldAutoFillVisualStyle = () => {
+    const current = form.value.visualStyle.trim();
+    return !current || current === DEFAULT_VISUAL_STYLE || current === LEGACY_DEFAULT_VISUAL_STYLE;
+};
+
+const syncVisualStyleFromDrafts = () => {
+    if (!shouldAutoFillVisualStyle()) {
+        return;
+    }
+    const inferredVisualStyle = buildVisualStyleFromReferenceAnalysis(drafts.value) || buildVisualStyleFromScenePrompts(drafts.value);
+    if (inferredVisualStyle) {
+        form.value.visualStyle = inferredVisualStyle;
+    }
 };
 
 const applyAiDrafts = (json: any) => {
@@ -1257,13 +1681,38 @@ const applyAiDrafts = (json: any) => {
         throw new Error("模型返回 JSON 中没有可用脚本");
     }
     drafts.value = normalized;
+    const inferredVisualStyle =
+        buildVisualStyleFromReferenceAnalysis(normalized) ||
+        summarizeVisualStyleText(json?.visualStyle || json?.style || json?.imageStyle || json?.videoStyle || "") ||
+        buildVisualStyleFromScenePrompts(normalized);
+    if (inferredVisualStyle && shouldAutoFillVisualStyle()) {
+        form.value.visualStyle = inferredVisualStyle;
+    }
     selectedDraftId.value = normalized[0]?.id || "";
 };
 
+watch(
+    drafts,
+    () => {
+        syncVisualStyleFromDrafts();
+    },
+    { deep: true, flush: "post" }
+);
+
+watch(
+    hasReferenceInput,
+    value => {
+        if (!value) {
+            clearReferenceArtifacts();
+        }
+    },
+    { immediate: true, flush: "post" }
+);
+
 const buildHook = (angle: AngleType) => {
-    const brand = textOr(form.value.brandName, "你的品牌");
+    const theme = textOr(form.value.brandName, "这个主题");
     const audience = textOr(form.value.targetAudience, "目标用户");
-    const point = textOr(form.value.productSellingPoints, "更轻松地完成关键行动");
+    const point = textOr(form.value.productSellingPoints, "更清晰地表达核心信息");
     const seedLine = form.value.baseLine.trim();
     const hookMap: Record<AngleType, string> = {
         pain: `${audience}最怕的不是没机会，而是状态一直掉线。`,
@@ -1272,37 +1721,37 @@ const buildHook = (angle: AngleType) => {
         scene: `下班后的十分钟，可能就是你重新找回状态的开始。`,
         conversion: `想把状态拉回来，先从一个简单动作开始。`,
     };
-    return cleanSentence(seedLine || `${hookMap[angle]} ${brand}帮你${point}。`);
+    return cleanSentence(seedLine || `${hookMap[angle]} ${theme}要表达的是：${point}。`);
 };
 
 const buildVoiceover = (angle: AngleType) => {
-    const brand = textOr(form.value.brandName, "这个工具");
-    const brief = textOr(form.value.brandBrief, "围绕用户真实需求，提供更轻松的体验");
-    const point = textOr(form.value.productSellingPoints, "找到节奏、打开话题、提升行动效率");
-    const idea = textOr(form.value.idea, "用短平快的方式展示产品价值");
+    const theme = textOr(form.value.brandName, "这个主题");
+    const brief = textOr(form.value.brandBrief, "围绕一个清晰的人设和情绪推进");
+    const point = textOr(form.value.productSellingPoints, "把核心信息讲清楚");
+    const idea = textOr(form.value.idea, "用短平快的方式完成起承转合");
     const map: Record<AngleType, string> = {
-        pain: `很多时候不是你不会表达，而是没有进入状态。${brand}把复杂的社交压力拆轻，让你从一个自然的话题开始。${point}，把主动权慢慢拿回来。`,
-        desire: `真正好的状态，是不需要用力证明自己。${brand}${brief}，帮你把每一次打开、每一次交流，都变成更轻松的开始。${point}。`,
-        contrast: `以前总觉得改变状态很难，现在只需要先迈出一步。${brand}让你用更自然的方式进入节奏，从犹豫到开口，从等待到行动。${idea}。`,
-        scene: `忙了一天也别急着把自己关掉。打开${brand}，从一个轻松场景进入，找回一点聊天欲、一点好奇心，也找回更好的自己。`,
-        conversion: `${brand}适合想提升状态、打开社交节奏的人。现在就从一个简单动作开始，看看今天会不会多一个新的可能。${point}。`,
+        pain: `${theme}先抛出一个观众熟悉的困境，再用一个小反转把情绪拉回来。${point}，让信息自然落到角色行动里。`,
+        desire: `${theme}${brief}，让观众先被画面和情绪吸引，再跟着角色进入一个更想看的状态。${point}。`,
+        contrast: `先让观众看到前后反差，再把转折放进一个具体场景。${idea}，让变化看起来更有记忆点。`,
+        scene: `${theme}不需要一上来解释太多，先进入一个有代入感的场景，再通过动作、台词和节奏把重点带出来。`,
+        conversion: `${theme}最后要给观众一个明确的情绪收束或行动方向。${point}，让结尾有完成感。`,
     };
     return cleanSentence(map[angle]);
 };
 
 const buildCta = (angle: AngleType) => {
-    const brand = textOr(form.value.brandName, "它");
+    const theme = textOr(form.value.brandName, "这个故事");
     if (angle === "conversion") {
-        return `现在体验${brand}，从今天开始把状态拉回来。`;
+        return `如果你也有类似感受，就从这一刻开始改变。`;
     }
-    return `想要更好的状态，就从${brand}开始。`;
+    return `看到最后，你会明白${theme}想说什么。`;
 };
 
 const sceneTemplates: Record<AngleType, Array<{ title: string; subtitle: string; visual: string }>> = {
     pain: [
         { title: "钩子", subtitle: "状态掉线，比没机会更可惜", visual: "都市男性独自走在夜晚街头，手机屏幕微光，表情疲惫但克制" },
         { title: "转折", subtitle: "先让自己轻松开口", visual: "人物坐在干净咖啡店，看着手机露出放松笑容，氛围自然" },
-        { title: "品牌露出", subtitle: "把主动权慢慢拿回来", visual: "手机界面以抽象光效展示社交互动，不出现真实平台 UI" },
+        { title: "主题呈现", subtitle: "把主动权慢慢拿回来", visual: "角色通过一个清晰动作完成情绪转折，画面留出字幕空间" },
     ],
     desire: [
         { title: "吸引", subtitle: "状态好，表达更有吸引力", visual: "自信男性整理外套走进城市夜景，霓虹但不杂乱" },
@@ -1321,32 +1770,33 @@ const sceneTemplates: Record<AngleType, Array<{ title: string; subtitle: string;
     ],
     conversion: [
         { title: "直接问题", subtitle: "想把状态拉回来？", visual: "人物正对镜头，干净背景，短广告开场构图" },
-        { title: "卖点", subtitle: "轻松打开社交节奏", visual: "手机产品氛围镜头，抽象卡片动效，不使用真实品牌 UI" },
-        { title: "转化", subtitle: "现在就开始体验", visual: "品牌名文字留白区，人物自信离开镜头，竖屏广告结尾" },
+        { title: "核心信息", subtitle: "轻松打开社交节奏", visual: "用道具、表情或场景变化呈现核心信息，不出现真实第三方 UI" },
+        { title: "收束", subtitle: "现在就开始体验", visual: "角色完成动作或转身离开，竖屏短视频结尾，画面干净" },
     ],
 };
 
 const buildScene = (angle: AngleType, index: number, draftIndex: number): SceneDraft => {
     const templates = sceneTemplates[angle];
     const template = templates[index % templates.length];
-    const brand = textOr(form.value.brandName, "品牌");
+    const theme = textOr(form.value.brandName, "视频主题");
     const style = textOr(form.value.visualStyle, "真实感短视频，竖屏构图");
-    const sceneCount = Number(form.value.sceneCount || 3);
-    const duration = Math.max(1, Math.round(form.value.duration / sceneCount));
+    const duration = DEFAULT_SCENE_DURATION;
     const imagePrompt = [
         style,
         template.visual,
-        `品牌主题：${brand}`,
+        `视频主题：${theme}`,
         `目标人群：${textOr(form.value.targetAudience, "目标用户")}`,
         "同一条视频保持同一位主角、相近服装基调、统一色彩和光影风格；如果与前后分镜同场景，保持空间布局、背景元素、道具和光线方向一致",
-        "原创广告画面，不复刻任何参考视频，不出现真实第三方平台界面，画面干净，字幕安全区充足",
+        form.value.subtitleMode === "none"
+            ? "原创短视频画面，不复刻任何参考视频，不出现真实第三方平台界面，画面干净，不生成字幕贴纸"
+            : "原创短视频画面，不复刻任何参考视频，不出现真实第三方平台界面，画面干净，字幕安全区充足",
     ].join("，");
     const videoPrompt = [
         `${style}，${template.visual}`,
-        `镜头节奏适合 ${form.value.duration} 秒竖屏营销短视频第 ${index + 1} 段`,
-        "延续同一条视频的主角、场景关系、色调、光影和品牌质感",
-        "轻微运镜，自然表情，商业广告质感，不使用参考视频人物或动作",
-        "画面字幕跟随本镜台词",
+        `镜头节奏适合 ${duration} 秒竖屏短视频第 ${index + 1} 段`,
+        "延续同一条视频的主角、场景关系、色调、光影和整体质感",
+        "轻微运镜，自然表情，短视频质感，不使用参考视频人物或动作",
+        form.value.subtitleMode === "none" ? "不要生成画面字幕" : "画面字幕跟随本镜台词",
     ].join("，");
     return {
         id: `${angle}-${draftIndex}-${index}`,
@@ -1358,19 +1808,20 @@ const buildScene = (angle: AngleType, index: number, draftIndex: number): SceneD
         imagePrompt,
         videoPrompt,
         referenceImageUrl: "",
+        subtitleMode: form.value.subtitleMode,
     };
 };
 
 const generateRuleDrafts = () => {
     if (!form.value.brandName.trim()) {
-        Dialog.tipError("请先输入品牌/产品/账号名称");
+        Dialog.tipError("请先输入视频主题 / 对象 / IP");
         return;
     }
     const selectedAngles = angles.slice(0, Number(form.value.count || 3));
     drafts.value = selectedAngles.map((item, draftIndex) => ({
         id: `${item.value}-${Date.now()}-${draftIndex}`,
         angle: item.value,
-        title: `${form.value.brandName.trim()}_${item.label}_营销短视频`,
+        title: `${form.value.brandName.trim()}_${item.label}_短视频`,
         hook: buildHook(item.value),
         voiceover: buildVoiceover(item.value),
         cta: buildCta(item.value),
@@ -1383,8 +1834,12 @@ const generateRuleDrafts = () => {
 };
 
 const generateDrafts = async () => {
-    if (!form.value.brandName.trim()) {
-        Dialog.tipError("请先输入品牌/产品/账号名称");
+    const hasReferenceInput =
+        Boolean(referenceVideo.value) ||
+        Boolean(form.value.referenceUrl.trim()) ||
+        Boolean(douyinImportResult.value);
+    if (!form.value.brandName.trim() && !hasReferenceInput) {
+        Dialog.tipError("请先输入视频主题 / 对象 / IP，或上传/导入参考视频");
         return;
     }
     if (!modelGenerator.value) {
@@ -1431,9 +1886,10 @@ const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft) =
     if (!platform || !platform.content.apiKey.trim()) {
         throw new Error("请先配置可用的 GPT Image 2 平台");
     }
+    const prompt = buildImagePromptWithReferenceAnalysis(draft, scene);
     const body = {
         model: "gpt-image-2",
-        prompt: scene.imagePrompt,
+        prompt,
         size: "1024x1536",
         quality: "high",
         n: 1,
@@ -1444,7 +1900,7 @@ const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft) =
         providerType: platform.content.platformType,
         providerProfileId: platform.id,
         providerProfileTitle: platform.title,
-        templateTitle: "营销短视频分镜图",
+        templateTitle: "短视频分镜图",
         templateType: "custom-api",
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
@@ -1461,7 +1917,7 @@ const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft) =
         serverTitle: "",
         serverVersion: "",
         modelConfig,
-        param: { input: { source: "MarketingVideoFlow", draft, scene, prompt: scene.imagePrompt } },
+        param: { input: { source: "MarketingVideoFlow", draft, scene, prompt } },
     };
     return await TaskService.submit(record);
 };
@@ -1471,10 +1927,11 @@ const submitCloudImageTask = async (draft: MarketingDraft, scene: SceneDraft) =>
     if (!template?.id) {
         throw new Error("请先选择云端生图模板");
     }
+    const prompt = buildImagePromptWithReferenceAnalysis(draft, scene);
     const record = await CloudTemplateTaskService.buildTaskRecord(template.id, {
         title: `${draft.title}_${scene.title}_分镜图`,
-        prompt: scene.imagePrompt,
-        text: scene.imagePrompt,
+        prompt,
+        text: prompt,
         selectedCapability: "image",
         draft,
         scene,
@@ -1496,8 +1953,13 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
     if (!platform || !platform.content.apiKey.trim()) {
         throw new Error("请先配置可用的 Seedance 平台");
     }
-    const referenceImageUrl = await resolveDirectApiImageUrl(scene.referenceImageUrl || "");
-    const videoPrompt = buildVideoPromptWithSpeech(scene);
+    let referenceImageUrl = "";
+    try {
+        referenceImageUrl = await resolveDirectVideoReferenceImageUrl(platform, scene.referenceImageUrl || "");
+    } catch (e: any) {
+        throw new Error(e?.message || "123 云盘资产入库失败");
+    }
+    const videoPrompt = buildVideoPromptWithSpeech(scene, draft.referenceAnalysis);
     const body: Record<string, any> = {
         model: form.value.videoModel,
         content: [
@@ -1507,7 +1969,7 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
                       {
                           type: "image_url",
                           image_url: { url: referenceImageUrl },
-                          role: "reference_image",
+                          role: "first_frame",
                       },
                   ]
                 : []),
@@ -1524,7 +1986,7 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
         providerType: platform.content.platformType,
         providerProfileId: platform.id,
         providerProfileTitle: platform.title,
-        templateTitle: "营销短视频片段",
+        templateTitle: "短视频片段",
         templateType: "custom-api",
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
@@ -1586,7 +2048,7 @@ const submitCloudVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =>
     if (!template?.id) {
         throw new Error("请先选择云端生视频模板");
     }
-    const videoPrompt = buildVideoPromptWithSpeech(scene);
+    const videoPrompt = buildVideoPromptWithSpeech(scene, draft.referenceAnalysis);
     const record = await CloudTemplateTaskService.buildTaskRecord(template.id, {
         title: `${draft.title}_${scene.title}_视频`,
         prompt: videoPrompt,
@@ -1653,7 +2115,7 @@ const submitDraft = async (target: MarketingDraft, type: "image" | "video" | "bo
 
 const submitAll = async (type: "image" | "video" | "both") => {
     if (!drafts.value.length) {
-        Dialog.tipError("请先生成营销脚本");
+        Dialog.tipError("请先生成脚本");
         return;
     }
     try {
@@ -1687,8 +2149,8 @@ const submitAll = async (type: "image" | "video" | "both") => {
         <div class="flex-shrink-0 border-b border-gray-100 bg-white px-6 py-4">
             <div class="flex flex-wrap items-center gap-4">
                 <div class="min-w-0 flex-1">
-                    <div class="text-[22px] font-semibold text-gray-900 leading-tight">营销短视频批量生成</div>
-                    <div class="text-sm text-gray-500 mt-1">品牌信息生成脚本，脚本可编辑，再提交图片/视频任务。</div>
+                    <div class="text-[22px] font-semibold text-gray-900 leading-tight">短视频批量生成</div>
+                    <div class="text-sm text-gray-500 mt-1">参考视频拆解剧情、分镜和风格后生成脚本；脚本可编辑，再提交图片/视频任务。</div>
                 </div>
                 <a-button @click="router.push('/server')">平台设置</a-button>
                 <a-button type="primary" size="large" :loading="generatingScripts" @click="generateDrafts">AI 生成脚本</a-button>
@@ -1701,15 +2163,15 @@ const submitAll = async (type: "image" | "video" | "both") => {
                     <div class="rounded-xl bg-white p-5 shadow-sm">
                         <div class="flex items-center justify-between gap-3 mb-4">
                             <div>
-                                <div class="text-base font-semibold text-gray-900">品牌与创意输入</div>
-                                <div class="text-xs text-gray-500 mt-1">这些字段会发送给你选择的大模型，生成后仍可逐条改写。</div>
+                                <div class="text-base font-semibold text-gray-900">主题与参考输入</div>
+                                <div class="text-xs text-gray-500 mt-1">参考视频会用于拆解剧情、分镜、节奏、风格和可迁移拍法，生成后仍可逐条改写。</div>
                             </div>
                             <a-tag color="arcoblue">大模型结构化生成</a-tag>
                         </div>
                         <a-form layout="vertical">
                             <div class="grid grid-cols-1 gap-x-4 xl:grid-cols-2">
-                                <a-form-item label="品牌/产品/账号">
-                                    <a-input v-model="form.brandName" placeholder="例如：他趣 / XX 健身房 / 情感教练 IP" />
+                                <a-form-item label="视频主题 / 对象 / IP">
+                                    <a-input v-model="form.brandName" placeholder="例如：末日求生短剧 / 水獭矿工IP / 家居好物开箱" />
                                 </a-form-item>
                             </div>
                             <a-form-item label="抖音链接导入">
@@ -1726,7 +2188,7 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                         </a-button>
                                     </div>
                                     <div class="mt-2 text-xs leading-5 text-gray-500">
-                                        会尝试解析公开视频并下载到本地缓存，再复用下方参考视频抽帧；失败时可填写 Cookie、接第三方解析 API，或直接上传本地视频。
+                                        会尝试解析公开视频并下载到本地缓存，再复用下方参考视频抽帧；后续脚本会分析参考视频的剧情、分镜、节奏和风格。失败时可填写 Cookie、接第三方解析 API，或直接上传本地视频。
                                     </div>
                                     <a-collapse class="mt-2 !bg-transparent" :bordered="false">
                                         <a-collapse-item key="douyin-advanced" header="高级设置：Cookie / 自定义解析 API">
@@ -1763,8 +2225,9 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                         <a-button :loading="extractingFrames" @click="pickReferenceVideo">上传视频</a-button>
                                         <a-button v-if="referenceVideo" :loading="extractingFrames" @click="refreshReferenceFrames">重抽帧</a-button>
                                         <a-button v-if="referenceVideo" @click="clearReferenceVideo">移除</a-button>
+                                        <a-button v-if="hasReferenceInput || referenceImages.length" status="danger" @click="clearAllReferenceInputs">清空参考</a-button>
                                         <div class="min-w-[180px] flex-1 truncate text-sm text-gray-600">
-                                            {{ referenceVideo?.name || "可选，上传后自动抽帧给视觉模型分析" }}
+                                            {{ referenceVideo?.name || "可选，上传后自动抽帧，供视觉模型拆解剧情/分镜/风格" }}
                                         </div>
                                     </div>
                                     <div v-if="referenceVideo" class="mt-3 flex min-w-0 flex-wrap items-center gap-3">
@@ -1788,7 +2251,7 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                         </span>
                                     </div>
                                     <div v-if="referenceVideo && referenceVideoMode === 'frames'" class="mt-3 rounded-md bg-white px-3 py-2 text-xs leading-5 text-gray-500">
-                                        均匀取样，不连续截取；默认标准 10 帧适合大多数视觉模型，模型不支持多图时可切到少量或原视频输入。
+                                        均匀取样，不连续截取；默认标准 10 帧适合大多数视觉模型，用于拆解主体、场景、构图、色彩、镜头节奏和字幕规律。
                                     </div>
                                     <div v-if="referenceVideo && referenceVideoMode === 'frames'" class="mt-3">
                                         <div class="mb-2 flex items-center justify-between">
@@ -1893,6 +2356,9 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                             {{ sourceLabel(error.source) }}失败：{{ error.message }}
                                         </a-tag>
                                     </div>
+                                    <div v-if="hotTrendAnalysisError" class="mt-2 rounded-md bg-orange-50 px-3 py-2 text-xs leading-5 text-orange-700">
+                                        AI 精修未完成：{{ hotTrendAnalysisError }}。当前展示的是原始热榜候选，可手动勾选，也可以换脚本大模型后重新搜集。
+                                    </div>
                                     <div v-if="hotTrendCards.length" class="mt-3 grid max-h-[230px] grid-cols-1 gap-2 overflow-y-auto pr-1 xl:grid-cols-2">
                                         <div
                                             v-for="card in visibleHotTrendCards"
@@ -1931,26 +2397,26 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                 </div>
                             </a-form-item>
                             <div class="grid grid-cols-1 gap-x-4 xl:grid-cols-2">
-                                <a-form-item label="品牌说明">
-                                    <a-textarea v-model="form.brandBrief" :auto-size="{ minRows: 3, maxRows: 5 }" placeholder="面向谁，解决什么问题，整体调性是什么" />
+                                <a-form-item label="主题补充（可选）">
+                                    <a-textarea v-model="form.brandBrief" :auto-size="{ minRows: 3, maxRows: 5 }" placeholder="可不填；只在需要固定角色、人设、世界观、内容边界时填写" />
                                 </a-form-item>
-                                <a-form-item label="核心卖点">
-                                    <a-textarea v-model="form.productSellingPoints" :auto-size="{ minRows: 3, maxRows: 5 }" placeholder="例如：轻松聊天、认识新朋友、提升社交状态" />
+                                <a-form-item label="必须保留的信息（可选）">
+                                    <a-textarea v-model="form.productSellingPoints" :auto-size="{ minRows: 3, maxRows: 5 }" placeholder="可不填；需要固定的信息、情绪、梗点、产品点或剧情目标写这里" />
                                 </a-form-item>
                             </div>
                             <div class="grid grid-cols-2 gap-x-4">
                                 <a-form-item label="目标人群">
                                     <a-textarea v-model="form.targetAudience" :auto-size="{ minRows: 3, maxRows: 5 }" />
                                 </a-form-item>
-                                <a-form-item label="大致思路/已有台词">
-                                    <a-textarea v-model="form.idea" :auto-size="{ minRows: 3, maxRows: 5 }" placeholder="你想表达的方向、情绪、场景或产品利益点" />
+                                <a-form-item label="生成要求 / 台词约束（可选）">
+                                    <a-textarea v-model="form.idea" :auto-size="{ minRows: 3, maxRows: 5 }" placeholder="可不填；只写额外控制项，比如必须说哪句台词、结尾动作、禁用元素" />
                                 </a-form-item>
                             </div>
                             <a-form-item label="优先使用的开头台词">
                                 <a-input v-model="form.baseLine" placeholder="可选，填写后会优先作为开头钩子" />
                             </a-form-item>
                             <a-form-item label="画面风格">
-                                <a-textarea v-model="form.visualStyle" :auto-size="{ minRows: 2, maxRows: 4 }" />
+                                <a-textarea v-model="form.visualStyle" :auto-size="{ minRows: 2, maxRows: 4 }" placeholder="可不填；上传参考视频后会根据拆解出的色彩、光线、构图、镜头质感自动填写" />
                             </a-form-item>
                         </a-form>
                     </div>
@@ -1993,6 +2459,20 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                     <a-option v-for="item in videoModelOptions" :key="item" :value="item">{{ item }}</a-option>
                                 </a-select>
                             </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <div class="text-xs font-semibold text-gray-500 mb-2">说话方式</div>
+                                    <a-select v-model="form.narrationMode" class="w-full">
+                                        <a-option v-for="item in narrationModeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                                    </a-select>
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-gray-500 mb-2">字幕显示</div>
+                                    <a-select v-model="form.subtitleMode" class="w-full">
+                                        <a-option v-for="item in subtitleModeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                                    </a-select>
+                                </div>
+                            </div>
                             <div>
                                 <div class="text-xs font-semibold text-gray-500 mb-2">生成条数</div>
                                 <a-radio-group v-model="form.count" type="button">
@@ -2005,12 +2485,6 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                     <a-radio v-for="item in sceneCountOptions" :key="item" :value="item">{{ item }}</a-radio>
                                 </a-radio-group>
                             </div>
-                            <div>
-                                <div class="text-xs font-semibold text-gray-500 mb-2">单条时长</div>
-                                <a-select v-model="form.duration" class="w-full">
-                                    <a-option v-for="item in durationOptions" :key="item" :value="item">{{ item }}s</a-option>
-                                </a-select>
-                            </div>
                             <div class="rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-600">
                                 脚本生成会要求大模型输出固定 JSON：标题、钩子、口播、CTA、指定数量分镜、图片提示词、视频提示词。若模型不可用，可先用规则生成兜底。
                             </div>
@@ -2021,7 +2495,7 @@ const submitAll = async (type: "image" | "video" | "both") => {
 
                 <div v-if="!drafts.length" class="rounded-xl border border-dashed border-gray-200 bg-white p-12 text-center">
                     <div class="text-lg font-semibold text-gray-900">还没有生成方案</div>
-                    <div class="text-sm text-gray-500 mt-1">填写品牌信息后点击“生成脚本”，这里会出现可编辑的营销方案。</div>
+                    <div class="text-sm text-gray-500 mt-1">填写主题信息或上传参考视频后点击“生成脚本”，这里会出现可编辑的视频方案。</div>
                 </div>
 
                 <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
@@ -2059,7 +2533,7 @@ const submitAll = async (type: "image" | "video" | "both") => {
                         <div class="flex flex-wrap items-start gap-4 border-b border-gray-100 pb-4">
                             <div class="flex-grow min-w-0">
                                 <a-input v-model="selectedDraft.title" class="!text-lg" />
-                                <div class="text-xs text-gray-500 mt-2">{{ angleLabel(selectedDraft.angle) }} · {{ form.ratio }} · 约 {{ form.duration }} 秒 · 所有字段可编辑</div>
+                                <div class="text-xs text-gray-500 mt-2">{{ angleLabel(selectedDraft.angle) }} · {{ form.ratio }} · 约 {{ selectedDraft.scenes.reduce((sum, scene) => sum + Number(scene.duration || 0), 0) }} 秒 · 所有字段可编辑</div>
                             </div>
                             <a-button :loading="submitting" @click="submitDraft(selectedDraft, 'image')">生图</a-button>
                             <a-button :loading="submitting" @click="submitDraft(selectedDraft, 'video')">生视频</a-button>
@@ -2078,28 +2552,63 @@ const submitAll = async (type: "image" | "video" | "both") => {
                         <a-form-item label="口播文案">
                             <a-textarea v-model="selectedDraft.voiceover" :auto-size="{ minRows: 5, maxRows: 9 }" />
                         </a-form-item>
+                        <div v-if="hasReferenceInput && selectedDraft.referenceAnalysis" class="mb-4 rounded-lg border border-blue-100 bg-blue-50/50 px-4 py-3">
+                            <div class="mb-2 text-sm font-semibold text-gray-900">参考视频拆解</div>
+                            <div class="grid grid-cols-1 gap-2 text-xs leading-5 text-gray-600 xl:grid-cols-2">
+                                <div v-if="selectedDraft.referenceAnalysis.plot">
+                                    <span class="font-medium text-gray-800">剧情：</span>{{ selectedDraft.referenceAnalysis.plot }}
+                                </div>
+                                <div v-if="selectedDraft.referenceAnalysis.structure">
+                                    <span class="font-medium text-gray-800">结构：</span>{{ selectedDraft.referenceAnalysis.structure }}
+                                </div>
+                                <div v-if="selectedDraft.referenceAnalysis.shotLanguage">
+                                    <span class="font-medium text-gray-800">镜头：</span>{{ selectedDraft.referenceAnalysis.shotLanguage }}
+                                </div>
+                                <div v-if="selectedDraft.referenceAnalysis.visualStyle">
+                                    <span class="font-medium text-gray-800">风格：</span>{{ selectedDraft.referenceAnalysis.visualStyle }}
+                                </div>
+                                <div v-if="selectedDraft.referenceAnalysis.rhythm">
+                                    <span class="font-medium text-gray-800">节奏：</span>{{ selectedDraft.referenceAnalysis.rhythm }}
+                                </div>
+                                <div v-if="selectedDraft.referenceAnalysis.characterAction">
+                                    <span class="font-medium text-gray-800">动作：</span>{{ selectedDraft.referenceAnalysis.characterAction }}
+                                </div>
+                                <div v-if="selectedDraft.referenceAnalysis.captionAudio">
+                                    <span class="font-medium text-gray-800">字幕/声音：</span>{{ selectedDraft.referenceAnalysis.captionAudio }}
+                                </div>
+                                <div v-if="selectedDraft.referenceAnalysis.reusableRules" class="xl:col-span-2">
+                                    <span class="font-medium text-gray-800">可复用规则：</span>{{ selectedDraft.referenceAnalysis.reusableRules }}
+                                </div>
+                            </div>
+                        </div>
                         <div class="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
                             <span class="text-xs font-medium text-gray-500">台词方式</span>
                             <a-select v-model="form.narrationMode" class="!w-32">
                                 <a-option v-for="item in narrationModeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
                             </a-select>
+                            <span class="text-xs font-medium text-gray-500">字幕</span>
+                            <a-select v-model="form.subtitleMode" class="!w-32">
+                                <a-option v-for="item in subtitleModeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                            </a-select>
                             <a-button size="mini" @click="applyNarrationModeToDraft(selectedDraft, form.narrationMode)">应用到全部分镜</a-button>
+                            <a-button size="mini" @click="applySubtitleModeToDraft(selectedDraft, form.subtitleMode)">应用字幕到全部</a-button>
                             <a-button size="mini" @click="refreshDraftVoiceoverLines(selectedDraft)">按钩子/口播/行动引导重分配台词</a-button>
-                            <span class="text-xs text-gray-500">提交视频时会把这些台词写入视频提示词，要求{{ narrationModeLabel(form.narrationMode) }}说出来。</span>
+                            <span class="text-xs text-gray-500">提交视频时会按当前分镜的说话方式和字幕设置生成。</span>
                         </div>
 
                         <div class="mt-5">
                             <div class="flex items-center justify-between gap-3 mb-3">
                                 <div class="text-base font-semibold text-gray-900">分镜编辑</div>
-                                <div class="text-xs text-gray-500">提交任务时会使用你当前修改后的台词和提示词，字幕默认跟随台词。</div>
+                                <div class="text-xs text-gray-500">提交任务时会使用你当前修改后的提示词、台词方式和字幕设置。</div>
                             </div>
                             <div class="space-y-3">
                                 <div v-for="(scene, index) in selectedDraft.scenes" :key="scene.id" class="rounded-xl border border-gray-100 p-4">
                                     <div class="flex flex-wrap items-center gap-3 mb-3">
                                         <a-tag color="arcoblue">镜头 {{ index + 1 }}</a-tag>
                                         <a-input v-model="scene.title" class="max-w-[180px]" />
-                                        <a-input-number v-model="scene.duration" class="!w-24" :min="1" :max="15" />
-                                        <div class="text-xs text-gray-500">秒</div>
+                                        <a-select v-model="scene.duration" class="!w-24">
+                                            <a-option v-for="item in durationOptions" :key="item" :value="item">{{ item }}s</a-option>
+                                        </a-select>
                                         <a-tag v-if="scene.imageTaskId" color="green">图 #{{ scene.imageTaskId }}</a-tag>
                                         <a-tag v-if="scene.videoTaskId" color="purple">视频 #{{ scene.videoTaskId }}</a-tag>
                                         <div class="flex-grow"></div>
@@ -2115,14 +2624,19 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                             {{ scene.referenceImageName || scene.referenceImageUrl || "可选；图生视频会优先使用这张图，不再先生图。" }}
                                         </span>
                                     </div>
-                                    <div class="grid grid-cols-1 gap-3 xl:grid-cols-[190px_minmax(0,1fr)]">
+                                    <div class="grid grid-cols-1 gap-3 xl:grid-cols-[190px_190px_minmax(0,1fr)]">
                                         <a-form-item label="说话方式">
                                             <a-select v-model="scene.narrationMode" class="!w-32">
                                                 <a-option v-for="item in narrationModeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
                                             </a-select>
                                         </a-form-item>
+                                        <a-form-item label="字幕显示">
+                                            <a-select v-model="scene.subtitleMode" class="!w-32">
+                                                <a-option v-for="item in subtitleModeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                                            </a-select>
+                                        </a-form-item>
                                         <a-form-item label="本镜台词/字幕">
-                                            <a-textarea v-model="scene.voiceoverLine" :auto-size="{ minRows: 2, maxRows: 4 }" />
+                                            <a-textarea v-model="scene.voiceoverLine" :disabled="scene.narrationMode === 'none'" :auto-size="{ minRows: 2, maxRows: 4 }" />
                                         </a-form-item>
                                     </div>
                                     <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">

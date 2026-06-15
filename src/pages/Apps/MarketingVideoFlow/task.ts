@@ -6,7 +6,8 @@ import { TaskBiz } from "../../../store/modules/task";
 import { RunningHubModelConfigType } from "../RunningHubStudio/type";
 
 type MarketingChannel = "direct" | "cloud";
-type NarrationMode = "voiceover" | "character";
+type NarrationMode = "none" | "voiceover" | "character";
+type SubtitleMode = "none" | "caption";
 
 type MarketingChainScene = {
     id: string;
@@ -16,13 +17,26 @@ type MarketingChainScene = {
     captionOverride?: string;
     voiceoverLine?: string;
     narrationMode?: NarrationMode;
+    subtitleMode?: SubtitleMode;
     imagePrompt: string;
     videoPrompt: string;
     referenceImageUrl?: string;
 };
 
+type MarketingReferenceAnalysis = {
+    plot?: string;
+    structure?: string;
+    shotLanguage?: string;
+    visualStyle?: string;
+    rhythm?: string;
+    characterAction?: string;
+    captionAudio?: string;
+    reusableRules?: string;
+};
+
 type MarketingChainDraft = {
     title: string;
+    referenceAnalysis?: MarketingReferenceAnalysis;
     scenes: MarketingChainScene[];
 };
 
@@ -72,6 +86,74 @@ const pathToDataUrl = async (path: string) => {
     return `data:${mime};base64,${window.btoa(binary)}`;
 };
 
+const isDataOrRemoteUrl = (value: string) => {
+    return /^(data:|https?:\/\/)/i.test(value);
+};
+
+const SEEDANCE_MIN_IMAGE_PIXELS = 409600;
+const SEEDANCE_MAX_IMAGE_PIXELS = 2086876;
+
+const dataUrlToBytes = (value: string) => {
+    const raw = String(value || "").replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
+    const binary = window.atob(raw);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+};
+
+const loadImageElement = async (url: string) => {
+    const img = new Image();
+    img.decoding = "async";
+    await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("参考图读取失败"));
+        img.src = url;
+    });
+    return img;
+};
+
+const normalizeSeedanceLocalImage = async (value: string) => {
+    if (!value || isDataOrRemoteUrl(value)) {
+        return value;
+    }
+    const dataUrl = await pathToDataUrl(value);
+    if (!/^data:image\//i.test(dataUrl)) {
+        return value;
+    }
+    const img = await loadImageElement(dataUrl);
+    const pixels = img.naturalWidth * img.naturalHeight;
+    if (pixels >= SEEDANCE_MIN_IMAGE_PIXELS && pixels <= SEEDANCE_MAX_IMAGE_PIXELS) {
+        return value;
+    }
+    const targetPixels =
+        pixels > SEEDANCE_MAX_IMAGE_PIXELS
+            ? Math.floor(SEEDANCE_MAX_IMAGE_PIXELS * 0.98)
+            : Math.ceil(SEEDANCE_MIN_IMAGE_PIXELS * 1.02);
+    const scale = Math.sqrt(targetPixels / pixels);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        return value;
+    }
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const normalizedDataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    const file = await window.$mapi.file.hubFile("jpg", {
+        returnFullPath: true,
+        saveGroup: "image",
+        savePathParam: {
+            source: "seedance-reference",
+            width: canvas.width,
+            height: canvas.height,
+        },
+    });
+    await window.$mapi.file.writeBuffer(file, dataUrlToBytes(normalizedDataUrl));
+    return file;
+};
+
 const isImageOutput = (value: string) => {
     return /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(value) || /^data:image\//i.test(value);
 };
@@ -82,6 +164,28 @@ const isLocalImagePath = (value: string) => {
 
 const ensureMultipartImageFile = async (value: string) => {
     return value;
+};
+
+const directFileRelayEnabled = (platform: any) => {
+    const relay = platform?.content?.directFileRelay;
+    return Boolean(
+        relay?.enabled &&
+            relay?.provider === "123pan" &&
+            String(relay.clientID || "").trim() &&
+            String(relay.clientSecret || "").trim() &&
+            String(relay.parentFileID || "").trim()
+    );
+};
+
+const resolveDirectVideoReferenceImageUrl = async (platform: any, value: string) => {
+    if (!value || isDataOrRemoteUrl(value)) {
+        return value;
+    }
+    const normalizedValue = await normalizeSeedanceLocalImage(value);
+    if (directFileRelayEnabled(platform)) {
+        return normalizedValue;
+    }
+    throw new Error("123 云盘资产入库失败：当前视频参考图是本地文件，但 Seedance 平台未配置可用的 123 云盘中转。请在平台设置中填写 Client ID、Client Secret、Folder ID 并开启资产模式。");
 };
 
 const collectStringValues = (value: any, result: string[] = []) => {
@@ -134,7 +238,7 @@ const buildConsistentImagePrompt = (
         "视觉连续性要求：参考图来自上一分镜，用它保持同一条短视频的主角、场景和整体风格连续。",
         "1. 主角一致：保持主要人物的脸型、五官、发型、体型、年龄感、穿搭基调和整体气质一致；根据当前分镜重新生成姿态、表情和动作。",
         "2. 场景一致：如果当前分镜与上一分镜属于同一地点、同一时间段或同一段事件，保持空间布局、背景元素、道具、光线方向、色温和镜头质感一致，只改变当前分镜需要的动作与机位。",
-        "3. 风格一致：如果当前分镜是不同地点或不同时间，不要照搬上一分镜背景，但要保持同一套品牌视觉风格、色彩倾向、光影层次、真实感短视频质感和竖屏商业构图。",
+        "3. 风格一致：如果当前分镜是不同地点或不同时间，不要照搬上一分镜背景，但要保持同一套视觉风格、色彩倾向、光影层次、真实感短视频质感和竖屏构图。",
         previousScene
             ? `上一分镜信息：标题「${previousScene.title}」，台词/字幕「${effectiveSceneCaption(previousScene)}」。请据此判断当前分镜是否属于相同场景。`
             : "",
@@ -146,22 +250,61 @@ const cleanSentence = (value: string) => {
 };
 
 const effectiveSceneCaption = (scene: MarketingChainScene) => {
+    if (scene.subtitleMode === "none") {
+        return "";
+    }
     return cleanSentence(scene.captionOverride || scene.voiceoverLine || scene.subtitle || "");
 };
 
-const buildVideoPromptWithSpeech = (scene: MarketingChainScene) => {
+const buildReferenceAnalysisInstruction = (analysis?: MarketingReferenceAnalysis) => {
+    if (!analysis) {
+        return "";
+    }
+    const rows = [
+        analysis.plot ? `剧情推进：${analysis.plot}` : "",
+        analysis.structure ? `分镜结构：${analysis.structure}` : "",
+        analysis.shotLanguage ? `镜头语言：${analysis.shotLanguage}` : "",
+        analysis.visualStyle ? `视觉风格：${analysis.visualStyle}` : "",
+        analysis.rhythm ? `节奏：${analysis.rhythm}` : "",
+        analysis.characterAction ? `主体动作：${analysis.characterAction}` : "",
+        analysis.captionAudio ? `字幕/声音：${analysis.captionAudio}` : "",
+        analysis.reusableRules ? `可复用规则：${analysis.reusableRules}` : "",
+    ].filter(Boolean);
+    if (!rows.length) {
+        return "";
+    }
+    return [
+        "参考视频拆解应用要求：",
+        ...rows,
+        "生成时必须迁移上述剧情结构、镜头节奏、构图/光影/色彩和字幕声音规律；但必须换成当前主题的新人物、新场景和新画面，不能复刻参考视频原人物、原动作细节、原台词或原音乐。",
+    ].join("\n");
+};
+
+const appendReferenceAnalysisToPrompt = (prompt: string, analysis?: MarketingReferenceAnalysis) => {
+    const instruction = buildReferenceAnalysisInstruction(analysis);
+    return [prompt, instruction].filter(item => String(item || "").trim()).join("\n\n");
+};
+
+const buildVideoPromptWithSpeech = (scene: MarketingChainScene, analysis?: MarketingReferenceAnalysis) => {
     const line = cleanSentence(scene.voiceoverLine || "");
     const caption = effectiveSceneCaption(scene);
-    const speechInstruction = line
-        ? scene.narrationMode === "character"
-            ? `音频/台词要求：让画面中的主要角色自然开口说出这句中文台词：“${line}”。需要口型、情绪和语速匹配台词，不要省略，不要改写，不要只显示字幕。`
-            : `音频/台词要求：使用自然普通话画外音完整朗读这句台词：“${line}”。画面角色可以不张口，但必须有清晰旁白，不要省略，不要改写，不要只显示字幕。`
-        : "音频/台词要求：如无明确台词，可使用轻微环境声，不要生成无关对白。";
+    const speechInstruction =
+        scene.narrationMode === "none"
+            ? "音频/台词要求：不要生成对白、旁白或人物开口；只保留自然环境声或轻微氛围音。"
+            : line
+              ? scene.narrationMode === "character"
+                  ? `音频/台词要求：让画面中的主要角色自然开口说出这句中文台词：“${line}”。需要口型、情绪和语速匹配台词，不要省略，不要改写。`
+                  : `音频/台词要求：使用自然普通话画外音完整朗读这句台词：“${line}”。画面角色可以不张口，但必须有清晰旁白，不要省略，不要改写。`
+              : "音频/台词要求：如无明确台词，可使用轻微环境声，不要生成无关对白。";
+    const subtitleInstruction =
+        scene.subtitleMode === "none"
+            ? "字幕要求：不要生成画面字幕、口播字幕、标题条或贴纸文字。"
+            : `字幕要求：画面字幕应与本镜台词一致；当前字幕：${caption || line || "无"}`;
     return [
-        scene.videoPrompt,
+        appendReferenceAnalysisToPrompt(scene.videoPrompt, analysis),
         "",
         speechInstruction,
-        `字幕要求：画面字幕必须与本镜台词一致；当前字幕：${caption || line || "无"}`,
+        subtitleInstruction,
     ].join("\n");
 };
 
@@ -175,7 +318,10 @@ const submitDirectImageTask = async (
     if (!platform || !platform.content.apiKey.trim()) {
         throw new Error("请先配置可用的 GPT Image 2 平台");
     }
-    const prompt = buildConsistentImagePrompt(scene, continuityReferenceImageUrl, previousScene);
+    const prompt = appendReferenceAnalysisToPrompt(
+        buildConsistentImagePrompt(scene, continuityReferenceImageUrl, previousScene),
+        param.draft.referenceAnalysis
+    );
     const body: Record<string, any> = {
         model: "gpt-image-2",
         prompt,
@@ -193,7 +339,7 @@ const submitDirectImageTask = async (
         providerType: platform.content.platformType,
         providerProfileId: platform.id,
         providerProfileTitle: platform.title,
-        templateTitle: "营销短视频分镜图",
+        templateTitle: "短视频分镜图",
         templateType: "custom-api",
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
@@ -231,7 +377,10 @@ const submitCloudImageTask = async (
     if (!param.imageTemplateId) {
         throw new Error("请先选择云端生图模板");
     }
-    const prompt = buildConsistentImagePrompt(scene, continuityReferenceImageUrl, previousScene);
+    const prompt = appendReferenceAnalysisToPrompt(
+        buildConsistentImagePrompt(scene, continuityReferenceImageUrl, previousScene),
+        param.draft.referenceAnalysis
+    );
     const record = await CloudTemplateTaskService.buildTaskRecord(param.imageTemplateId, {
         title: `${param.draft.title}_${scene.title}_分镜图`,
         prompt,
@@ -267,17 +416,18 @@ const submitDirectVideoTask = async (
     if (!platform || !platform.content.apiKey.trim()) {
         throw new Error("请先配置可用的 Seedance 平台");
     }
-    const videoPrompt = buildVideoPromptWithSpeech(scene);
+    const resolvedReferenceImageUrl = await resolveDirectVideoReferenceImageUrl(platform, referenceImageUrl);
+    const videoPrompt = buildVideoPromptWithSpeech(scene, param.draft.referenceAnalysis);
     const body: Record<string, any> = {
         model: param.form.videoModel || "seedance-2.0-fast",
         content: [
             { type: "text", text: videoPrompt },
-            ...(referenceImageUrl
+            ...(resolvedReferenceImageUrl
                 ? [
                       {
                           type: "image_url",
-                          image_url: { url: await pathToDataUrl(referenceImageUrl) },
-                          role: "reference_image",
+                          image_url: { url: resolvedReferenceImageUrl },
+                          role: "first_frame",
                       },
                   ]
                 : []),
@@ -294,7 +444,7 @@ const submitDirectVideoTask = async (
         providerType: platform.content.platformType,
         providerProfileId: platform.id,
         providerProfileTitle: platform.title,
-        templateTitle: "营销短视频片段",
+        templateTitle: "短视频片段",
         templateType: "custom-api",
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
@@ -324,7 +474,7 @@ const submitCloudVideoTask = async (
     if (!param.videoTemplateId) {
         throw new Error("请先选择云端生视频模板");
     }
-    const videoPrompt = buildVideoPromptWithSpeech(scene);
+    const videoPrompt = buildVideoPromptWithSpeech(scene, param.draft.referenceAnalysis);
     const record = await CloudTemplateTaskService.buildTaskRecord(param.videoTemplateId, {
         title: `${param.draft.title}_${scene.title}_视频`,
         prompt: videoPrompt,

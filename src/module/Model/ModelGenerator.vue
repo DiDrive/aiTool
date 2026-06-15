@@ -59,7 +59,7 @@ const chat = async (
         content = content.trim();
         content = normalizeJsonLikeContent(content);
         try {
-            ret.data!.json = JSON.parse(content);
+            ret.data!.json = parseJsonLikeContent(content);
         } catch (e) {
             ret.code = -1;
             ret.msg = t("error.parseFailed") + ':' + content;
@@ -97,6 +97,114 @@ const normalizeJsonLikeContent = (content: string) => {
         return arrayCandidate;
     }
     return result;
+};
+
+const parseJsonLikeContent = (content: string) => {
+    const attempts = Array.from(
+        new Set([
+            content,
+            extractBalancedJson(content),
+            sanitizeJsonText(content),
+            sanitizeJsonText(extractBalancedJson(content)),
+        ].filter(Boolean))
+    );
+    let lastError: any = null;
+    for (const attempt of attempts) {
+        try {
+            return JSON.parse(attempt);
+        } catch (e) {
+            lastError = e;
+        }
+    }
+    throw lastError || new Error("JSON parse failed");
+};
+
+const extractBalancedJson = (content: string) => {
+    const raw = String(content || "").trim();
+    const firstObject = raw.indexOf("{");
+    const firstArray = raw.indexOf("[");
+    const start =
+        firstObject >= 0 && (firstArray < 0 || firstObject < firstArray)
+            ? firstObject
+            : firstArray;
+    if (start < 0) {
+        return raw;
+    }
+    const openChar = raw[start];
+    const closeChar = openChar === "{" ? "}" : "]";
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < raw.length; i++) {
+        const ch = raw[i];
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (ch === "\\") {
+                escaped = true;
+            } else if (ch === "\"") {
+                inString = false;
+            }
+            continue;
+        }
+        if (ch === "\"") {
+            inString = true;
+        } else if (ch === openChar) {
+            depth++;
+        } else if (ch === closeChar) {
+            depth--;
+            if (depth === 0) {
+                return raw.slice(start, i + 1);
+            }
+        }
+    }
+    return raw.slice(start);
+};
+
+const sanitizeJsonText = (content: string) => {
+    let inString = false;
+    let escaped = false;
+    let result = "";
+    for (const ch of String(content || "").replace(/^\uFEFF/, "")) {
+        if (inString) {
+            if (escaped) {
+                result += ch;
+                escaped = false;
+                continue;
+            }
+            if (ch === "\\") {
+                result += ch;
+                escaped = true;
+                continue;
+            }
+            if (ch === "\"") {
+                result += ch;
+                inString = false;
+                continue;
+            }
+            if (ch === "\n") {
+                result += "\\n";
+                continue;
+            }
+            if (ch === "\r") {
+                result += "\\r";
+                continue;
+            }
+            if (ch === "\t") {
+                result += "\\t";
+                continue;
+            }
+            result += ch;
+            continue;
+        }
+        if (ch === "\"") {
+            inString = true;
+        }
+        if (ch >= " " || ch === "\n" || ch === "\r" || ch === "\t") {
+            result += ch;
+        }
+    }
+    return result.replace(/,\s*([}\]])/g, "$1").trim();
 };
 
 const getSelectedModelInfo = () => {

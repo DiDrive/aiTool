@@ -77,11 +77,43 @@ const responseMessageOf = (json: any, fallback: string) => {
     return String(
         json?.error?.message ||
             json?.errorMessage ||
+            json?.FailReason ||
+            json?.failReason ||
+            json?.Reason ||
+            json?.reason ||
+            json?.StatusMessage ||
+            json?.statusMessage ||
+            json?.Message ||
             json?.msg ||
             json?.message ||
             fallback ||
             ""
     );
+};
+
+const safeJsonSnippet = (value: any, maxLength = 1200) => {
+    try {
+        const text = JSON.stringify(value);
+        return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+    } catch (e) {
+        return String(value || "");
+    }
+};
+
+const exchangeTokenModerationHint = (value: any) => {
+    const error = value?.Error || value?.error || {};
+    const code = String(error?.Code || error?.code || "").trim();
+    const message = String(error?.Message || error?.message || "").trim();
+    if (/InputImageSensitiveContentDetected\.PolicyViolation/i.test(code)) {
+        return [
+            "资产审核提示：参考图可能涉及版权限制，ExchangeToken 资产库拒绝入库。",
+            "请换用自有版权/已授权/原创生成的参考图，或去掉截图里的影视、动漫、品牌 Logo、平台水印、明星/名人等高风险元素后重试。",
+        ].join("\n");
+    }
+    if (/SensitiveContent|PolicyViolation/i.test(code)) {
+        return `资产审核提示：素材触发平台内容审核。${message || code}`;
+    }
+    return "";
 };
 
 const attachDiagnostics = (json: any, diagnostics: Record<string, any>) => {
@@ -551,8 +583,22 @@ const createExchangeTokenAsset = async (
             return `asset://${assetId}`;
         }
         if (/failed|error|reject/i.test(status)) {
-            const reason = responseMessageOf(statusJson?.data || statusJson?.Result || statusJson, createAssetMessage || "failed");
-            throw new Error(`ExchangeToken 资产入库失败：${status}\n${reason}`);
+            const diagnosticJson = statusJson?.data || statusJson?.Result || statusJson;
+            const moderationHint = exchangeTokenModerationHint(diagnosticJson);
+            const reason = moderationHint || responseMessageOf(diagnosticJson, createAssetMessage || "failed");
+            throw new Error(
+                [
+                    `ExchangeToken 资产入库失败：${status}`,
+                    reason,
+                    `AssetId: ${assetId}`,
+                    `AssetType: ${assetType}`,
+                    `File: ${path.basename(filePath)}`,
+                    `Source: ${describeHttpSource(publicUrl)}`,
+                    `Detail: ${safeJsonSnippet(diagnosticJson)}`,
+                ]
+                    .filter(Boolean)
+                    .join("\n")
+            );
         }
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
