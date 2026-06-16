@@ -26,6 +26,25 @@ const normalizeApiBaseUrl = (url?: string) => {
     return String(url || DEFAULT_BASE_URL).trim().replace(/\/+$/, "") || DEFAULT_BASE_URL;
 };
 
+const normalizeApiKey = (value?: string) => {
+    let key = String(value || "")
+        .trim()
+        .replace(/\uFEFF/g, "")
+        .replace(/：/g, ":");
+    key = key.replace(/^Authorization\s*:\s*/i, "").trim();
+    key = key.replace(/^Bearer\s+/i, "").trim();
+    key = key.replace(/^Bearer\s*:\s*/i, "").trim();
+    if (/[^\x20-\x7E]/.test(key)) {
+        throw new Error("API Key 包含中文、全角符号或不可见字符，请只填写纯 Key，不要粘贴“Authorization：Bearer ...”。");
+    }
+    return key;
+};
+
+const buildAuthHeader = (apiKey?: string) => {
+    const key = normalizeApiKey(apiKey);
+    return key ? { Authorization: `Bearer ${key}` } : {};
+};
+
 const normalizeApiPath = (apiPath?: string, fallbackPath = "") => {
     const value = String(apiPath || "").trim();
     if (!value) {
@@ -516,7 +535,7 @@ const createExchangeTokenAsset = async (
             await postJsonRaw(
                 `${baseUrl}/open/CreateAssetGroup`,
                 { Name: "AIGCPanel Seedance" },
-                { Authorization: `Bearer ${apiKey}` },
+                buildAuthHeader(apiKey),
                 30000,
                 proxyUrl
             ),
@@ -544,7 +563,7 @@ const createExchangeTokenAsset = async (
                 Name: path.basename(filePath),
                 AssetType: assetType,
             },
-            { Authorization: `Bearer ${apiKey}` },
+            buildAuthHeader(apiKey),
             30000,
             proxyUrl
         ),
@@ -567,7 +586,7 @@ const createExchangeTokenAsset = async (
             await postJsonRaw(
                 `${baseUrl}/open/GetAsset`,
                 { Id: assetId, AssetId: assetId },
-                { Authorization: `Bearer ${apiKey}` },
+                buildAuthHeader(apiKey),
                 30000,
                 proxyUrl
             ),
@@ -754,7 +773,7 @@ const requestJson = async (
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": "AIGCPanel-Electron",
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            ...buildAuthHeader(apiKey),
         };
         const res = await appFetch(requestUrl, {
             method: "POST",
@@ -789,7 +808,7 @@ const requestJson = async (
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                     "User-Agent": "AIGCPanel-Electron",
-                    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                    ...buildAuthHeader(apiKey),
                 };
                 const raw = await requestTextByNetRequest(requestUrl, "POST", headers, bodyText, timeoutMs);
                 let json: any = parseTextResponse(raw.text, raw.statusCode);
@@ -819,7 +838,7 @@ const requestJson = async (
                         "Content-Type": "application/json",
                         "Accept": "application/json",
                         "User-Agent": "AIGCPanel-Electron",
-                        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                        ...buildAuthHeader(apiKey),
                     };
                     const raw = await requestTextByNodeHttps(requestUrl, "POST", headers, bodyText, timeoutMs);
                     let json: any = parseTextResponse(raw.text, raw.statusCode);
@@ -1190,7 +1209,7 @@ const requestFormData = async (
         const res = await appFetch(requestUrl, {
             method: "POST",
             headers: {
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                ...buildAuthHeader(apiKey),
             },
             body: form,
             signal: controller.signal,
@@ -1207,7 +1226,7 @@ const requestFormData = async (
                 const retry = await requestMultipartByNodeHttps(
                     requestUrl,
                     body || {},
-                    apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+                    buildAuthHeader(apiKey),
                     timeoutMs
                 );
                 return attachDiagnostics(directApiJsonFromText(retry.text, retry.statusCode), {
@@ -1265,7 +1284,7 @@ const requestGetJson = async (
         const res = await appFetch(requestUrl, {
             method: "GET",
             headers: {
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                ...buildAuthHeader(apiKey),
             },
             signal: controller.signal,
         });
@@ -1335,7 +1354,7 @@ const uploadFile = async (
         const res = await appFetch(`${normalizeApiBaseUrl(apiBaseUrl)}/task/openapi/upload`, {
             method: "POST",
             headers: {
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                ...buildAuthHeader(apiKey),
             },
             body: form,
             signal: controller.signal,

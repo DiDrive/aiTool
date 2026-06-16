@@ -285,9 +285,53 @@ const appendReferenceAnalysisToPrompt = (prompt: string, analysis?: MarketingRef
     return [prompt, instruction].filter(item => String(item || "").trim()).join("\n\n");
 };
 
-const buildVideoPromptWithSpeech = (scene: MarketingChainScene, analysis?: MarketingReferenceAnalysis) => {
+const extractProtectedTerms = (values: string[]) => {
+    const terms = new Set<string>();
+    const source = values.filter(Boolean).join("\n");
+    const quotePattern = /[「『“"‘《]([^」』”"’》]{2,12})[」』”"’》]/g;
+    let match: RegExpExecArray | null;
+    while ((match = quotePattern.exec(source))) {
+        const value = String(match[1] || "").trim();
+        if (/^[\u4e00-\u9fa5A-Za-z0-9._-]{2,12}$/.test(value)) {
+            terms.add(value);
+        }
+    }
+    if (source.includes("他趣")) {
+        terms.add("他趣");
+    }
+    return Array.from(terms).slice(0, 8);
+};
+
+const buildProtectedTermInstruction = (terms: string[]) => {
+    if (!terms.length) {
+        return "";
+    }
+    const extra = terms.includes("他趣") ? "；其中“他趣”必须读作“他-趣 / tā qù”，不要改成“其他 / qí tā”" : "";
+    return `专有名词保护：以下词必须逐字保留并按原字发音，不要同音替换、不要改写成近义词：${terms.join("、")}${extra}。`;
+};
+
+const buildScenePositionInstruction = (scene: MarketingChainScene, sceneIndex?: number, totalScenes?: number) => {
+    if (sceneIndex === undefined || totalScenes === undefined) {
+        return "";
+    }
+    return [
+        `当前分镜定位：第 ${sceneIndex + 1}/${totalScenes} 镜，标题「${scene.title}」。`,
+        "本次只生成这一镜，不要把其它分镜的动作、场景和信息混进来；如果参考视频结构包含街访、痛点、讲解、收束等步骤，请只迁移当前分镜对应的步骤。",
+    ].join("\n");
+};
+
+const buildVideoPromptWithSpeech = (
+    scene: MarketingChainScene,
+    analysis?: MarketingReferenceAnalysis,
+    sceneIndex?: number,
+    totalScenes?: number,
+    draftTitle?: string
+) => {
     const line = cleanSentence(scene.voiceoverLine || "");
     const caption = effectiveSceneCaption(scene);
+    const protectedTermInstruction = buildProtectedTermInstruction(
+        extractProtectedTerms([draftTitle || "", scene.title, line, caption, scene.videoPrompt])
+    );
     const speechInstruction =
         scene.narrationMode === "none"
             ? "音频/台词要求：不要生成对白、旁白或人物开口；只保留自然环境声或轻微氛围音。"
@@ -301,11 +345,13 @@ const buildVideoPromptWithSpeech = (scene: MarketingChainScene, analysis?: Marke
             ? "字幕要求：不要生成画面字幕、口播字幕、标题条或贴纸文字。"
             : `字幕要求：画面字幕应与本镜台词一致；当前字幕：${caption || line || "无"}`;
     return [
+        buildScenePositionInstruction(scene, sceneIndex, totalScenes),
         appendReferenceAnalysisToPrompt(scene.videoPrompt, analysis),
         "",
         speechInstruction,
+        protectedTermInstruction,
         subtitleInstruction,
-    ].join("\n");
+    ].filter(Boolean).join("\n");
 };
 
 const submitDirectImageTask = async (
@@ -417,7 +463,14 @@ const submitDirectVideoTask = async (
         throw new Error("请先配置可用的 Seedance 平台");
     }
     const resolvedReferenceImageUrl = await resolveDirectVideoReferenceImageUrl(platform, referenceImageUrl);
-    const videoPrompt = buildVideoPromptWithSpeech(scene, param.draft.referenceAnalysis);
+    const sceneIndex = param.draft.scenes.findIndex(item => item.id === scene.id);
+    const videoPrompt = buildVideoPromptWithSpeech(
+        scene,
+        param.draft.referenceAnalysis,
+        sceneIndex >= 0 ? sceneIndex : undefined,
+        param.draft.scenes.length,
+        param.draft.title
+    );
     const body: Record<string, any> = {
         model: param.form.videoModel || "seedance-2.0-fast",
         content: [
@@ -474,7 +527,14 @@ const submitCloudVideoTask = async (
     if (!param.videoTemplateId) {
         throw new Error("请先选择云端生视频模板");
     }
-    const videoPrompt = buildVideoPromptWithSpeech(scene, param.draft.referenceAnalysis);
+    const sceneIndex = param.draft.scenes.findIndex(item => item.id === scene.id);
+    const videoPrompt = buildVideoPromptWithSpeech(
+        scene,
+        param.draft.referenceAnalysis,
+        sceneIndex >= 0 ? sceneIndex : undefined,
+        param.draft.scenes.length,
+        param.draft.title
+    );
     const record = await CloudTemplateTaskService.buildTaskRecord(param.videoTemplateId, {
         title: `${param.draft.title}_${scene.title}_视频`,
         prompt: videoPrompt,

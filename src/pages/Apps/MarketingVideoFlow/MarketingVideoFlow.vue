@@ -467,9 +467,56 @@ const buildImagePromptWithReferenceAnalysis = (draft: MarketingDraft, scene: Sce
     return appendReferenceAnalysisToPrompt(scene.imagePrompt, draft.referenceAnalysis);
 };
 
-const buildVideoPromptWithSpeech = (scene: SceneDraft, analysis?: MarketingDraft["referenceAnalysis"]) => {
+const extractProtectedTerms = (values: string[]) => {
+    const terms = new Set<string>();
+    const source = values.filter(Boolean).join("\n");
+    const quotePattern = /[「『“"‘《]([^」』”"’》]{2,12})[」』”"’》]/g;
+    let match: RegExpExecArray | null;
+    while ((match = quotePattern.exec(source))) {
+        const value = String(match[1] || "").trim();
+        if (/^[\u4e00-\u9fa5A-Za-z0-9._-]{2,12}$/.test(value)) {
+            terms.add(value);
+        }
+    }
+    const topic = form.value.brandName.trim();
+    if (topic && /^[\u4e00-\u9fa5A-Za-z0-9._-]{2,12}$/.test(topic)) {
+        terms.add(topic);
+    }
+    if (source.includes("他趣")) {
+        terms.add("他趣");
+    }
+    return Array.from(terms).slice(0, 8);
+};
+
+const buildProtectedTermInstruction = (terms: string[]) => {
+    if (!terms.length) {
+        return "";
+    }
+    const extra = terms.includes("他趣") ? "；其中“他趣”必须读作“他-趣 / tā qù”，不要改成“其他 / qí tā”" : "";
+    return `专有名词保护：以下词必须逐字保留并按原字发音，不要同音替换、不要改写成近义词：${terms.join("、")}${extra}。`;
+};
+
+const buildScenePositionInstruction = (scene: SceneDraft, sceneIndex?: number, totalScenes?: number) => {
+    if (sceneIndex === undefined || totalScenes === undefined) {
+        return "";
+    }
+    return [
+        `当前分镜定位：第 ${sceneIndex + 1}/${totalScenes} 镜，标题「${scene.title}」。`,
+        "本次只生成这一镜，不要把其它分镜的动作、场景和信息混进来；如果参考视频结构包含街访、痛点、讲解、收束等步骤，请只迁移当前分镜对应的步骤。",
+    ].join("\n");
+};
+
+const buildVideoPromptWithSpeech = (
+    scene: SceneDraft,
+    analysis?: MarketingDraft["referenceAnalysis"],
+    sceneIndex?: number,
+    totalScenes?: number
+) => {
     const line = cleanSentence(scene.voiceoverLine || "");
     const caption = effectiveSceneCaption(scene);
+    const protectedTermInstruction = buildProtectedTermInstruction(
+        extractProtectedTerms([form.value.brandName, form.value.productSellingPoints, form.value.idea, line, caption])
+    );
     const speechInstruction =
         scene.narrationMode === "none"
             ? "音频/台词要求：不要生成对白、旁白或人物开口；只保留自然环境声或轻微氛围音。"
@@ -483,11 +530,13 @@ const buildVideoPromptWithSpeech = (scene: SceneDraft, analysis?: MarketingDraft
             ? "字幕要求：不要生成画面字幕、口播字幕、标题条或贴纸文字。"
             : `字幕要求：画面字幕应与本镜台词一致；当前字幕：${caption || line || "无"}`;
     return [
+        buildScenePositionInstruction(scene, sceneIndex, totalScenes),
         appendReferenceAnalysisToPrompt(scene.videoPrompt, analysis),
         "",
         speechInstruction,
+        protectedTermInstruction,
         subtitleInstruction,
-    ].join("\n");
+    ].filter(Boolean).join("\n");
 };
 
 const safeJsonString = (value: unknown) => {
@@ -1001,7 +1050,7 @@ const exportDraftPrompts = (draft: MarketingDraft) => {
             buildImagePromptWithReferenceAnalysis(draft, scene),
             "",
             "视频提示词：",
-            buildVideoPromptWithSpeech(scene, draft.referenceAnalysis),
+            buildVideoPromptWithSpeech(scene, draft.referenceAnalysis, index, draft.scenes.length),
             "",
         ]),
     ];
@@ -1022,7 +1071,7 @@ const exportScenePrompts = (draft: MarketingDraft, scene: SceneDraft, index: num
         buildImagePromptWithReferenceAnalysis(draft, scene),
         "",
         "视频提示词：",
-        buildVideoPromptWithSpeech(scene, draft.referenceAnalysis),
+        buildVideoPromptWithSpeech(scene, draft.referenceAnalysis, index, draft.scenes.length),
         "",
     ];
     DownloadUtil.downloadFile(lines.join("\n"), `${draft.title || "marketing"}_镜头${index + 1}_prompts.md`);
@@ -1463,7 +1512,7 @@ ${angleGuide}
           "narrationMode": "none|voiceover|character",
           "subtitleMode": "none|caption",
           "imagePrompt": "中文生图提示词，包含主体、统一主角设定、场景连续性、环境、构图、光线、参考视频风格迁移点、竖屏安全区；必须原创",
-          "videoPrompt": "中文生视频提示词，包含镜头运动、人物动作、场景连续性、情绪、节奏、参考视频分镜/运镜/剪辑节奏迁移点；字幕必须跟随 voiceoverLine，不复刻参考视频"
+          "videoPrompt": "中文生视频提示词，必须写清本镜独有的叙事职责、场景、动作、镜头运动和节奏；字幕必须跟随 voiceoverLine，不复刻参考视频"
         }
       ]
     }
@@ -1482,6 +1531,8 @@ ${angleGuide}
 9. scenes[].narrationMode 默认使用 ${form.value.narrationMode}，scenes[].subtitleMode 默认使用 ${form.value.subtitleMode}；字幕模式为 none 时 scenes[].subtitle 必须为空。
 10. 如果提供了已选热点灵感，必须把它转化为自然的短视频切入角度，优先融入 hook、场景冲突或口播语气；不要把热点当作孤立标签堆在文案里。
 11. draft.visualStyle 和 referenceAnalysis.visualStyle 必须简短，40-80字，只描述视觉风格：画幅、色彩、光线、构图、镜头质感和场景氛围；不要写剧情、节奏、转场、人物动作、台词或可复用规则。
+12. scenes 必须按参考视频结构拆成不同叙事步骤，例如“街访开场/痛点反应/解决方案讲解/收束行动”；每个 scene.videoPrompt 必须明显不同，不能两个分镜都写成同一场景、同一动作或同一讲解镜头。
+13. 专有名词、产品名、账号名必须逐字保留，不要同音替换或改写；如果出现“他趣”，必须保持“他趣”两个字，不能写成或读成“其他”。
 `.trim();
 };
 
@@ -1959,7 +2010,13 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
     } catch (e: any) {
         throw new Error(e?.message || "123 云盘资产入库失败");
     }
-    const videoPrompt = buildVideoPromptWithSpeech(scene, draft.referenceAnalysis);
+    const sceneIndex = draft.scenes.findIndex(item => item.id === scene.id);
+    const videoPrompt = buildVideoPromptWithSpeech(
+        scene,
+        draft.referenceAnalysis,
+        sceneIndex >= 0 ? sceneIndex : undefined,
+        draft.scenes.length
+    );
     const body: Record<string, any> = {
         model: form.value.videoModel,
         content: [
@@ -2048,7 +2105,13 @@ const submitCloudVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =>
     if (!template?.id) {
         throw new Error("请先选择云端生视频模板");
     }
-    const videoPrompt = buildVideoPromptWithSpeech(scene, draft.referenceAnalysis);
+    const sceneIndex = draft.scenes.findIndex(item => item.id === scene.id);
+    const videoPrompt = buildVideoPromptWithSpeech(
+        scene,
+        draft.referenceAnalysis,
+        sceneIndex >= 0 ? sceneIndex : undefined,
+        draft.scenes.length
+    );
     const record = await CloudTemplateTaskService.buildTaskRecord(template.id, {
         title: `${draft.title}_${scene.title}_视频`,
         prompt: videoPrompt,

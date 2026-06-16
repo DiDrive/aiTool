@@ -29,6 +29,17 @@ export type DirectApiPlatformRecord = {
 
 const DEFAULT_CAPABILITIES: DirectApiCapability[] = ["seedance", "gpt-image-2"];
 
+const normalizeApiKey = (value?: string) => {
+    let key = String(value || "")
+        .trim()
+        .replace(/\uFEFF/g, "")
+        .replace(/：/g, ":");
+    key = key.replace(/^Authorization\s*:\s*/i, "").trim();
+    key = key.replace(/^Bearer\s+/i, "").trim();
+    key = key.replace(/^Bearer\s*:\s*/i, "").trim();
+    return key;
+};
+
 const decode = (record: StorageRecord | null): DirectApiPlatformRecord | null => {
     if (!record) {
         return null;
@@ -39,7 +50,7 @@ const decode = (record: StorageRecord | null): DirectApiPlatformRecord | null =>
         content: {
             platformType: record.content?.platformType || "exchangetoken",
             baseUrl: record.content?.baseUrl || "https://api.exchangetoken.ai",
-            apiKey: record.content?.apiKey || "",
+            apiKey: normalizeApiKey(record.content?.apiKey || ""),
             proxyUrl: record.content?.proxyUrl || "",
             directFileRelay: {
                 provider: record.content?.directFileRelay?.provider || "123pan",
@@ -76,6 +87,7 @@ export const DirectApiPlatformService = {
     async save(record: DirectApiPlatformRecord) {
         const content = {
             ...record.content,
+            apiKey: normalizeApiKey(record.content.apiKey),
             capabilities: Array.from(new Set(record.content.capabilities || [])),
         };
         if (content.isDefault) {
