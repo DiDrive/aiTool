@@ -724,7 +724,15 @@ export const RunningHubTask: TaskBiz = {
             return "success";
         }
         if (status === "FAILED" || status === "CANCELLED" || status === "STOPPED") {
-            const msg = String(res?.data?.errorMessage || res?.msg || `RunningHub 任务失败: ${status}`);
+            const detailParts = [
+                res?.data?.errorMessage || res?.msg || `RunningHub 任务失败: ${status}`,
+                res?.data?.failedReason && Object.keys(res.data.failedReason || {}).length
+                    ? `failedReason: ${safeJsonPreview(res.data.failedReason, 800)}`
+                    : "",
+                res?.data?.promptTips ? `promptTips: ${res.data.promptTips}` : "",
+                res?.data?.errorCode ? `errorCode: ${res.data.errorCode}` : "",
+            ].filter(Boolean);
+            const msg = detailParts.join("\n");
             jobResult.Query.status = "fail";
             jobResult.Query.error = msg;
             await TaskService.update(bizId, { jobResult });

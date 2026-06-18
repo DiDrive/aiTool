@@ -32,12 +32,12 @@ const name = computed(() => {
 <template>
     <a-tooltip v-if="modelValue" :content="modelValue" mini>
         <div
-            class="flex-grow text-sm text-black rounded-lg leading-7 px-3 min-h-7 border border-gray-500 cursor-default select-none">
-            <icon-file/>
-            {{ name }}
+            class="flex-grow min-w-0 text-sm text-black rounded-lg leading-7 px-3 min-h-7 border border-gray-500 cursor-default select-none flex items-center gap-1">
+            <icon-file class="flex-none"/>
+            <span class="truncate">{{ name }}</span>
         </div>
     </a-tooltip>
-    <a-button @click="doSelectFile" :class="modelValue?'':'w-64'">
+    <a-button @click="doSelectFile" :class="modelValue?'':'w-64'" class="flex-none whitespace-nowrap">
         <icon-file/>
         {{ modelValue ? t("common.reselect") : t("common.selectFile") }}
         ({{ t("common.extensions", {extensions: extensions.join(', ')}) }})

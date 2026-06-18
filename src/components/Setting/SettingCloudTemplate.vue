@@ -14,6 +14,7 @@ import {
     CloudTemplateType,
     getTemplateCapabilities,
 } from "../../service/CloudTemplateService";
+import { ConfigTransferService } from "../../service/ConfigTransferService";
 
 const providerTypeOptions: { value: CloudProviderType; label: string }[] = [
     { value: "runninghub", label: "RunningHub" },
@@ -121,6 +122,52 @@ onMounted(async () => {
     await refresh();
 });
 
+const configPackageFilename = () => {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    return `aigcpanel-config-${date}.json`;
+};
+
+const exportConfigPackage = async () => {
+    const filePath = await window.$mapi.file.openSave({
+        defaultPath: configPackageFilename(),
+        filters: [{ name: "AIGCPanel Config", extensions: ["json"] }],
+    });
+    if (!filePath) {
+        return;
+    }
+    try {
+        const data = await ConfigTransferService.exportToFile(filePath);
+        const directCount = data.data.directApiPlatforms?.length || 0;
+        const providerCount = data.data.cloudProviderProfiles?.length || 0;
+        const templateCount = data.data.cloudTemplates?.length || 0;
+        Dialog.tipSuccess(`配置已导出：直连平台 ${directCount} 个，云端供应商 ${providerCount} 个，模板 ${templateCount} 个`);
+    } catch (e: any) {
+        Dialog.alertError(e?.message || "导出配置失败", "导出配置");
+    }
+};
+
+const importConfigPackage = async () => {
+    const filePath = await window.$mapi.file.openFile({
+        filters: [{ name: "AIGCPanel Config", extensions: ["json"] }],
+    });
+    if (!filePath) {
+        return;
+    }
+    await Dialog.confirm(
+        "配置包可能包含 API Key、123 云盘 Client Secret、URL 鉴权密钥等敏感信息。导入会按名称合并：同名配置更新，不同名配置新增。确认导入？",
+        "导入配置"
+    );
+    try {
+        const summary = await ConfigTransferService.importFromFile(String(filePath));
+        await refresh();
+        Dialog.tipSuccess(
+            `配置已导入：直连平台 ${summary.directApiPlatforms} 个，云端供应商 ${summary.cloudProviderProfiles} 个，模板 ${summary.cloudTemplates} 个`
+        );
+    } catch (e: any) {
+        Dialog.alertError(e?.message || "导入配置失败", "导入配置");
+    }
+};
+
 const resetProviderForm = () => {
     providerForm.value = {
         title: "",
@@ -225,6 +272,9 @@ const identityReferenceVideoPlaceholderExample = "{{identity.referenceVideo}}";
 const inferFieldName = (item: any, index: number) => {
     const desc = normalizeTemplateVariableName(item?.description || "");
     const fieldName = String(item?.fieldName || "").trim().toLowerCase();
+    if (/图片数量|图像数量|生成数量|数量|张数|count|number/.test(desc)) return `count_${item?.nodeId || index}`;
+    if (/aspect[_-]?ratio/.test(fieldName)) return `ratio_${item?.nodeId || index}`;
+    if (/图像比例|图片比例|画面比例|设置比例|宽:高|aspect|ratio/.test(desc)) return `ratio_${item?.nodeId || index}`;
     if (fieldName === "image" || /图像|图片|照片|image/.test(desc)) return "image";
     if (fieldName === "audio" || /音频|声音|audio/.test(desc)) return "audio";
     if (fieldName === "video" || /视频|video/.test(desc)) return "video";
@@ -243,6 +293,9 @@ const inferFieldType = (item: any) => {
     const fieldName = String(item?.fieldName || "").trim().toLowerCase();
     const desc = String(item?.description || "").trim().toLowerCase();
     const value = item?.fieldValue;
+    if (/图片数量|图像数量|生成数量|数量|张数|count|number/.test(desc)) return "number";
+    if (/aspect[_-]?ratio/.test(fieldName)) return "select";
+    if (/图像比例|图片比例|画面比例|设置比例|宽:高|aspect|ratio/.test(desc)) return "select";
     if (fieldName === "image" || /image|图像|图片/.test(desc)) return "image";
     if (fieldName === "audio" || /audio|音频|声音/.test(desc)) return "audio";
     if (fieldName === "video" || /video|视频/.test(desc)) return "video";
@@ -532,6 +585,10 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
                     <div class="text-gray-400 text-sm">
                         Base URL、API Key、默认查询路径统一放这里，业务页只选模板
                     </div>
+                </div>
+                <div class="mr-2 flex gap-2">
+                    <a-button @click="importConfigPackage">导入配置</a-button>
+                    <a-button @click="exportConfigPackage">导出配置</a-button>
                 </div>
                 <a-button type="primary" @click="openProviderAdd">
                     新增供应商配置
@@ -847,8 +904,8 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
                     />
                     <div class="text-xs text-gray-500 mt-1">
                         ExchangeToken 示例：
-                        Seedance 可填 `{"model":"seedance-2.0","content":[{"type":"text","text":"{{prompt}}"}],"duration":5,"resolution":"720p"}`
-                        ，GPT Image 2 可填 `{"model":"gpt-image-2","prompt":"{{prompt}}","size":"1024x1024","quality":"high","n":1}`。
+                        Seedance 可填 `{"model":"seedance-2.0","content":[{"type":"text","text":"&#123;&#123;prompt&#125;&#125;"}],"duration":5,"resolution":"720p"}`
+                        ，GPT Image 2 可填 `{"model":"gpt-image-2","prompt":"&#123;&#123;prompt&#125;&#125;","size":"1024x1024","quality":"high","n":1}`。
                     </div>
                 </a-form-item>
             </div>

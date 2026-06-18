@@ -221,7 +221,9 @@ const marketingChainProgress = computed(() => {
 const supportedToolTask = computed(() => {
     const title = String((props.record as any)?.modelConfig?.templateTitle || "").toLowerCase();
     const body = String((props.record as any)?.modelConfig?.requestBodyJson || "").toLowerCase();
+    const isCloudTemplateTask = props.record.biz === "RunningHubTask" && !!(props.record as any)?.modelConfig?.templateId;
     return (
+        isCloudTemplateTask ||
         props.record.biz === "DirectApiTask" &&
         (title.includes("seedance") || title.includes("gpt image 2") || body.includes("seedance-2.0") || body.includes("gpt-image-2"))
     );

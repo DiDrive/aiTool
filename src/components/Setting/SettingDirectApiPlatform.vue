@@ -7,6 +7,7 @@ import {
     DirectApiPlatformService,
     DirectApiPlatformType,
 } from "../../service/DirectApiPlatformService";
+import { ConfigTransferService } from "../../service/ConfigTransferService";
 
 const platformTypeOptions: Array<{ label: string; value: DirectApiPlatformType }> = [
     { label: "ExchangeToken", value: "exchangetoken" },
@@ -47,6 +48,52 @@ const refresh = async () => {
 };
 
 onMounted(refresh);
+
+const configPackageFilename = () => {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    return `aigcpanel-config-${date}.json`;
+};
+
+const exportConfigPackage = async () => {
+    const filePath = await window.$mapi.file.openSave({
+        defaultPath: configPackageFilename(),
+        filters: [{ name: "AIGCPanel Config", extensions: ["json"] }],
+    });
+    if (!filePath) {
+        return;
+    }
+    try {
+        const data = await ConfigTransferService.exportToFile(filePath);
+        const directCount = data.data.directApiPlatforms?.length || 0;
+        const providerCount = data.data.cloudProviderProfiles?.length || 0;
+        const templateCount = data.data.cloudTemplates?.length || 0;
+        Dialog.tipSuccess(`配置已导出：直连平台 ${directCount} 个，云端供应商 ${providerCount} 个，模板 ${templateCount} 个`);
+    } catch (e: any) {
+        Dialog.alertError(e?.message || "导出配置失败", "导出配置");
+    }
+};
+
+const importConfigPackage = async () => {
+    const filePath = await window.$mapi.file.openFile({
+        filters: [{ name: "AIGCPanel Config", extensions: ["json"] }],
+    });
+    if (!filePath) {
+        return;
+    }
+    await Dialog.confirm(
+        "配置包可能包含 API Key、123 云盘 Client Secret、URL 鉴权密钥等敏感信息。导入会按名称合并：同名配置更新，不同名配置新增。确认导入？",
+        "导入配置"
+    );
+    try {
+        const summary = await ConfigTransferService.importFromFile(String(filePath));
+        await refresh();
+        Dialog.tipSuccess(
+            `配置已导入：直连平台 ${summary.directApiPlatforms} 个，云端供应商 ${summary.cloudProviderProfiles} 个，模板 ${summary.cloudTemplates} 个`
+        );
+    } catch (e: any) {
+        Dialog.alertError(e?.message || "导入配置失败", "导入配置");
+    }
+};
 
 const resetForm = () => {
     form.value = {
@@ -195,6 +242,10 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
                 <div class="text-gray-400 text-sm">
                     普通模型 API 的平台账号统一在这里维护，工具页只负责选择平台和创作。
                 </div>
+            </div>
+            <div class="mr-2 flex gap-2">
+                <a-button @click="importConfigPackage">导入配置</a-button>
+                <a-button @click="exportConfigPackage">导出配置</a-button>
             </div>
             <a-button type="primary" @click="openAdd">新增平台</a-button>
         </div>

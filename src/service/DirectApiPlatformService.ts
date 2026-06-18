@@ -8,7 +8,7 @@ export type DirectApiPlatformContent = {
     baseUrl: string;
     apiKey: string;
     proxyUrl?: string;
-    directFileRelay?: {
+    directFileRelay: {
         provider?: "123pan";
         enabled?: boolean;
         clientID?: string;

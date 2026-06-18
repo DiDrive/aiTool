@@ -86,8 +86,28 @@ const directApiEditTarget = (record: TaskRecord) => {
     return null;
 };
 
+const cloudTemplateEditTarget = (record: TaskRecord) => {
+    if (record.biz !== "RunningHubTask" || !(record as any)?.modelConfig?.templateId) {
+        return null;
+    }
+    const capability = String((record as any)?.modelConfig?.capability || "");
+    const mapping: Record<string, { path: string; tab: string }> = {
+        image: { path: "/image", tab: "CloudImage" },
+        video: { path: "/video", tab: "CloudVideo" },
+        audio: { path: "/sound", tab: "CloudAudio" },
+        "voice-clone": { path: "/sound", tab: "CloudVoiceClone" },
+        lipsync: { path: "/live", tab: "CloudLipSync" },
+        "digital-human": { path: "/live", tab: "CloudDigitalHuman" },
+    };
+    return mapping[capability] || null;
+};
+
+const taskEditTarget = (record: TaskRecord) => {
+    return directApiEditTarget(record) || cloudTemplateEditTarget(record);
+};
+
 const editTask = async (record: TaskRecord) => {
-    const target = directApiEditTarget(record);
+    const target = taskEditTarget(record);
     if (!target || !record.id) {
         Dialog.tipError("当前任务暂不支持重新编辑");
         return;
@@ -100,6 +120,10 @@ const editTask = async (record: TaskRecord) => {
             _t: String(Date.now()),
         },
     });
+};
+
+const canRegenerateTask = (record: TaskRecord) => {
+    return !!taskEditTarget(record);
 };
 
 const cloneTaskRecord = (record: TaskRecord): TaskRecord => {
@@ -117,7 +141,7 @@ const cloneTaskRecord = (record: TaskRecord): TaskRecord => {
 };
 
 const regenerateTask = async (record: TaskRecord) => {
-    if (!directApiEditTarget(record)) {
+    if (!canRegenerateTask(record)) {
         Dialog.tipError("当前任务暂不支持再次生成");
         return;
     }

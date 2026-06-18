@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import CloudTemplateSelector from "../common/CloudTemplateSelector.vue";
 import { Dialog } from "../../lib/dialog";
 import { TaskService } from "../../service/TaskService";
@@ -13,6 +13,7 @@ import {
     CloudTemplateCapability,
     CloudTemplateInputSchemaField,
     CloudTemplateRecord,
+    CloudTemplateService,
 } from "../../service/CloudTemplateService";
 
 const props = withDefaults(
@@ -25,6 +26,7 @@ const props = withDefaults(
 );
 
 const router = useRouter();
+const route = useRoute();
 const templateSelector = ref<InstanceType<typeof CloudTemplateSelector> | null>(null);
 
 const formData = ref({
@@ -56,6 +58,7 @@ const refreshIdentityRecords = async () => {
 
 onMounted(async () => {
     await refreshIdentityRecords();
+    await hydrateFromTask();
 });
 
 const normalizeFieldDefaultValue = (field: CloudTemplateInputSchemaField) => {
@@ -91,6 +94,43 @@ const onTemplateChange = (record: CloudTemplateRecord | null) => {
     selectedTemplate.value = record;
     schemaFields.value = CloudTemplateTaskService.parseInputSchema(record?.content.inputSchemaJson || "[]");
     inputValues.value = buildInitialInputValues(schemaFields.value);
+};
+
+const hydrateFromTask = async () => {
+    const editTaskId = Number(route.query.editTaskId || 0);
+    if (!editTaskId) {
+        return;
+    }
+    const record = await TaskService.get(editTaskId);
+    if (!record || record.biz !== "RunningHubTask") {
+        return;
+    }
+    const templateId = Number((record as any)?.modelConfig?.templateId || 0);
+    if (!templateId) {
+        return;
+    }
+    const template = await CloudTemplateService.get(templateId);
+    if (!template) {
+        Dialog.tipError("原任务绑定的云端模板已不存在");
+        return;
+    }
+    const input = { ...((record as any)?.param?.input || {}) };
+    const taskCapability = String((record as any)?.modelConfig?.capability || input.selectedCapability || "");
+    if (taskCapability && taskCapability !== props.capability) {
+        return;
+    }
+    formData.value.templateId = templateId;
+    formData.value.title = String(input.title || record.title || "");
+    formData.value.identityId = Number(input.identityId || 0);
+    selectedTemplate.value = template;
+    schemaFields.value = CloudTemplateTaskService.parseInputSchema(template.content.inputSchemaJson || "[]");
+    inputValues.value = {
+        ...buildInitialInputValues(schemaFields.value),
+        ...input,
+    };
+    if (identityEnabled.value) {
+        selectedIdentity.value = identityRecords.value.find(item => item.id === formData.value.identityId) || null;
+    }
 };
 
 const onIdentityChange = (value: number | string | boolean) => {

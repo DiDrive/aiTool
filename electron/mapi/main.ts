@@ -15,6 +15,7 @@ import live from "./live/main";
 import runninghub from "./runninghub/main";
 import douyin from "./douyin/main";
 import hottrend from "./hottrend/main";
+import watermark from "./watermark/main";
 
 const $mapi = {
     app,
@@ -34,6 +35,7 @@ const $mapi = {
     runninghub,
     douyin,
     hottrend,
+    watermark,
 };
 
 export const MAPI = {

@@ -74,7 +74,7 @@ const hydrateFromTask = async () => {
     const body = JSON.parse(String(record.modelConfig?.requestBodyJson || "{}"));
     const input = record.param?.input || {};
     platformId.value = Number(record.modelConfig?.providerProfileId || platformId.value || 0);
-    title.value = String(record.title || "");
+    title.value = "";
     const restoredMode = ["generation", "edit", "blend"].includes(input.mode)
         ? input.mode
         : body.image || body["image[]"]
@@ -94,6 +94,27 @@ const hydrateFromTask = async () => {
         }));
     }
     mask.value = String(input.mask || body.mask || "");
+};
+
+const shortTaskText = (value: string, fallback = "GPT Image 2") => {
+    const text = String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
+    if (text) {
+        return text.slice(0, 28);
+    }
+    return fallback;
+};
+
+const buildGptImageTaskTitle = () => {
+    const imageName = images.value.map(item => item.url).find(Boolean);
+    const sourceName = String(imageName || "")
+        .replace(/\\/g, "/")
+        .split("/")
+        .pop()
+        ?.replace(/\.[^.]+$/, "");
+    const base = shortTaskText(prompt.value, sourceName || "GPT Image 2");
+    return `${base}_图片_${new Date().toLocaleString()}`;
 };
 
 onMounted(async () => {
@@ -204,7 +225,7 @@ const submit = async () => {
     };
     const record: TaskRecord = {
         biz: "DirectApiTask",
-        title: title.value.trim() || `GPT Image 2_${new Date().toLocaleString()}`,
+        title: title.value.trim() || buildGptImageTaskTitle(),
         serverName: "",
         serverTitle: "",
         serverVersion: "",

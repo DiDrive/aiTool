@@ -15,6 +15,7 @@ import user from "./user/render";
 import misc from "./misc/render";
 import douyin from "./douyin/render";
 import hottrend from "./hottrend/render";
+import watermark from "./watermark/render";
 
 import server from "./server/render";
 
@@ -37,6 +38,7 @@ export const MAPI = {
                 misc,
                 douyin,
                 hottrend,
+                watermark,
                 server,
             });
             db.init();

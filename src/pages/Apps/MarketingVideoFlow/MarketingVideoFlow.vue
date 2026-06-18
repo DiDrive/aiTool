@@ -37,6 +37,21 @@ type ReferenceImage = {
     dataUrl: string;
 };
 
+type MarketingAssetType = "character" | "scene" | "prop";
+type MarketingAssetStatus = "ready" | "suggested" | "generating";
+
+type MarketingAsset = {
+    id: string;
+    type: MarketingAssetType;
+    name: string;
+    url: string;
+    dataUrl?: string;
+    prompt?: string;
+    note?: string;
+    status: MarketingAssetStatus;
+    imageTaskId?: number;
+};
+
 type DouyinImportResult = {
     sourceUrl: string;
     resolvedUrl: string;
@@ -92,6 +107,7 @@ type SceneDraft = {
     subtitleMode?: SubtitleMode;
     imagePrompt: string;
     videoPrompt: string;
+    assetIds?: string[];
     referenceImageUrl?: string;
     referenceImageName?: string;
     imageTaskId?: number;
@@ -115,6 +131,12 @@ type MarketingDraft = {
         captionAudio?: string;
         reusableRules?: string;
     };
+    suggestedAssets?: Array<{
+        type: MarketingAssetType;
+        name: string;
+        prompt: string;
+        note?: string;
+    }>;
     scenes: SceneDraft[];
 };
 
@@ -135,6 +157,9 @@ const selectedDraftId = ref("");
 const modelGenerator = ref<InstanceType<typeof ModelGenerator> | null>(null);
 const referenceVideo = ref<ReferenceVideo | null>(null);
 const referenceImages = ref<ReferenceImage[]>([]);
+const marketingAssets = ref<MarketingAsset[]>([]);
+const assetUploadType = ref<MarketingAssetType>("character");
+const assetUploadName = ref("");
 const referenceVideoMode = ref<"frames" | "video">("frames");
 const referenceFrameDensity = ref<FrameDensity>("standard");
 const extractingFrames = ref(false);
@@ -179,6 +204,9 @@ const pageDraft = usePageDraft("MarketingVideoFlow", {
     selectedDraftId,
     referenceVideo,
     referenceImages,
+    marketingAssets,
+    assetUploadType,
+    assetUploadName,
     referenceVideoMode,
     referenceFrameDensity,
     douyinUrl,
@@ -223,6 +251,11 @@ const narrationModeOptions: Array<{ label: string; value: NarrationMode }> = [
 const subtitleModeOptions: Array<{ label: string; value: SubtitleMode }> = [
     { label: "不显示字幕", value: "none" },
     { label: "显示字幕", value: "caption" },
+];
+const marketingAssetTypeOptions: Array<{ label: string; value: MarketingAssetType }> = [
+    { label: "人物资产", value: "character" },
+    { label: "场景资产", value: "scene" },
+    { label: "道具资产", value: "prop" },
 ];
 const hotTrendSourceOptions = [
     { label: "全网梗", value: "meme" },
@@ -320,6 +353,17 @@ const referenceSummary = computed(() => {
         return "未使用参考链接，将根据视频主题、生成要求和台词生成原创方案。";
     }
     return "参考链接用于提取主题、剧情结构、节奏、镜头语言和表达方式；不照搬原视频人物、画面、音乐或台词。";
+});
+
+const readyMarketingAssets = computed(() => {
+    return marketingAssets.value.filter(item => item.status === "ready" && (item.url || item.dataUrl));
+});
+
+const assetSelectOptions = computed(() => {
+    return readyMarketingAssets.value.map(item => ({
+        label: `${marketingAssetTypeLabel(item.type)} · ${item.name}`,
+        value: item.id,
+    }));
 });
 
 const loadPlatforms = async () => {
@@ -438,24 +482,19 @@ const buildReferenceAnalysisInstruction = (analysis?: MarketingDraft["referenceA
     if (!analysis) {
         return "";
     }
+    const compact = (value?: string, max = 90) => {
+        const text = cleanSentence(value || "");
+        return text.length > max ? `${text.slice(0, max)}...` : text;
+    };
     const rows = [
-        analysis.plot ? `剧情推进：${analysis.plot}` : "",
-        analysis.structure ? `分镜结构：${analysis.structure}` : "",
-        analysis.shotLanguage ? `镜头语言：${analysis.shotLanguage}` : "",
-        analysis.visualStyle ? `视觉风格：${analysis.visualStyle}` : "",
-        analysis.rhythm ? `节奏：${analysis.rhythm}` : "",
-        analysis.characterAction ? `主体动作：${analysis.characterAction}` : "",
-        analysis.captionAudio ? `字幕/声音：${analysis.captionAudio}` : "",
-        analysis.reusableRules ? `可复用规则：${analysis.reusableRules}` : "",
+        compact(analysis.visualStyle, 120),
+        compact(analysis.shotLanguage, 100),
+        compact(analysis.rhythm, 80),
     ].filter(Boolean);
     if (!rows.length) {
         return "";
     }
-    return [
-        "参考视频拆解应用要求：",
-        ...rows,
-        "生成时必须迁移上述剧情结构、镜头节奏、构图/光影/色彩和字幕声音规律；但必须换成当前主题的新人物、新场景和新画面，不能复刻参考视频原人物、原动作细节、原台词或原音乐。",
-    ].join("\n");
+    return `参考视频风格：${rows.join("；")}。只借鉴风格、构图、光线和节奏，不复刻原人物、原场景、原台词或原音乐。`;
 };
 
 const appendReferenceAnalysisToPrompt = (prompt: string, analysis?: MarketingDraft["referenceAnalysis"]) => {
@@ -464,7 +503,10 @@ const appendReferenceAnalysisToPrompt = (prompt: string, analysis?: MarketingDra
 };
 
 const buildImagePromptWithReferenceAnalysis = (draft: MarketingDraft, scene: SceneDraft) => {
-    return appendReferenceAnalysisToPrompt(scene.imagePrompt, draft.referenceAnalysis);
+    return [
+        appendReferenceAnalysisToPrompt(scene.imagePrompt, draft.referenceAnalysis),
+        buildAssetReferenceInstruction(scene),
+    ].filter(Boolean).join("\n\n");
 };
 
 const extractProtectedTerms = (values: string[]) => {
@@ -500,10 +542,7 @@ const buildScenePositionInstruction = (scene: SceneDraft, sceneIndex?: number, t
     if (sceneIndex === undefined || totalScenes === undefined) {
         return "";
     }
-    return [
-        `当前分镜定位：第 ${sceneIndex + 1}/${totalScenes} 镜，标题「${scene.title}」。`,
-        "本次只生成这一镜，不要把其它分镜的动作、场景和信息混进来；如果参考视频结构包含街访、痛点、讲解、收束等步骤，请只迁移当前分镜对应的步骤。",
-    ].join("\n");
+    return `只生成第 ${sceneIndex + 1}/${totalScenes} 镜「${scene.title}」，不要混入其它分镜内容。`;
 };
 
 const buildVideoPromptWithSpeech = (
@@ -1016,6 +1055,94 @@ const removeReferenceImage = (index: number) => {
     referenceImages.value.splice(index, 1);
 };
 
+const marketingAssetTypeLabel = (type: MarketingAssetType) => {
+    return marketingAssetTypeOptions.find(item => item.value === type)?.label || "参考资产";
+};
+
+const assetDisplayUrl = (asset: MarketingAsset) => {
+    return asset.dataUrl || asset.url || "";
+};
+
+const normalizeMarketingAssetType = (value: any): MarketingAssetType => {
+    const raw = String(value || "").toLowerCase();
+    if (raw.includes("scene") || raw.includes("场景") || raw.includes("环境")) {
+        return "scene";
+    }
+    if (raw.includes("prop") || raw.includes("item") || raw.includes("道具") || raw.includes("产品") || raw.includes("物件")) {
+        return "prop";
+    }
+    return "character";
+};
+
+const pickMarketingAsset = async () => {
+    const filePath = await pickImageFiles();
+    if (!filePath) {
+        return;
+    }
+    try {
+        const name = assetUploadName.value.trim() || FileUtil.getBaseName(filePath, true);
+        marketingAssets.value.push({
+            id: `asset-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            type: assetUploadType.value,
+            name,
+            url: filePath,
+            dataUrl: await pathToDataUrl(filePath),
+            status: "ready",
+            note: "手动上传",
+        });
+        assetUploadName.value = "";
+    } catch (e: any) {
+        Dialog.tipError(e?.message || "资产图片读取失败");
+    }
+};
+
+const removeMarketingAsset = (index: number) => {
+    const asset = marketingAssets.value[index];
+    marketingAssets.value.splice(index, 1);
+    if (!asset?.id) {
+        return;
+    }
+    drafts.value.forEach(draft => {
+        draft.scenes.forEach(scene => {
+            scene.assetIds = (scene.assetIds || []).filter(id => id !== asset.id);
+        });
+    });
+};
+
+const addSuggestedMarketingAsset = (asset: Partial<MarketingAsset>) => {
+    const name = String(asset.name || "").trim();
+    const prompt = String(asset.prompt || "").trim();
+    if (!name && !prompt) {
+        return;
+    }
+    const type = normalizeMarketingAssetType(asset.type);
+    const exists = marketingAssets.value.some(item => item.type === type && item.name === (name || marketingAssetTypeLabel(type)));
+    if (exists) {
+        return;
+    }
+    marketingAssets.value.push({
+        id: `asset-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        type,
+        name: name || marketingAssetTypeLabel(type),
+        url: "",
+        prompt,
+        note: String(asset.note || "AI 根据脚本建议生成"),
+        status: "suggested",
+    });
+};
+
+const ensureSuggestedAssetsFromDrafts = (items: MarketingDraft[], json?: any) => {
+    if (readyMarketingAssets.value.length) {
+        return;
+    }
+    const rawAssets = [
+        ...(Array.isArray(json?.assets) ? json.assets : []),
+        ...(Array.isArray(json?.referenceAssets) ? json.referenceAssets : []),
+        ...items.flatMap(item => (Array.isArray(item.suggestedAssets) ? item.suggestedAssets : [])),
+    ];
+    rawAssets.forEach(item => addSuggestedMarketingAsset(item));
+};
+
 const pickSceneReferenceImage = async (scene: SceneDraft) => {
     const filePath = await pickImageFiles();
     if (!filePath) {
@@ -1028,6 +1155,277 @@ const pickSceneReferenceImage = async (scene: SceneDraft) => {
 const clearSceneReferenceImage = (scene: SceneDraft) => {
     scene.referenceImageUrl = "";
     scene.referenceImageName = "";
+};
+
+const uniqueNonEmptyStrings = (values: string[]) => {
+    return Array.from(new Set(values.map(item => String(item || "").trim()).filter(Boolean)));
+};
+
+const assetUrlValue = (asset: MarketingAsset) => {
+    return asset.url || asset.dataUrl || "";
+};
+
+const sceneReadyAssets = (scene?: SceneDraft) => {
+    const selectedIds = Array.isArray(scene?.assetIds) ? scene?.assetIds || [] : [];
+    const source = selectedIds.length
+        ? readyMarketingAssets.value.filter(item => selectedIds.includes(item.id))
+        : readyMarketingAssets.value;
+    return source.filter(item => assetUrlValue(item));
+};
+
+const buildImageAssetUrls = (scene: SceneDraft, extraUrls: string[] = []) => {
+    return uniqueNonEmptyStrings([
+        ...sceneReadyAssets(scene).map(assetUrlValue),
+        ...extraUrls,
+    ]);
+};
+
+const buildAssetReferenceInstruction = (scene?: SceneDraft) => {
+    const assets = sceneReadyAssets(scene);
+    if (!assets.length) {
+        return "";
+    }
+    const types = Array.from(new Set(assets.map(asset => marketingAssetTypeLabel(asset.type)))).join("、");
+    return `参考输入图：已提供${types || "一致性资产"}，生成时保持对应人物、场景或道具的核心外观一致；允许改变姿态、表情、机位和动作。不要把参考图文件名、说明文字或水印画进画面。`;
+};
+
+const assetsByTypeUrls = (assets: MarketingAsset[], type: MarketingAssetType) => {
+    return assets.filter(item => item.type === type).map(assetUrlValue).filter(Boolean);
+};
+
+const fieldText = (field: any) => {
+    return [field?.name, field?.label, field?.placeholder]
+        .map(item => String(item || "").toLowerCase())
+        .join(" ");
+};
+
+const fieldLooksLike = (field: any, patterns: Array<string | RegExp>) => {
+    const text = fieldText(field);
+    return patterns.some(pattern => typeof pattern === "string" ? text.includes(pattern.toLowerCase()) : pattern.test(text));
+};
+
+const defaultCloudFieldValue = (field: any, fallback: any = "") => {
+    return typeof field?.defaultValue !== "undefined" && field.defaultValue !== null && String(field.defaultValue).trim() !== ""
+        ? field.defaultValue
+        : fallback;
+};
+
+const ratioValueForCloudField = (field: any, ratio: string) => {
+    const normalizedRatio = String(ratio || "9:16").trim();
+    const options = Array.isArray(field?.options) ? field.options : [];
+    const matchedOption = options.find((item: any) => {
+        const text = `${item?.label || ""} ${item?.value || ""}`.toLowerCase();
+        return text.includes(normalizedRatio.toLowerCase());
+    });
+    if (matchedOption) {
+        return matchedOption.value;
+    }
+    if (/9\s*:\s*16/.test(normalizedRatio) && String(field?.name || "").includes("image_3")) {
+        return "9:16 portrait 768x1344";
+    }
+    return defaultCloudFieldValue(field, normalizedRatio);
+};
+
+const nodeKeyFromField = (field: any) => {
+    const help = String(field?.help || "");
+    const nodeId = help.match(/nodeId=([^,\s]+)/i)?.[1] || "";
+    const fieldName = help.match(/fieldName=([^,\s]+)/i)?.[1] || "";
+    return `${nodeId}:${fieldName}`;
+};
+
+const parseCloudFieldOptionsFromNodeInfo = (fieldData: any) => {
+    if (Array.isArray(fieldData)) {
+        return fieldData;
+    }
+    const text = String(fieldData || "").trim();
+    if (!text) {
+        return [];
+    }
+    try {
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+        if (Array.isArray(parsed[0])) {
+            return parsed[0].map((item: any) => ({
+                name: String(item || ""),
+                index: String(item || ""),
+                description: String(item || ""),
+            }));
+        }
+        return parsed;
+    } catch (e) {
+        return [];
+    }
+};
+
+const enrichCloudSchemaFields = (template: CloudTemplateRecord, fields: any[]) => {
+    let nodeInfoList: any[] = [];
+    try {
+        const parsed = JSON.parse(template.content.nodeInfoTemplateJson || "[]");
+        nodeInfoList = Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        nodeInfoList = [];
+    }
+    const nodeMap = new Map(
+        nodeInfoList.map(item => [`${item?.nodeId || ""}:${item?.fieldName || ""}`, item])
+    );
+    return fields.map(field => {
+        const node = nodeMap.get(nodeKeyFromField(field));
+        const fieldDataOptions = parseCloudFieldOptionsFromNodeInfo(node?.fieldData);
+        if (!fieldDataOptions.length) {
+            return field;
+        }
+        return {
+            ...field,
+            options: fieldDataOptions.map((item: any) => ({
+                label: String(item?.description || item?.name || item?.index || ""),
+                value: String(item?.index ?? item?.name ?? item?.description ?? ""),
+            })),
+        };
+    });
+};
+
+const valueForCloudField = (
+    field: any,
+    capability: "image" | "video",
+    base: Record<string, any>,
+    assets: MarketingAsset[]
+) => {
+    const characterAssets = assetsByTypeUrls(assets, "character");
+    const sceneAssets = assetsByTypeUrls(assets, "scene");
+    const propAssets = assetsByTypeUrls(assets, "prop");
+    const allAssets = assets.map(assetUrlValue).filter(Boolean);
+    const wantsArray = ["images", "audios", "videos", "files"].includes(String(field?.type || ""));
+    const chooseFileValue = (items: string[]) => wantsArray ? items : items[0] || "";
+
+    if (fieldLooksLike(field, ["negative", "反向", "负面"])) {
+        return base.negativePrompt || field.defaultValue || "";
+    }
+    if (fieldLooksLike(field, ["文生/图生", "文生图生", "打开是文生"])) {
+        return defaultCloudFieldValue(field, "false");
+    }
+    if (fieldLooksLike(field, ["count", "number", "数量", "张数", "个数"])) {
+        return defaultCloudFieldValue(field, 1);
+    }
+    if (fieldLooksLike(field, ["duration", "time", "seconds", "时长", "秒"])) {
+        return base.duration;
+    }
+    if (fieldLooksLike(field, ["ratio", "aspect", "size", "画幅", "比例", "尺寸"])) {
+        return ratioValueForCloudField(field, base.ratio);
+    }
+    if (String(field?.type || "") === "select") {
+        return defaultCloudFieldValue(field, "");
+    }
+    if (String(field?.type || "") === "number") {
+        return defaultCloudFieldValue(field, 0);
+    }
+    if (["image", "images", "file", "files"].includes(String(field?.type || ""))) {
+        const imageValues = capability === "video"
+            ? [base.firstFrame, ...allAssets].filter(Boolean)
+            : allAssets;
+        return chooseFileValue(imageValues);
+    }
+    if (fieldLooksLike(field, ["character", "person", "role", "avatar", "人物", "角色", "主角"])) {
+        return chooseFileValue(characterAssets.length ? characterAssets : allAssets);
+    }
+    if (fieldLooksLike(field, ["scene", "background", "environment", "space", "场景", "背景", "环境", "空间"])) {
+        return chooseFileValue(sceneAssets.length ? sceneAssets : allAssets);
+    }
+    if (fieldLooksLike(field, ["prop", "product", "item", "object", "道具", "产品", "物件", "商品"])) {
+        return chooseFileValue(propAssets.length ? propAssets : allAssets);
+    }
+    if (fieldLooksLike(field, ["reference", "asset", "素材", "参考", "一致性"])) {
+        return chooseFileValue(allAssets);
+    }
+    if (fieldLooksLike(field, ["image_prompt", "imageprompt", "图片提示", "生图提示"])) {
+        return base.imagePrompt || base.prompt;
+    }
+    if (fieldLooksLike(field, ["video_prompt", "videoprompt", "视频提示", "生视频提示"])) {
+        return base.videoPrompt || base.prompt;
+    }
+    if (fieldLooksLike(field, ["prompt", "text", "desc", "description", "提示词", "描述", "文案"])) {
+        return base.prompt;
+    }
+    if (fieldLooksLike(field, ["title", "标题", "名称"])) {
+        return base.title;
+    }
+    if (fieldLooksLike(field, ["subtitle", "caption", "字幕"])) {
+        return base.subtitle || "";
+    }
+    if (fieldLooksLike(field, ["voiceover", "line", "台词", "口播", "旁白"])) {
+        return base.voiceoverLine || "";
+    }
+    if (fieldLooksLike(field, ["first", "start", "首帧", "起始帧", "开始帧"])) {
+        return chooseFileValue([base.firstFrame].filter(Boolean));
+    }
+    if (fieldLooksLike(field, ["last", "end", "tail", "尾帧", "结束帧"])) {
+        return chooseFileValue([base.lastFrame].filter(Boolean));
+    }
+    return defaultCloudFieldValue(field, "");
+};
+
+const buildCloudMarketingInput = (
+    template: CloudTemplateRecord,
+    capability: "image" | "video",
+    base: Record<string, any>,
+    scene?: SceneDraft
+) => {
+    const assets = sceneReadyAssets(scene);
+    const characterAssets = assetsByTypeUrls(assets, "character");
+    const sceneAssets = assetsByTypeUrls(assets, "scene");
+    const propAssets = assetsByTypeUrls(assets, "prop");
+    const allAssetUrls = assets.map(assetUrlValue).filter(Boolean);
+    const input: Record<string, any> = {
+        ...base,
+        image: base.firstFrame || allAssetUrls[0] || "",
+        imageUrl: base.firstFrame || allAssetUrls[0] || "",
+        images: capability === "video" ? [base.firstFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
+        imageUrls: capability === "video" ? [base.firstFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
+        referenceImageUrl: allAssetUrls[0] || "",
+        referenceImages: allAssetUrls,
+        assetImages: allAssetUrls,
+        assetImageUrls: allAssetUrls,
+        characterAsset: characterAssets[0] || "",
+        characterAssets,
+        sceneAsset: sceneAssets[0] || "",
+        sceneAssets,
+        propAsset: propAssets[0] || "",
+        propAssets,
+        marketingAssets: assets.map(item => ({
+            type: item.type,
+            name: item.name,
+            url: assetUrlValue(item),
+            prompt: item.prompt || "",
+            note: item.note || "",
+        })),
+        selectedCapability: capability,
+    };
+    const schemaFields = enrichCloudSchemaFields(
+        template,
+        CloudTemplateTaskService.parseInputSchema(template.content.inputSchemaJson || "[]")
+    );
+    schemaFields.forEach(field => {
+        const key = String(field.name || "").trim();
+        if (!key) {
+            return;
+        }
+        input[key] = valueForCloudField(field, capability, base, assets);
+    });
+    const missingRequiredFiles = schemaFields.filter(field => {
+        const key = String(field.name || "").trim();
+        if (!field.required || !key || !["image", "images", "file", "files", "video", "audio"].includes(String(field.type || ""))) {
+            return false;
+        }
+        const value = input[key];
+        return Array.isArray(value) ? value.length === 0 : !String(value || "").trim();
+    });
+    if (missingRequiredFiles.length) {
+        throw new Error(
+            `云端模板「${template.title}」需要输入素材：${missingRequiredFiles.map(item => item.label || item.name).join("、")}。请先上传/生成参考资产，或换成支持文生图的云端生图模板。`
+        );
+    }
+    return input;
 };
 
 const exportDraftPrompts = (draft: MarketingDraft) => {
@@ -1045,6 +1443,7 @@ const exportDraftPrompts = (draft: MarketingDraft) => {
             `说话方式：${narrationModeLabel(scene.narrationMode)}`,
             `字幕：${scene.subtitleMode === "none" ? "不显示" : effectiveSceneCaption(scene) || "-"}`,
             `参考图：${scene.referenceImageName || scene.referenceImageUrl || "-"}`,
+            `关联资产：${sceneReadyAssets(scene).map(item => `${marketingAssetTypeLabel(item.type)}:${item.name}`).join("、") || "-"}`,
             "",
             "图片提示词：",
             buildImagePromptWithReferenceAnalysis(draft, scene),
@@ -1066,6 +1465,7 @@ const exportScenePrompts = (draft: MarketingDraft, scene: SceneDraft, index: num
         `说话方式：${narrationModeLabel(scene.narrationMode)}`,
         `字幕：${scene.subtitleMode === "none" ? "不显示" : effectiveSceneCaption(scene) || "-"}`,
         `参考图：${scene.referenceImageName || scene.referenceImageUrl || "-"}`,
+        `关联资产：${sceneReadyAssets(scene).map(item => `${marketingAssetTypeLabel(item.type)}:${item.name}`).join("、") || "-"}`,
         "",
         "图片提示词：",
         buildImagePromptWithReferenceAnalysis(draft, scene),
@@ -1503,6 +1903,14 @@ ${angleGuide}
         "captionAudio": "字幕、台词、旁白、音效/音乐的使用规律",
         "reusableRules": "后续生图/生视频必须复用的可迁移规则，写成具体执行要点"
       },
+      "suggestedAssets": [
+        {
+          "type": "character|scene|prop",
+          "name": "资产名称，例如：年轻女主角 / 明亮卧室 / 手机道具",
+          "prompt": "生成这个资产参考图的提示词，要求主体清晰，可复用于多个分镜保持一致性",
+          "note": "这个资产会用于哪些分镜或保持什么一致性"
+        }
+      ],
       "scenes": [
         {
           "title": "镜头名称",
@@ -1533,6 +1941,7 @@ ${angleGuide}
 11. draft.visualStyle 和 referenceAnalysis.visualStyle 必须简短，40-80字，只描述视觉风格：画幅、色彩、光线、构图、镜头质感和场景氛围；不要写剧情、节奏、转场、人物动作、台词或可复用规则。
 12. scenes 必须按参考视频结构拆成不同叙事步骤，例如“街访开场/痛点反应/解决方案讲解/收束行动”；每个 scene.videoPrompt 必须明显不同，不能两个分镜都写成同一场景、同一动作或同一讲解镜头。
 13. 专有名词、产品名、账号名必须逐字保留，不要同音替换或改写；如果出现“他趣”，必须保持“他趣”两个字，不能写成或读成“其他”。
+14. 每个 draft.suggestedAssets 必须列出保持分镜一致性需要的核心资产：至少包含 1 个人物资产；如果有固定场景或关键道具，也必须分别列为 scene/prop。不要把参考视频/参考图原人物当作资产，只能生成当前主题的新资产。
 `.trim();
 };
 
@@ -1617,6 +2026,13 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
         raw.imageStyle ||
         raw.videoStyle ||
         "";
+    const rawAssets = Array.isArray(raw.suggestedAssets)
+        ? raw.suggestedAssets
+        : Array.isArray(raw.assets)
+          ? raw.assets
+          : Array.isArray(raw.referenceAssets)
+            ? raw.referenceAssets
+            : [];
     const draft: MarketingDraft = {
         id: `${angle}-${Date.now()}-${index}`,
         angle,
@@ -1638,6 +2054,14 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
             : rawVisualStyle
               ? { visualStyle: String(rawVisualStyle) }
             : undefined,
+        suggestedAssets: rawAssets
+            .map((item: any) => ({
+                type: normalizeMarketingAssetType(item?.type || item?.assetType || item?.category),
+                name: String(item?.name || item?.title || ""),
+                prompt: String(item?.prompt || item?.description || item?.visualPrompt || ""),
+                note: String(item?.note || item?.usage || item?.role || ""),
+            }))
+            .filter((item: any) => item.name || item.prompt),
         scenes: scenes.map((scene: any, sceneIndex: number) => ({
             id: `${angle}-${index}-${sceneIndex}`,
             title: String(scene?.title || `镜头 ${sceneIndex + 1}`),
@@ -1649,6 +2073,7 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
             subtitleMode: scene?.subtitleMode === "none" ? "none" : "caption",
             imagePrompt: String(scene?.imagePrompt || ""),
             videoPrompt: String(scene?.videoPrompt || ""),
+            assetIds: Array.isArray(scene?.assetIds) ? scene.assetIds.map((item: any) => String(item || "")).filter(Boolean) : [],
             referenceImageUrl: String(scene?.referenceImageUrl || ""),
         })),
     };
@@ -1739,6 +2164,7 @@ const applyAiDrafts = (json: any) => {
     if (inferredVisualStyle && shouldAutoFillVisualStyle()) {
         form.value.visualStyle = inferredVisualStyle;
     }
+    ensureSuggestedAssetsFromDrafts(normalized, json);
     selectedDraftId.value = normalized[0]?.id || "";
 };
 
@@ -1858,6 +2284,7 @@ const buildScene = (angle: AngleType, index: number, draftIndex: number): SceneD
         narrationMode: form.value.narrationMode,
         imagePrompt,
         videoPrompt,
+        assetIds: [],
         referenceImageUrl: "",
         subtitleMode: form.value.subtitleMode,
     };
@@ -1876,10 +2303,25 @@ const generateRuleDrafts = () => {
         hook: buildHook(item.value),
         voiceover: buildVoiceover(item.value),
         cta: buildCta(item.value),
+        suggestedAssets: [
+            {
+                type: "character",
+                name: `${form.value.brandName.trim()}主角`,
+                prompt: `${form.value.brandName.trim()}短视频统一主角，符合目标人群「${textOr(form.value.targetAudience, "目标用户")}」，形象清晰，可复用于多个分镜，${form.value.visualStyle || "竖屏短视频真实感风格"}`,
+                note: "用于保持多个分镜的主角一致性",
+            },
+            {
+                type: "scene",
+                name: `${form.value.brandName.trim()}主场景`,
+                prompt: `${form.value.brandName.trim()}短视频统一场景空间，能承载开场、展示和收束动作，光线、色彩和整体画面风格一致`,
+                note: "用于保持同一视频的场景空间和光影一致性",
+            },
+        ],
         scenes: Array.from({ length: Number(form.value.sceneCount || 3) }, (_, sceneIndex) =>
             buildScene(item.value, sceneIndex, draftIndex)
         ),
     }));
+    ensureSuggestedAssetsFromDrafts(drafts.value);
     drafts.value.forEach(draft => ensureDraftVoiceoverLines(draft));
     selectedDraftId.value = drafts.value[0]?.id || "";
 };
@@ -1943,8 +2385,13 @@ const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft) =
         prompt,
         size: "1024x1536",
         quality: "high",
-        n: 1,
-    };
+    } as Record<string, any>;
+    const imageAssets = buildImageAssetUrls(scene);
+    if (imageAssets.length) {
+        body[imageAssets.length > 1 ? "image[]" : "image"] = imageAssets;
+    } else {
+        body.n = 1;
+    }
     const modelConfig: RunningHubModelConfigType = {
         capability: "image",
         connectorType: "custom-api",
@@ -1956,10 +2403,10 @@ const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft) =
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
-        submitPath: "/v1/images/generations",
+        submitPath: imageAssets.length ? "/v1/images/edits" : "/v1/images/generations",
         queryPath: "",
         requestBodyJson: JSON.stringify(body, null, 2),
-        requestFormat: "json",
+        requestFormat: imageAssets.length ? "form-data" : "json",
     };
     const record: TaskRecord = {
         biz: "DirectApiTask",
@@ -1968,7 +2415,7 @@ const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft) =
         serverTitle: "",
         serverVersion: "",
         modelConfig,
-        param: { input: { source: "MarketingVideoFlow", draft, scene, prompt } },
+        param: { input: { source: "MarketingVideoFlow", draft, scene, prompt, imageAssets } },
     };
     return await TaskService.submit(record);
 };
@@ -1979,15 +2426,123 @@ const submitCloudImageTask = async (draft: MarketingDraft, scene: SceneDraft) =>
         throw new Error("请先选择云端生图模板");
     }
     const prompt = buildImagePromptWithReferenceAnalysis(draft, scene);
-    const record = await CloudTemplateTaskService.buildTaskRecord(template.id, {
+    const imageAssets = buildImageAssetUrls(scene);
+    const input = buildCloudMarketingInput(template, "image", {
         title: `${draft.title}_${scene.title}_分镜图`,
         prompt,
         text: prompt,
-        selectedCapability: "image",
+        imagePrompt: prompt,
+        videoPrompt: buildVideoPromptWithSpeech(scene, draft.referenceAnalysis, draft.scenes.findIndex(item => item.id === scene.id), draft.scenes.length),
+        firstFrame: scene.referenceImageUrl || "",
+        firstFrameUrl: scene.referenceImageUrl || "",
+        lastFrame: "",
+        lastFrameUrl: "",
+        duration: scene.duration,
+        ratio: form.value.ratio,
+        subtitle: effectiveSceneCaption(scene),
+        voiceoverLine: scene.voiceoverLine || "",
         draft,
         scene,
-    });
+    }, scene);
+    const record = await CloudTemplateTaskService.buildTaskRecord(template.id, input);
     return await TaskService.submit(record);
+};
+
+const buildMarketingAssetPrompt = (asset: MarketingAsset) => {
+    const typeText = marketingAssetTypeLabel(asset.type);
+    return [
+        `生成一张可复用于短视频多分镜的一致性${typeText}参考图。`,
+        `资产名称：${asset.name}`,
+        asset.prompt ? `资产要求：${asset.prompt}` : "",
+        asset.note ? `补充说明：${asset.note}` : "",
+        form.value.visualStyle ? `整体画面风格：${form.value.visualStyle}` : "",
+        "要求：主体清晰，背景不过度复杂，适合后续作为 AI 生图参考资产；不要加入水印、UI、字幕、二维码或无关文字。",
+    ].filter(Boolean).join("\n");
+};
+
+const submitAssetImageTask = async (asset: MarketingAsset) => {
+    const prompt = buildMarketingAssetPrompt(asset);
+    if (imageChannel.value === "cloud") {
+        const template = currentImageTemplate.value;
+        if (!template?.id) {
+            throw new Error("请先选择云端生图模板");
+        }
+        const input = buildCloudMarketingInput(template, "image", {
+            title: `${asset.name}_参考资产`,
+            prompt,
+            text: prompt,
+            imagePrompt: prompt,
+            videoPrompt: "",
+            firstFrame: "",
+            firstFrameUrl: "",
+            lastFrame: "",
+            lastFrameUrl: "",
+            duration: DEFAULT_SCENE_DURATION,
+            ratio: form.value.ratio,
+            subtitle: "",
+            voiceoverLine: "",
+            assetDraft: asset,
+        });
+        const record = await CloudTemplateTaskService.buildTaskRecord(template.id, input);
+        return await TaskService.submit(record);
+    }
+
+    const platform = currentImagePlatform.value;
+    if (!platform || !platform.content.apiKey.trim()) {
+        throw new Error("请先配置可用的 GPT Image 2 平台");
+    }
+    const body: Record<string, any> = {
+        model: "gpt-image-2",
+        prompt,
+        size: "1024x1536",
+        quality: "high",
+        n: 1,
+    };
+    const modelConfig: RunningHubModelConfigType = {
+        capability: "image",
+        connectorType: "custom-api",
+        providerType: platform.content.platformType,
+        providerProfileId: platform.id,
+        providerProfileTitle: platform.title,
+        templateTitle: "短视频参考资产",
+        templateType: "custom-api",
+        baseUrl: platform.content.baseUrl,
+        apiKey: platform.content.apiKey,
+        proxyUrl: platform.content.proxyUrl || "",
+        submitPath: "/v1/images/generations",
+        queryPath: "",
+        requestBodyJson: JSON.stringify(body, null, 2),
+        requestFormat: "json",
+    };
+    const record: TaskRecord = {
+        biz: "DirectApiTask",
+        title: `${asset.name}_参考资产`,
+        serverName: "",
+        serverTitle: "",
+        serverVersion: "",
+        modelConfig,
+        param: { input: { source: "MarketingVideoFlow", prompt, asset } },
+    };
+    return await TaskService.submit(record);
+};
+
+const generateMarketingAsset = async (asset: MarketingAsset) => {
+    try {
+        submitting.value = true;
+        asset.status = "generating";
+        const taskId = await submitAssetImageTask(asset);
+        asset.imageTaskId = Number(taskId || 0);
+        const imageUrl = await waitForTaskImage(taskId);
+        asset.url = imageUrl;
+        asset.dataUrl = "";
+        asset.status = "ready";
+        Dialog.tipSuccess("参考资产已生成");
+    } catch (e: any) {
+        asset.status = "suggested";
+        Dialog.tipError(e?.message || "参考资产生成失败");
+    } finally {
+        submitting.value = false;
+    }
 };
 
 const submitImageTask = async (draft: MarketingDraft, scene: SceneDraft) => {
@@ -2094,6 +2649,15 @@ const submitDraftChainTask = async (draft: MarketingDraft) => {
             videoPlatformId: videoPlatformId.value,
             imageTemplateId: imageTemplateId.value,
             videoTemplateId: videoTemplateId.value,
+            referenceImageUrls: readyMarketingAssets.value.map(assetUrlValue),
+            marketingAssets: readyMarketingAssets.value.map(item => ({
+                id: item.id,
+                type: item.type,
+                name: item.name,
+                url: assetUrlValue(item),
+                prompt: item.prompt || "",
+                note: item.note || "",
+            })),
         },
         modelConfig: {},
     };
@@ -2112,16 +2676,24 @@ const submitCloudVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =>
         sceneIndex >= 0 ? sceneIndex : undefined,
         draft.scenes.length
     );
-    const record = await CloudTemplateTaskService.buildTaskRecord(template.id, {
+    const input = buildCloudMarketingInput(template, "video", {
         title: `${draft.title}_${scene.title}_视频`,
         prompt: videoPrompt,
         text: videoPrompt,
-        image: scene.referenceImageUrl || "",
-        imageUrl: scene.referenceImageUrl || "",
-        selectedCapability: "video",
+        imagePrompt: buildImagePromptWithReferenceAnalysis(draft, scene),
+        videoPrompt,
+        firstFrame: scene.referenceImageUrl || "",
+        firstFrameUrl: scene.referenceImageUrl || "",
+        lastFrame: "",
+        lastFrameUrl: "",
+        duration: scene.duration,
+        ratio: form.value.ratio,
+        subtitle: effectiveSceneCaption(scene),
+        voiceoverLine: scene.voiceoverLine || "",
         draft,
         scene,
-    });
+    }, scene);
+    const record = await CloudTemplateTaskService.buildTaskRecord(template.id, input);
     return await TaskService.submit(record);
 };
 
@@ -2365,6 +2937,75 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                                 {{ image.name }}
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            </a-form-item>
+                            <a-form-item label="参考资产 / 资产关联">
+                                <div class="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+                                    <div class="flex min-w-0 flex-wrap items-center gap-2">
+                                        <a-select v-model="assetUploadType" class="!w-32">
+                                            <a-option v-for="item in marketingAssetTypeOptions" :key="item.value" :value="item.value">
+                                                {{ item.label }}
+                                            </a-option>
+                                        </a-select>
+                                        <a-input v-model="assetUploadName" class="min-w-[180px] flex-1" placeholder="资产名称，可不填" allow-clear />
+                                        <a-button type="primary" @click="pickMarketingAsset">上传资产图片</a-button>
+                                    </div>
+                                    <div class="mt-2 text-xs leading-5 text-gray-500">
+                                        这里的资产会作为生图参考输入，用于保持人物、场景、道具在多个分镜间一致；上面的参考视频/参考图片只用于脚本和画面拆解。
+                                    </div>
+                                    <div v-if="marketingAssets.length" class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                                        <div
+                                            v-for="(asset, index) in marketingAssets"
+                                            :key="asset.id"
+                                            class="rounded-lg border border-white bg-white p-2 shadow-sm"
+                                        >
+                                            <div class="flex gap-2">
+                                                <div class="h-20 w-16 shrink-0 overflow-hidden rounded-md border border-gray-100 bg-gray-50">
+                                                    <img v-if="assetDisplayUrl(asset)" :src="assetDisplayUrl(asset)" class="h-full w-full object-cover" />
+                                                    <div v-else class="flex h-full w-full items-center justify-center px-1 text-center text-[11px] text-gray-400">
+                                                        待生成
+                                                    </div>
+                                                </div>
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="flex min-w-0 items-center gap-2">
+                                                        <a-select v-model="asset.type" size="mini" class="!w-24">
+                                                            <a-option v-for="item in marketingAssetTypeOptions" :key="item.value" :value="item.value">
+                                                                {{ item.label }}
+                                                            </a-option>
+                                                        </a-select>
+                                                        <a-tag v-if="asset.status === 'suggested'" size="small" color="orange">AI建议</a-tag>
+                                                        <a-tag v-else-if="asset.status === 'generating'" size="small" color="green">生成中</a-tag>
+                                                        <a-tag v-else size="small" color="green">可用</a-tag>
+                                                    </div>
+                                                    <a-input v-model="asset.name" size="mini" class="mt-1" placeholder="资产名称" />
+                                                </div>
+                                            </div>
+                                            <a-textarea
+                                                v-model="asset.prompt"
+                                                class="mt-2"
+                                                :auto-size="{ minRows: 2, maxRows: 4 }"
+                                                placeholder="资产生成提示词；修改后可重新生成"
+                                            />
+                                            <div v-if="asset.note || asset.url" class="mt-1 line-clamp-1 text-xs leading-5 text-gray-400">
+                                                {{ asset.note || asset.url }}
+                                            </div>
+                                            <div class="mt-2 flex flex-wrap justify-end gap-2">
+                                                <a-button
+                                                    size="mini"
+                                                    type="primary"
+                                                    :loading="asset.status === 'generating'"
+                                                    @click="generateMarketingAsset(asset)"
+                                                >
+                                                    {{ asset.status === "ready" ? "重新生成" : "生成资产" }}
+                                                </a-button>
+                                                <a-button v-if="asset.imageTaskId" size="mini" disabled>图 #{{ asset.imageTaskId }}</a-button>
+                                                <a-button size="mini" status="danger" @click="removeMarketingAsset(index)">移除</a-button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div v-else class="mt-3 rounded-md border border-dashed border-blue-100 bg-white px-3 py-4 text-center text-xs text-gray-400">
+                                        暂无资产。可以手动上传人物/场景/道具图；如果不上传，AI 生成脚本后会在这里补出建议资产。
                                     </div>
                                 </div>
                             </a-form-item>
@@ -2685,6 +3326,23 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                         <a-button v-if="scene.referenceImageUrl" size="mini" @click="clearSceneReferenceImage(scene)">移除</a-button>
                                         <span class="min-w-0 flex-1 truncate text-xs text-gray-500">
                                             {{ scene.referenceImageName || scene.referenceImageUrl || "可选；图生视频会优先使用这张图，不再先生图。" }}
+                                        </span>
+                                    </div>
+                                    <div class="mb-3 flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-blue-50 px-3 py-2">
+                                        <span class="text-xs font-medium text-gray-500">关联资产</span>
+                                        <a-select
+                                            v-model="scene.assetIds"
+                                            class="min-w-[260px] flex-1"
+                                            multiple
+                                            allow-clear
+                                            placeholder="默认使用全部可用资产；也可指定本镜只用哪些资产"
+                                        >
+                                            <a-option v-for="item in assetSelectOptions" :key="item.value" :value="item.value">
+                                                {{ item.label }}
+                                            </a-option>
+                                        </a-select>
+                                        <span class="text-xs text-gray-500">
+                                            {{ readyMarketingAssets.length ? `可用资产 ${readyMarketingAssets.length} 个` : "暂无可用资产" }}
                                         </span>
                                     </div>
                                     <div class="grid grid-cols-1 gap-3 xl:grid-cols-[190px_190px_minmax(0,1fr)]">

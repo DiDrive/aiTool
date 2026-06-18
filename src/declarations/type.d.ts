@@ -422,6 +422,14 @@ type DefsMapi = {
             option?: ServerCallFunctionOption
         ) => Promise<ServerCallFunctionResult>;
     };
+    watermark: {
+        detect: (payload: { input: string }) => Promise<{ watermarks: any[] }>;
+        detectVision: (payload: { input?: string; imageDataUrl?: string; config?: any }) => Promise<{ watermarks: any[] }>;
+        repairImage: (payload: { input: string; masks: any[] }) => Promise<{ output: string }>;
+        repairVideo: (payload: { input: string; masks: any[]; outputName?: string; keepAudio?: boolean }) => Promise<{ output: string }>;
+        repairServiceStatus: (payload: { url?: string }) => Promise<{ running: boolean; url: string; message?: string; data?: any }>;
+        startRepairService: (payload: { url?: string }) => Promise<{ running: boolean; url: string; message?: string; data?: any }>;
+    };
 };
 
 declare global {

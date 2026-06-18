@@ -1,5 +1,6 @@
 import { FileUtil } from "../../../lib/file";
 import { CloudTemplateTaskService } from "../../../service/CloudTemplateTaskService";
+import { CloudTemplateRecord, CloudTemplateService } from "../../../service/CloudTemplateService";
 import { DirectApiPlatformService } from "../../../service/DirectApiPlatformService";
 import { TaskRecord, TaskService } from "../../../service/TaskService";
 import { TaskBiz } from "../../../store/modules/task";
@@ -8,6 +9,16 @@ import { RunningHubModelConfigType } from "../RunningHubStudio/type";
 type MarketingChannel = "direct" | "cloud";
 type NarrationMode = "none" | "voiceover" | "character";
 type SubtitleMode = "none" | "caption";
+type MarketingAssetType = "character" | "scene" | "prop";
+
+type MarketingAssetRef = {
+    id?: string;
+    type: MarketingAssetType;
+    name?: string;
+    url: string;
+    prompt?: string;
+    note?: string;
+};
 
 type MarketingChainScene = {
     id: string;
@@ -20,6 +31,7 @@ type MarketingChainScene = {
     subtitleMode?: SubtitleMode;
     imagePrompt: string;
     videoPrompt: string;
+    assetIds?: string[];
     referenceImageUrl?: string;
 };
 
@@ -46,6 +58,8 @@ type MarketingChainParam = {
         ratio: string;
         videoModel?: string;
     };
+    referenceImageUrls?: string[];
+    marketingAssets?: MarketingAssetRef[];
     imageChannel: MarketingChannel;
     videoChannel: MarketingChannel;
     imagePlatformId?: number;
@@ -166,6 +180,237 @@ const ensureMultipartImageFile = async (value: string) => {
     return value;
 };
 
+const uniqueNonEmptyStrings = (values: string[]) => {
+    return Array.from(new Set(values.map(item => String(item || "").trim()).filter(Boolean)));
+};
+
+const buildImageAssetUrls = (param: MarketingChainParam, scene: MarketingChainScene, extraUrls: string[] = []) => {
+    const selectedIds = Array.isArray(scene.assetIds) ? scene.assetIds : [];
+    const readyAssets = Array.isArray(param.marketingAssets) ? param.marketingAssets : [];
+    const scopedAssetUrls = (selectedIds.length
+        ? readyAssets.filter(item => item.id && selectedIds.includes(item.id))
+        : readyAssets
+    ).map(item => item.url);
+    return uniqueNonEmptyStrings([
+        ...scopedAssetUrls,
+        ...(readyAssets.length ? [] : Array.isArray(param.referenceImageUrls) ? param.referenceImageUrls : []),
+        ...extraUrls,
+    ]);
+};
+
+const marketingAssetTypeLabel = (type: MarketingAssetType) => {
+    if (type === "scene") return "场景资产";
+    if (type === "prop") return "道具资产";
+    return "人物资产";
+};
+
+const buildAssetReferenceInstruction = (param: MarketingChainParam, scene: MarketingChainScene) => {
+    const assets = assetsForScene(param, scene);
+    if (!assets.length) {
+        return "";
+    }
+    const types = Array.from(new Set(assets.map(asset => marketingAssetTypeLabel(asset.type)))).join("、");
+    return `参考输入图：已提供${types || "一致性资产"}，生成时保持对应人物、场景或道具的核心外观一致；允许改变姿态、表情、机位和动作。不要把参考图文件名、说明文字或水印画进画面。`;
+};
+
+const assetsForScene = (param: MarketingChainParam, scene: MarketingChainScene) => {
+    const selectedIds = Array.isArray(scene.assetIds) ? scene.assetIds : [];
+    const source = (Array.isArray(param.marketingAssets) ? param.marketingAssets : []).filter(item => item.url);
+    return selectedIds.length ? source.filter(item => item.id && selectedIds.includes(item.id)) : source;
+};
+
+const assetUrlsByType = (assets: MarketingAssetRef[], type: MarketingAssetType) => {
+    return assets.filter(item => item.type === type).map(item => item.url).filter(Boolean);
+};
+
+const fieldText = (field: any) => {
+    return [field?.name, field?.label, field?.placeholder]
+        .map(item => String(item || "").toLowerCase())
+        .join(" ");
+};
+
+const fieldLooksLike = (field: any, patterns: Array<string | RegExp>) => {
+    const text = fieldText(field);
+    return patterns.some(pattern => typeof pattern === "string" ? text.includes(pattern.toLowerCase()) : pattern.test(text));
+};
+
+const defaultCloudFieldValue = (field: any, fallback: any = "") => {
+    return typeof field?.defaultValue !== "undefined" && field.defaultValue !== null && String(field.defaultValue).trim() !== ""
+        ? field.defaultValue
+        : fallback;
+};
+
+const ratioValueForCloudField = (field: any, ratio: string) => {
+    const normalizedRatio = String(ratio || "9:16").trim();
+    const options = Array.isArray(field?.options) ? field.options : [];
+    const matchedOption = options.find((item: any) => {
+        const text = `${item?.label || ""} ${item?.value || ""}`.toLowerCase();
+        return text.includes(normalizedRatio.toLowerCase());
+    });
+    if (matchedOption) {
+        return matchedOption.value;
+    }
+    if (/9\s*:\s*16/.test(normalizedRatio) && String(field?.name || "").includes("image_3")) {
+        return "9:16 portrait 768x1344";
+    }
+    return defaultCloudFieldValue(field, normalizedRatio);
+};
+
+const nodeKeyFromField = (field: any) => {
+    const help = String(field?.help || "");
+    const nodeId = help.match(/nodeId=([^,\s]+)/i)?.[1] || "";
+    const fieldName = help.match(/fieldName=([^,\s]+)/i)?.[1] || "";
+    return `${nodeId}:${fieldName}`;
+};
+
+const parseCloudFieldOptionsFromNodeInfo = (fieldData: any) => {
+    if (Array.isArray(fieldData)) {
+        return fieldData;
+    }
+    const text = String(fieldData || "").trim();
+    if (!text) {
+        return [];
+    }
+    try {
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+        if (Array.isArray(parsed[0])) {
+            return parsed[0].map((item: any) => ({
+                name: String(item || ""),
+                index: String(item || ""),
+                description: String(item || ""),
+            }));
+        }
+        return parsed;
+    } catch (e) {
+        return [];
+    }
+};
+
+const enrichCloudSchemaFields = (template: CloudTemplateRecord, fields: any[]) => {
+    let nodeInfoList: any[] = [];
+    try {
+        const parsed = JSON.parse(template.content.nodeInfoTemplateJson || "[]");
+        nodeInfoList = Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        nodeInfoList = [];
+    }
+    const nodeMap = new Map(
+        nodeInfoList.map(item => [`${item?.nodeId || ""}:${item?.fieldName || ""}`, item])
+    );
+    return fields.map(field => {
+        const node = nodeMap.get(nodeKeyFromField(field));
+        const fieldDataOptions = parseCloudFieldOptionsFromNodeInfo(node?.fieldData);
+        if (!fieldDataOptions.length) {
+            return field;
+        }
+        return {
+            ...field,
+            options: fieldDataOptions.map((item: any) => ({
+                label: String(item?.description || item?.name || item?.index || ""),
+                value: String(item?.index ?? item?.name ?? item?.description ?? ""),
+            })),
+        };
+    });
+};
+
+const valueForCloudField = (
+    field: any,
+    capability: "image" | "video",
+    base: Record<string, any>,
+    assets: MarketingAssetRef[]
+) => {
+    const characterAssets = assetUrlsByType(assets, "character");
+    const sceneAssets = assetUrlsByType(assets, "scene");
+    const propAssets = assetUrlsByType(assets, "prop");
+    const allAssets = assets.map(item => item.url).filter(Boolean);
+    const wantsArray = ["images", "audios", "videos", "files"].includes(String(field?.type || ""));
+    const choose = (items: string[]) => wantsArray ? items : items[0] || "";
+    if (fieldLooksLike(field, ["negative", "反向", "负面"])) return base.negativePrompt || field.defaultValue || "";
+    if (fieldLooksLike(field, ["文生/图生", "文生图生", "打开是文生"])) return defaultCloudFieldValue(field, "false");
+    if (fieldLooksLike(field, ["count", "number", "数量", "张数", "个数"])) return defaultCloudFieldValue(field, 1);
+    if (fieldLooksLike(field, ["duration", "time", "seconds", "时长", "秒"])) return base.duration;
+    if (fieldLooksLike(field, ["ratio", "aspect", "size", "画幅", "比例", "尺寸"])) return ratioValueForCloudField(field, base.ratio);
+    if (String(field?.type || "") === "select") return defaultCloudFieldValue(field, "");
+    if (String(field?.type || "") === "number") return defaultCloudFieldValue(field, 0);
+    if (["image", "images", "file", "files"].includes(String(field?.type || ""))) {
+        return choose(capability === "video" ? [base.firstFrame, ...allAssets].filter(Boolean) : allAssets);
+    }
+    if (fieldLooksLike(field, ["character", "person", "role", "avatar", "人物", "角色", "主角"])) return choose(characterAssets.length ? characterAssets : allAssets);
+    if (fieldLooksLike(field, ["scene", "background", "environment", "space", "场景", "背景", "环境", "空间"])) return choose(sceneAssets.length ? sceneAssets : allAssets);
+    if (fieldLooksLike(field, ["prop", "product", "item", "object", "道具", "产品", "物件", "商品"])) return choose(propAssets.length ? propAssets : allAssets);
+    if (fieldLooksLike(field, ["reference", "asset", "素材", "参考", "一致性"])) return choose(allAssets);
+    if (fieldLooksLike(field, ["image_prompt", "imageprompt", "图片提示", "生图提示"])) return base.imagePrompt || base.prompt;
+    if (fieldLooksLike(field, ["video_prompt", "videoprompt", "视频提示", "生视频提示"])) return base.videoPrompt || base.prompt;
+    if (fieldLooksLike(field, ["prompt", "text", "desc", "description", "提示词", "描述", "文案"])) return base.prompt;
+    if (fieldLooksLike(field, ["title", "标题", "名称"])) return base.title;
+    if (fieldLooksLike(field, ["subtitle", "caption", "字幕"])) return base.subtitle || "";
+    if (fieldLooksLike(field, ["voiceover", "line", "台词", "口播", "旁白"])) return base.voiceoverLine || "";
+    if (fieldLooksLike(field, ["first", "start", "首帧", "起始帧", "开始帧"])) return choose([base.firstFrame].filter(Boolean));
+    if (fieldLooksLike(field, ["last", "end", "tail", "尾帧", "结束帧"])) return choose([base.lastFrame].filter(Boolean));
+    return defaultCloudFieldValue(field, "");
+};
+
+const buildCloudMarketingInput = (
+    template: CloudTemplateRecord,
+    capability: "image" | "video",
+    base: Record<string, any>,
+    param: MarketingChainParam,
+    scene: MarketingChainScene
+) => {
+    const assets = assetsForScene(param, scene);
+    const allAssetUrls = assets.map(item => item.url).filter(Boolean);
+    const characterAssets = assetUrlsByType(assets, "character");
+    const sceneAssets = assetUrlsByType(assets, "scene");
+    const propAssets = assetUrlsByType(assets, "prop");
+    const input: Record<string, any> = {
+        ...base,
+        image: base.firstFrame || allAssetUrls[0] || "",
+        imageUrl: base.firstFrame || allAssetUrls[0] || "",
+        images: capability === "video" ? [base.firstFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
+        imageUrls: capability === "video" ? [base.firstFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
+        referenceImageUrl: allAssetUrls[0] || "",
+        referenceImages: allAssetUrls,
+        assetImages: allAssetUrls,
+        assetImageUrls: allAssetUrls,
+        characterAsset: characterAssets[0] || "",
+        characterAssets,
+        sceneAsset: sceneAssets[0] || "",
+        sceneAssets,
+        propAsset: propAssets[0] || "",
+        propAssets,
+        marketingAssets: assets,
+        selectedCapability: capability,
+    };
+    const schemaFields = enrichCloudSchemaFields(
+        template,
+        CloudTemplateTaskService.parseInputSchema(template.content.inputSchemaJson || "[]")
+    );
+    schemaFields.forEach(field => {
+        const key = String(field.name || "").trim();
+        if (!key) {
+            return;
+        }
+        input[key] = valueForCloudField(field, capability, base, assets);
+    });
+    const missingRequiredFiles = schemaFields.filter(field => {
+        const key = String(field.name || "").trim();
+        if (!field.required || !key || !["image", "images", "file", "files", "video", "audio"].includes(String(field.type || ""))) {
+            return false;
+        }
+        const value = input[key];
+        return Array.isArray(value) ? value.length === 0 : !String(value || "").trim();
+    });
+    if (missingRequiredFiles.length) {
+        throw new Error(
+            `云端模板「${template.title}」需要输入素材：${missingRequiredFiles.map(item => item.label || item.name).join("、")}。请先上传/生成参考资产，或换成支持文生图的云端生图模板。`
+        );
+    }
+    return input;
+};
+
 const directFileRelayEnabled = (platform: any) => {
     const relay = platform?.content?.directFileRelay;
     return Boolean(
@@ -234,13 +479,9 @@ const buildConsistentImagePrompt = (
     }
     return [
         scene.imagePrompt,
-        "",
-        "视觉连续性要求：参考图来自上一分镜，用它保持同一条短视频的主角、场景和整体风格连续。",
-        "1. 主角一致：保持主要人物的脸型、五官、发型、体型、年龄感、穿搭基调和整体气质一致；根据当前分镜重新生成姿态、表情和动作。",
-        "2. 场景一致：如果当前分镜与上一分镜属于同一地点、同一时间段或同一段事件，保持空间布局、背景元素、道具、光线方向、色温和镜头质感一致，只改变当前分镜需要的动作与机位。",
-        "3. 风格一致：如果当前分镜是不同地点或不同时间，不要照搬上一分镜背景，但要保持同一套视觉风格、色彩倾向、光影层次、真实感短视频质感和竖屏构图。",
+        "参考上一分镜输入图保持同一短视频的主角、服装基调、光影质感和竖屏风格连续；当前画面按本镜提示重新构图，不照搬上一镜背景。",
         previousScene
-            ? `上一分镜信息：标题「${previousScene.title}」，台词/字幕「${effectiveSceneCaption(previousScene)}」。请据此判断当前分镜是否属于相同场景。`
+            ? `上一镜仅作连续性参考：${previousScene.title}。`
             : "",
     ].join("\n");
 };
@@ -260,24 +501,19 @@ const buildReferenceAnalysisInstruction = (analysis?: MarketingReferenceAnalysis
     if (!analysis) {
         return "";
     }
+    const compact = (value?: string, max = 90) => {
+        const text = cleanSentence(value || "");
+        return text.length > max ? `${text.slice(0, max)}...` : text;
+    };
     const rows = [
-        analysis.plot ? `剧情推进：${analysis.plot}` : "",
-        analysis.structure ? `分镜结构：${analysis.structure}` : "",
-        analysis.shotLanguage ? `镜头语言：${analysis.shotLanguage}` : "",
-        analysis.visualStyle ? `视觉风格：${analysis.visualStyle}` : "",
-        analysis.rhythm ? `节奏：${analysis.rhythm}` : "",
-        analysis.characterAction ? `主体动作：${analysis.characterAction}` : "",
-        analysis.captionAudio ? `字幕/声音：${analysis.captionAudio}` : "",
-        analysis.reusableRules ? `可复用规则：${analysis.reusableRules}` : "",
+        compact(analysis.visualStyle, 120),
+        compact(analysis.shotLanguage, 100),
+        compact(analysis.rhythm, 80),
     ].filter(Boolean);
     if (!rows.length) {
         return "";
     }
-    return [
-        "参考视频拆解应用要求：",
-        ...rows,
-        "生成时必须迁移上述剧情结构、镜头节奏、构图/光影/色彩和字幕声音规律；但必须换成当前主题的新人物、新场景和新画面，不能复刻参考视频原人物、原动作细节、原台词或原音乐。",
-    ].join("\n");
+    return `参考视频风格：${rows.join("；")}。只借鉴风格、构图、光线和节奏，不复刻原人物、原场景、原台词或原音乐。`;
 };
 
 const appendReferenceAnalysisToPrompt = (prompt: string, analysis?: MarketingReferenceAnalysis) => {
@@ -314,10 +550,7 @@ const buildScenePositionInstruction = (scene: MarketingChainScene, sceneIndex?: 
     if (sceneIndex === undefined || totalScenes === undefined) {
         return "";
     }
-    return [
-        `当前分镜定位：第 ${sceneIndex + 1}/${totalScenes} 镜，标题「${scene.title}」。`,
-        "本次只生成这一镜，不要把其它分镜的动作、场景和信息混进来；如果参考视频结构包含街访、痛点、讲解、收束等步骤，请只迁移当前分镜对应的步骤。",
-    ].join("\n");
+    return `只生成第 ${sceneIndex + 1}/${totalScenes} 镜「${scene.title}」，不要混入其它分镜内容。`;
 };
 
 const buildVideoPromptWithSpeech = (
@@ -368,14 +601,16 @@ const submitDirectImageTask = async (
         buildConsistentImagePrompt(scene, continuityReferenceImageUrl, previousScene),
         param.draft.referenceAnalysis
     );
+    const fullPrompt = [prompt, buildAssetReferenceInstruction(param, scene)].filter(Boolean).join("\n\n");
+    const imageAssets = buildImageAssetUrls(param, scene, continuityReferenceImageUrl ? [continuityReferenceImageUrl] : []);
     const body: Record<string, any> = {
         model: "gpt-image-2",
-        prompt,
+        prompt: fullPrompt,
         size: "1024x1536",
         quality: "high",
     };
-    if (continuityReferenceImageUrl) {
-        body.image = await ensureMultipartImageFile(continuityReferenceImageUrl);
+    if (imageAssets.length) {
+        body[imageAssets.length > 1 ? "image[]" : "image"] = await Promise.all(imageAssets.map(item => ensureMultipartImageFile(item)));
     } else {
         body.n = 1;
     }
@@ -390,10 +625,10 @@ const submitDirectImageTask = async (
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
-        submitPath: continuityReferenceImageUrl ? "/v1/images/edits" : "/v1/images/generations",
+        submitPath: imageAssets.length ? "/v1/images/edits" : "/v1/images/generations",
         queryPath: "",
         requestBodyJson: JSON.stringify(body, null, 2),
-        requestFormat: continuityReferenceImageUrl ? "form-data" : "json",
+        requestFormat: imageAssets.length ? "form-data" : "json",
     };
     return await TaskService.submit({
         biz: "DirectApiTask",
@@ -407,7 +642,8 @@ const submitDirectImageTask = async (
                 source: "MarketingVideoFlow",
                 draft: param.draft,
                 scene,
-                prompt,
+                prompt: fullPrompt,
+                imageAssets,
                 continuityReferenceImageUrl: continuityReferenceImageUrl || "",
             },
         },
@@ -423,22 +659,36 @@ const submitCloudImageTask = async (
     if (!param.imageTemplateId) {
         throw new Error("请先选择云端生图模板");
     }
+    const template = await CloudTemplateService.get(Number(param.imageTemplateId || 0));
+    if (!template?.id) {
+        throw new Error("云端生图模板不存在");
+    }
     const prompt = appendReferenceAnalysisToPrompt(
         buildConsistentImagePrompt(scene, continuityReferenceImageUrl, previousScene),
         param.draft.referenceAnalysis
     );
-    const record = await CloudTemplateTaskService.buildTaskRecord(param.imageTemplateId, {
+    const fullPrompt = [prompt, buildAssetReferenceInstruction(param, scene)].filter(Boolean).join("\n\n");
+    const imageAssets = buildImageAssetUrls(param, scene, continuityReferenceImageUrl ? [continuityReferenceImageUrl] : []);
+    const input = buildCloudMarketingInput(template, "image", {
         title: `${param.draft.title}_${scene.title}_分镜图`,
-        prompt,
-        text: prompt,
-        image: continuityReferenceImageUrl || "",
-        imageUrl: continuityReferenceImageUrl || "",
-        referenceImageUrl: continuityReferenceImageUrl || "",
+        prompt: fullPrompt,
+        text: fullPrompt,
+        imagePrompt: fullPrompt,
+        videoPrompt: buildVideoPromptWithSpeech(scene, param.draft.referenceAnalysis, param.draft.scenes.findIndex(item => item.id === scene.id), param.draft.scenes.length, param.draft.title),
+        firstFrame: continuityReferenceImageUrl || scene.referenceImageUrl || "",
+        firstFrameUrl: continuityReferenceImageUrl || scene.referenceImageUrl || "",
+        lastFrame: "",
+        lastFrameUrl: "",
+        duration: scene.duration,
+        ratio: param.form.ratio,
+        subtitle: effectiveSceneCaption(scene),
+        voiceoverLine: scene.voiceoverLine || "",
+        imageAssets,
         continuityReferenceImageUrl: continuityReferenceImageUrl || "",
-        selectedCapability: "image",
         draft: param.draft,
         scene,
-    });
+    }, param, scene);
+    const record = await CloudTemplateTaskService.buildTaskRecord(param.imageTemplateId, input);
     return await TaskService.submit(record);
 };
 
@@ -527,6 +777,10 @@ const submitCloudVideoTask = async (
     if (!param.videoTemplateId) {
         throw new Error("请先选择云端生视频模板");
     }
+    const template = await CloudTemplateService.get(Number(param.videoTemplateId || 0));
+    if (!template?.id) {
+        throw new Error("云端生视频模板不存在");
+    }
     const sceneIndex = param.draft.scenes.findIndex(item => item.id === scene.id);
     const videoPrompt = buildVideoPromptWithSpeech(
         scene,
@@ -535,16 +789,24 @@ const submitCloudVideoTask = async (
         param.draft.scenes.length,
         param.draft.title
     );
-    const record = await CloudTemplateTaskService.buildTaskRecord(param.videoTemplateId, {
+    const input = buildCloudMarketingInput(template, "video", {
         title: `${param.draft.title}_${scene.title}_视频`,
         prompt: videoPrompt,
         text: videoPrompt,
-        image: referenceImageUrl,
-        imageUrl: referenceImageUrl,
-        selectedCapability: "video",
+        imagePrompt: appendReferenceAnalysisToPrompt(scene.imagePrompt, param.draft.referenceAnalysis),
+        videoPrompt,
+        firstFrame: referenceImageUrl,
+        firstFrameUrl: referenceImageUrl,
+        lastFrame: "",
+        lastFrameUrl: "",
+        duration: scene.duration,
+        ratio: param.form.ratio,
+        subtitle: effectiveSceneCaption(scene),
+        voiceoverLine: scene.voiceoverLine || "",
         draft: param.draft,
         scene,
-    });
+    }, param, scene);
+    const record = await CloudTemplateTaskService.buildTaskRecord(param.videoTemplateId, input);
     return await TaskService.submit(record);
 };
 

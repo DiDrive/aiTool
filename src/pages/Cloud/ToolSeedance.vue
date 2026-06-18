@@ -118,7 +118,7 @@ const hydrateFromTask = async () => {
     const body = JSON.parse(String(record.modelConfig?.requestBodyJson || "{}"));
     const input = record.param?.input || {};
     platformId.value = Number(record.modelConfig?.providerProfileId || platformId.value || 0);
-    title.value = String(record.title || "");
+    title.value = "";
     mode.value = input.mode === "frames" ? "frames" : "reference";
     prompt.value = String(input.prompt || "");
     model.value = String(body.model || model.value);
@@ -140,6 +140,29 @@ const hydrateFromTask = async () => {
             lastFrame.value ||
             String(content.find((item: any) => item?.role === "last_frame")?.image_url?.url || "");
     }
+};
+
+const shortTaskText = (value: string, fallback = "Seedance") => {
+    const text = String(value || "")
+        .replace(/@\S+/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    if (text) {
+        return text.slice(0, 28);
+    }
+    return fallback;
+};
+
+const buildSeedanceTaskTitle = () => {
+    const assetName = assets.value.map(item => item.url).find(Boolean);
+    const frameName = firstFrame.value || lastFrame.value || "";
+    const sourceName = String(assetName || frameName || "")
+        .replace(/\\/g, "/")
+        .split("/")
+        .pop()
+        ?.replace(/\.[^.]+$/, "");
+    const base = shortTaskText(prompt.value, sourceName || "Seedance");
+    return `${base}_视频_${new Date().toLocaleString()}`;
 };
 
 onMounted(async () => {
@@ -480,7 +503,7 @@ const submit = async () => {
     };
     const record: TaskRecord = {
         biz: "DirectApiTask",
-        title: title.value.trim() || `Seedance_${new Date().toLocaleString()}`,
+        title: title.value.trim() || buildSeedanceTaskTitle(),
         serverName: "",
         serverTitle: "",
         serverVersion: "",
