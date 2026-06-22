@@ -1,10 +1,11 @@
 import json
-import json
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -13,12 +14,24 @@ from PIL import Image, ImageDraw
 from pydantic import BaseModel
 
 
-SERVICE_VERSION = "2026-06-18-safe-path-v2"
+SERVICE_VERSION = "2026-06-22-propainter-auto-weights"
 
 app = FastAPI(title="AIGCPanel Watermark Repair Server")
 LOG_DIR = Path(os.environ.get("WATERMARK_LOG_DIR") or (Path(tempfile.gettempdir()) / "aigcpanel-watermark-logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 CURRENT_LOG = LOG_DIR / "repair-service.log"
+PROPAINTER_WEIGHT_FILES = [
+    "raft-things.pth",
+    "recurrent_flow_completion.pth",
+    "ProPainter.pth",
+]
+PROPAINTER_DEFAULT_WEIGHT_BASE_URL = "https://github.com/sczhou/ProPainter/releases/download/v0.1.0/"
+WEIGHT_DOWNLOAD_LOCK = threading.Lock()
+WEIGHT_DOWNLOAD_STATUS: Dict[str, Any] = {
+    "state": "idle",
+    "message": "",
+    "missing": [],
+}
 
 
 def append_log(message: str):
@@ -29,6 +42,97 @@ def append_log(message: str):
             f.write(line + "\n")
     except Exception:
         pass
+
+
+def propainter_root_path() -> Optional[Path]:
+    configured = os.environ.get("PROPAINTER_ROOT", "").strip()
+    root = Path(configured) if configured else Path(__file__).resolve().parent / "third_party" / "ProPainter"
+    if root.exists():
+        return root
+    return None
+
+
+def propainter_weights_dir() -> Optional[Path]:
+    root = propainter_root_path()
+    if not root:
+        return None
+    return root / "weights"
+
+
+def missing_propainter_weights() -> List[str]:
+    weights_dir = propainter_weights_dir()
+    if not weights_dir:
+        return PROPAINTER_WEIGHT_FILES.copy()
+    missing = []
+    for name in PROPAINTER_WEIGHT_FILES:
+        path = weights_dir / name
+        if not path.exists() or path.stat().st_size <= 0:
+            missing.append(name)
+    return missing
+
+
+def set_weight_status(state: str, message: str = "", missing: Optional[List[str]] = None):
+    WEIGHT_DOWNLOAD_STATUS.update({
+        "state": state,
+        "message": message,
+        "missing": missing if missing is not None else missing_propainter_weights(),
+    })
+
+
+def download_file(url: str, target: Path):
+    partial = target.with_suffix(target.suffix + ".partial")
+    if partial.exists():
+        partial.unlink()
+    append_log(f"DOWNLOAD WEIGHT: {url} -> {target}")
+    with urllib.request.urlopen(url, timeout=60) as response, partial.open("wb") as f:
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+    partial.replace(target)
+
+
+def ensure_propainter_weights(background: bool = False):
+    if os.environ.get("PROPAINTER_AUTO_DOWNLOAD_WEIGHTS", "1") == "0":
+        set_weight_status("disabled", "已关闭 ProPainter 权重自动下载")
+        return
+
+    def run():
+        try:
+            with WEIGHT_DOWNLOAD_LOCK:
+                root = propainter_root_path()
+                if not root:
+                    set_weight_status("error", "找不到 ProPainter 目录，无法自动下载权重")
+                    append_log("ProPainter root missing, skip weight auto download")
+                    return
+                weights_dir = root / "weights"
+                weights_dir.mkdir(parents=True, exist_ok=True)
+                missing = missing_propainter_weights()
+                if not missing:
+                    set_weight_status("ready", "ProPainter 权重已就绪", [])
+                    return
+
+                base_url = os.environ.get("PROPAINTER_WEIGHT_BASE_URL", PROPAINTER_DEFAULT_WEIGHT_BASE_URL).rstrip("/") + "/"
+                set_weight_status("downloading", f"正在下载 ProPainter 权重: {', '.join(missing)}", missing)
+                for name in missing:
+                    download_file(base_url + name, weights_dir / name)
+                set_weight_status("ready", "ProPainter 权重已下载完成", [])
+                append_log("ProPainter weights ready")
+        except Exception as exc:
+            message = f"ProPainter 权重自动下载失败: {exc}"
+            set_weight_status("error", message)
+            append_log(message)
+
+    if background:
+        threading.Thread(target=run, name="propainter-weight-downloader", daemon=True).start()
+    else:
+        run()
+
+
+@app.on_event("startup")
+def startup_prepare_propainter_weights():
+    ensure_propainter_weights(background=True)
 
 
 class MaskPayload(BaseModel):
@@ -251,6 +355,7 @@ def find_result_video(output_dir: Path, preferred_name: str):
 
 
 def run_propainter(input_path: str, mask_path: Path, output_path: Path, work_dir: Path):
+    ensure_propainter_weights(background=False)
     output_dir = work_dir / "propainter-output"
     output_dir.mkdir(parents=True, exist_ok=True)
     values = {
@@ -332,11 +437,15 @@ def mux_audio_if_needed(input_path: str, repaired_path: Path, final_path: Path, 
 
 @app.get("/api/watermark/status")
 def watermark_status():
+    weights_dir = propainter_weights_dir()
     return response_ok({
         "serviceVersion": SERVICE_VERSION,
         "engine": "propainter",
         "propainterRoot": os.environ.get("PROPAINTER_ROOT", ""),
         "hasCommandTemplate": bool(os.environ.get("PROPAINTER_COMMAND", "").strip()),
+        "weightsDir": str(weights_dir) if weights_dir else "",
+        "weightsReady": not missing_propainter_weights(),
+        "weightsStatus": WEIGHT_DOWNLOAD_STATUS,
         "log": str(CURRENT_LOG),
     })
 

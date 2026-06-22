@@ -35,6 +35,12 @@ database.db
 .vscode
 
 /share-binary/
+/AI_Live_Server/weights/
+/AI_Live_Server/**/*.pth
+/AI_Live_Server/**/*.pt
+/AI_Live_Server/**/*.ckpt
+/AI_Live_Server/**/*.safetensors
+/AI_Live_Server/**/*.partial
 /electron/resources/extra/linux-arm64/
 /electron/resources/extra/linux-x86/
 /electron/resources/extra/osx-arm64/
