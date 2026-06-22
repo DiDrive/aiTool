@@ -138,9 +138,10 @@ const exportConfigPackage = async () => {
     try {
         const data = await ConfigTransferService.exportToFile(filePath);
         const directCount = data.data.directApiPlatforms?.length || 0;
+        const relayCount = data.data.fileRelayConfig ? 1 : 0;
         const providerCount = data.data.cloudProviderProfiles?.length || 0;
         const templateCount = data.data.cloudTemplates?.length || 0;
-        Dialog.tipSuccess(`配置已导出：直连平台 ${directCount} 个，云端供应商 ${providerCount} 个，模板 ${templateCount} 个`);
+        Dialog.tipSuccess(`配置已导出：直连平台 ${directCount} 个，全局中转 ${relayCount} 个，云端供应商 ${providerCount} 个，模板 ${templateCount} 个`);
     } catch (e: any) {
         Dialog.alertError(e?.message || "导出配置失败", "导出配置");
     }
@@ -161,7 +162,7 @@ const importConfigPackage = async () => {
         const summary = await ConfigTransferService.importFromFile(String(filePath));
         await refresh();
         Dialog.tipSuccess(
-            `配置已导入：直连平台 ${summary.directApiPlatforms} 个，云端供应商 ${summary.cloudProviderProfiles} 个，模板 ${summary.cloudTemplates} 个`
+            `配置已导入：直连平台 ${summary.directApiPlatforms} 个，全局中转 ${summary.fileRelayConfig} 个，云端供应商 ${summary.cloudProviderProfiles} 个，模板 ${summary.cloudTemplates} 个`
         );
     } catch (e: any) {
         Dialog.alertError(e?.message || "导入配置失败", "导入配置");

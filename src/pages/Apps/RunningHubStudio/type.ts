@@ -23,7 +23,7 @@ export type RunningHubModelConfigType = {
     apiKey: string;
     proxyUrl?: string;
     directFileRelay?: {
-        provider?: "123pan";
+        provider?: "123pan" | "modeltop-assets" | "kwjm-assets";
         enabled?: boolean;
         clientID?: string;
         clientSecret?: string;

@@ -6,6 +6,7 @@ import {
     DirectApiPlatformRecord,
     DirectApiPlatformService,
 } from "../../service/DirectApiPlatformService";
+import { FileRelayConfigService } from "../../service/FileRelayConfigService";
 import { TaskRecord, TaskService } from "../../service/TaskService";
 import { RunningHubModelConfigType } from "../Apps/RunningHubStudio/type";
 import { usePageDraft } from "../../hooks/pageDraft";
@@ -74,6 +75,16 @@ const modeOptions: Array<{ label: string; value: CreationMode; desc: string }> =
 ];
 
 const modelOptions = ["seedance-2.0", "seedance-2.0-fast"];
+const normalizeUiVideoModel = (value: string) => {
+    const raw = String(value || "").trim();
+    if (raw === "kw-video-v2-fast") {
+        return "seedance-2.0-fast";
+    }
+    if (raw === "kw-video-v2") {
+        return "seedance-2.0";
+    }
+    return modelOptions.includes(raw) ? raw : "seedance-2.0-fast";
+};
 const ratioOptions = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"];
 const resolutionOptions = ["480p", "720p"];
 const durationOptions = [
@@ -88,6 +99,45 @@ const referenceRoleMap = {
     video: "reference_video",
     audio: "reference_audio",
 } as const;
+const urlKeyOfAssetType = (type: SeedanceAssetType) => {
+    return type === "image" ? "image_url" : type === "video" ? "video_url" : "audio_url";
+};
+const referenceRoleOfAssetType = (type: SeedanceAssetType) => referenceRoleMap[type];
+const buildVideoContentItem = (
+    type: "image" | "video" | "audio",
+    url: string,
+    role: "first_frame" | "last_frame" | "reference_image" | "reference_video" | "reference_audio"
+) => {
+    const key = urlKeyOfAssetType(type);
+    return {
+        type: key,
+        [key]: { url },
+        role,
+    };
+};
+const isKwjmPlatform = (platform: DirectApiPlatformRecord | null) => platform?.content.platformType === "kwjm";
+const platformVideoModel = (platform: DirectApiPlatformRecord | null, value: string) => {
+    if (!isKwjmPlatform(platform)) {
+        return value;
+    }
+    return value.includes("fast") ? "kw-video-v2-fast" : "kw-video-v2";
+};
+const getEffectiveDirectFileRelay = async (platform: DirectApiPlatformRecord | null) => {
+    const relay = platform?.content.directFileRelay;
+    if (relay?.enabled && relay.provider === "modeltop-assets" && String(platform?.content.apiKey || "").trim()) {
+        return relay;
+    }
+    if (
+        relay?.enabled &&
+        relay.provider === "123pan" &&
+        String(relay.clientID || "").trim() &&
+        String(relay.clientSecret || "").trim() &&
+        String(relay.parentFileID || "").trim()
+    ) {
+        return relay;
+    }
+    return await FileRelayConfigService.getPan123Relay();
+};
 const referenceFilters = {
     image: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff"] }],
     video: [{ name: "Video", extensions: ["mp4", "mov"] }],
@@ -121,7 +171,7 @@ const hydrateFromTask = async () => {
     title.value = "";
     mode.value = input.mode === "frames" ? "frames" : "reference";
     prompt.value = String(input.prompt || "");
-    model.value = String(body.model || model.value);
+    model.value = normalizeUiVideoModel(String(body.model || model.value));
     ratio.value = String(body.ratio || ratio.value);
     resolution.value = String(body.resolution || resolution.value);
     duration.value = normalizeDuration(body.duration);
@@ -173,6 +223,14 @@ onMounted(async () => {
     }
     await loadPlatforms();
     await hydrateFromTask();
+    model.value = normalizeUiVideoModel(model.value);
+});
+
+watch(model, value => {
+    const normalized = normalizeUiVideoModel(value);
+    if (normalized !== value) {
+        model.value = normalized;
+    }
 });
 
 const isLocalFilePath = (value: string) => {
@@ -425,20 +483,15 @@ const buildContent = () => {
     }
     if (mode.value === "frames") {
         if (firstFrame.value) {
-            content.push({ type: "image_url", image_url: { url: firstFrame.value }, role: "first_frame" });
+            content.push(buildVideoContentItem("image", firstFrame.value, "first_frame"));
         }
         if (lastFrame.value) {
-            content.push({ type: "image_url", image_url: { url: lastFrame.value }, role: "last_frame" });
+            content.push(buildVideoContentItem("image", lastFrame.value, "last_frame"));
         }
     }
     if (mode.value === "reference") {
         for (const item of assets.value.filter(item => item.url.trim())) {
-            const key = item.type === "image" ? "image_url" : item.type === "video" ? "video_url" : "audio_url";
-            content.push({
-                type: key,
-                [key]: { url: item.url },
-                role: item.role,
-            });
+            content.push(buildVideoContentItem(item.type, item.url, referenceRoleOfAssetType(item.type)));
         }
     }
     return content;
@@ -462,18 +515,13 @@ const submit = async () => {
     const localVideoAsset = assets.value.find(item => {
         return item.type === "video" && item.url.trim() && !/^https?:\/\//i.test(item.url.trim()) && !/^asset:\/\//i.test(item.url.trim());
     });
-    const relayEnabled = Boolean(
-        platform.content.directFileRelay?.enabled &&
-            String(platform.content.directFileRelay?.clientID || "").trim() &&
-            String(platform.content.directFileRelay?.clientSecret || "").trim() &&
-            String(platform.content.directFileRelay?.parentFileID || "").trim()
-    );
-    if (localVideoAsset && !relayEnabled) {
-        Dialog.tipError("视频参考当前需要先上传到可访问的文件服务；图片和音频会自动转成 Base64 提交");
+    const directFileRelay = await getEffectiveDirectFileRelay(platform);
+    if (localVideoAsset && !directFileRelay) {
+        Dialog.tipError("视频参考当前需要先配置全局 123 云盘中转；图片和音频可自动处理");
         return;
     }
     const body: any = {
-        model: model.value,
+        model: platformVideoModel(platform, model.value),
         content,
         generate_audio: generateAudio.value,
         resolution: resolution.value,
@@ -495,9 +543,9 @@ const submit = async () => {
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
-        directFileRelay: platform.content.directFileRelay,
-        submitPath: "/api/v3/contents/generations/tasks",
-        queryPath: "/api/v3/contents/generations/tasks/{id}",
+        directFileRelay: directFileRelay || undefined,
+        submitPath: isKwjmPlatform(platform) ? "/v1/videos/generations" : "/api/v3/contents/generations/tasks",
+        queryPath: isKwjmPlatform(platform) ? "/v1/videos/generations/{id}" : "/api/v3/contents/generations/tasks/{id}",
         requestBodyJson: JSON.stringify(body, null, 2),
         requestFormat: "json",
     };

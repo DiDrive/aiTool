@@ -419,7 +419,8 @@ export const RunningHubRunModelConfigUntilDone = async (
         proxyUrl: modelConfig.proxyUrl || "",
     });
     if (submitRes?.code) {
-        throw new Error(responseMessageOf(submitRes, "任务提交失败"));
+        const requestUrl = String(submitRes?._diagnostics?.requestUrl || "").trim();
+        throw new Error([responseMessageOf(submitRes, "任务提交失败"), requestUrl ? `Request URL: ${requestUrl}` : ""].filter(Boolean).join("\n"));
     }
     const syncResults = normalizeDirectApiResults(submitRes);
     if (syncResults.length > 0) {
@@ -451,7 +452,7 @@ export const RunningHubRunModelConfigUntilDone = async (
             throw new Error(queryRes?.msg || "RunningHub 状态查询失败");
         }
         const status = String(queryRes?.data?.status || "").toUpperCase();
-        if (status === "SUCCESS" || status === "SUCCEEDED") {
+        if (status === "SUCCESS" || status === "SUCCEEDED" || status === "COMPLETED") {
             const materialized = await materializeDirectApiResults(queryRes?.data?.results || []);
             const localFiles: string[] = [...materialized.localFiles];
             for (const item of materialized.results || []) {
@@ -473,7 +474,7 @@ export const RunningHubRunModelConfigUntilDone = async (
                 option.title
             );
         }
-        if (status === "FAILED" || status === "CANCELLED" || status === "STOPPED") {
+        if (status === "FAILED" || status === "FAIL" || status === "ERROR" || status === "CANCELLED" || status === "CANCELED" || status === "STOPPED" || status === "REJECTED") {
             throw new Error(String(queryRes?.data?.errorMessage || queryRes?.msg || `RunningHub 任务失败: ${status}`));
         }
     }
@@ -598,7 +599,8 @@ export const RunningHubTask: TaskBiz = {
                 jobResult.Submit.responseDiagnostics = res?._diagnostics || {};
                 jobResult.Submit.responsePreview = safeJsonPreview(res);
                 if (res?.code) {
-                    throw new Error(responseMessageOf(res, "任务提交失败"));
+                    const requestUrl = String(res?._diagnostics?.requestUrl || "").trim();
+                    throw new Error([responseMessageOf(res, "任务提交失败"), requestUrl ? `Request URL: ${requestUrl}` : ""].filter(Boolean).join("\n"));
                 }
                 const taskId = extractDirectApiTaskId(res);
                 const syncResults = normalizeDirectApiResults(res);
@@ -679,10 +681,11 @@ export const RunningHubTask: TaskBiz = {
             proxyUrl: modelConfig.proxyUrl || "",
         });
         if (res?.code && !res?.data?.status) {
+            const requestUrl = String(res?._diagnostics?.requestUrl || "").trim();
             jobResult.Query.status = "fail";
-            jobResult.Query.error = String(res?.msg || "RunningHub 状态查询失败");
+            jobResult.Query.error = [res?.msg || "RunningHub 状态查询失败", requestUrl ? `Request URL: ${requestUrl}` : ""].filter(Boolean).join("\n");
             await TaskService.update(bizId, { jobResult });
-            throw new Error(res?.msg || "RunningHub 状态查询失败");
+            throw new Error(jobResult.Query.error);
         }
         const status = String(res?.data?.status || "").toUpperCase();
         jobResult.Query.status = "running";
@@ -690,7 +693,7 @@ export const RunningHubTask: TaskBiz = {
         jobResult.Query.results = Array.isArray(res?.data?.results) ? res.data.results : [];
         jobResult.Query.usage = res?.data?.usage || {};
         jobResult.Query.promptTips = res?.data?.promptTips || "";
-        if (status === "SUCCESS" || status === "SUCCEEDED") {
+        if (status === "SUCCESS" || status === "SUCCEEDED" || status === "COMPLETED") {
             const localFiles: string[] = [];
             const downloadErrors: string[] = [];
             const materialized = await materializeDirectApiResults(jobResult.Query.results || []);

@@ -19,6 +19,7 @@ import ToolSeedance from "../Cloud/ToolSeedance.vue";
 import TextToImageIcon from "./TextToImage/assets/icon.svg";
 import WatermarkInpaint from "./WatermarkInpaint/WatermarkInpaint.vue";
 import WatermarkInpaintIcon from "./WatermarkInpaint/assets/icon.svg";
+import KwjmVideoErase from "./KwjmVideoErase/KwjmVideoErase.vue";
 
 export const SoundApps = [
     {
@@ -117,6 +118,13 @@ export const ImageApps = [
 ];
 
 export const ToolApps = [
+    {
+        name: "KwjmVideoErase",
+        title: "字幕擦除",
+        description: "使用 KWJM 擦除视频字幕",
+        icon: VideoGenFlowIcon,
+        component: KwjmVideoErase,
+    },
     {
         name: "WatermarkInpaint",
         title: "水印智能修复",

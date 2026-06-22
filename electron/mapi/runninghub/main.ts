@@ -11,9 +11,10 @@ const PAN123_URL_AUTH_TTL_SECONDS = 7 * 24 * 60 * 60;
 let currentProxyRules = "";
 const pan123TokenCache = new Map<string, { token: string; expiredAt: number }>();
 const exchangeTokenAssetGroupCache = new Map<string, string>();
+const kwjmAssetGroupCache = new Map<string, string>();
 
 type DirectFileRelayOptions = {
-    provider?: "123pan";
+    provider?: "123pan" | "modeltop-assets" | "kwjm-assets";
     enabled?: boolean;
     clientID?: string;
     clientSecret?: string;
@@ -135,6 +136,22 @@ const exchangeTokenModerationHint = (value: any) => {
     return "";
 };
 
+const assetModerationHint = (value: any) => {
+    const error = value?.Error || value?.error || {};
+    const code = String(error?.Code || error?.code || "").trim();
+    const message = String(error?.Message || error?.message || "").trim();
+    if (/InputImageSensitiveContentDetected/i.test(code) && /real person/i.test(message)) {
+        return [
+            "资产审核提示：参考图可能包含真人，平台要求先完成素材入库后再用于视频生成。",
+            "如果入库仍失败，请确认图片来源、授权和平台真人/肖像使用规则。",
+        ].join("\n");
+    }
+    if (/SensitiveContent|PolicyViolation/i.test(code)) {
+        return `资产审核提示：素材触发平台内容审核。${message || code}`;
+    }
+    return "";
+};
+
 const attachDiagnostics = (json: any, diagnostics: Record<string, any>) => {
     const result = json && typeof json === "object" ? json : {};
     result._diagnostics = {
@@ -158,11 +175,36 @@ const errorDetailOf = (e: any) => {
     return Array.from(new Set(parts)).join("\n");
 };
 
-const appFetch = async (url: string, init: RequestInit) => {
-    if (typeof (net as any)?.fetch === "function") {
-        return await (net as any).fetch(url, init);
+const normalizeNetworkError = (e: any, requestUrl?: string) => {
+    const detail = errorDetailOf(e);
+    if (/ERR_CERT_AUTHORITY_INVALID|CERT_AUTHORITY_INVALID/i.test(detail)) {
+        const host = (() => {
+            try {
+                return requestUrl ? new URL(requestUrl).host : "";
+            } catch (err) {
+                return "";
+            }
+        })();
+        return new Error(
+            [
+                `HTTPS 证书不受信任${host ? `：${host}` : ""}`,
+                "请检查平台 Base URL 是否填写正确；如果正在使用代理/抓包工具，请确认代理根证书已安装到系统信任区，或把代理地址改为 direct/system 后重试。",
+                detail,
+            ].filter(Boolean).join("\n")
+        );
     }
-    return await fetch(url, init);
+    return e;
+};
+
+const appFetch = async (url: string, init: RequestInit) => {
+    try {
+        if (typeof (net as any)?.fetch === "function") {
+            return await (net as any).fetch(url, init);
+        }
+        return await fetch(url, init);
+    } catch (e) {
+        throw normalizeNetworkError(e, url);
+    }
 };
 
 const parseJsonBody = async (res: Response) => {
@@ -624,6 +666,198 @@ const createExchangeTokenAsset = async (
     throw new Error("ExchangeToken 资产入库超时");
 };
 
+const createKwjmAsset = async (
+    apiBaseUrl: string,
+    apiKey: string,
+    filePath: string,
+    publicUrl: string,
+    assetType: "Image" | "Video",
+    model = "kw-video-v2",
+    proxyUrl?: string
+) => {
+    const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
+    const normalizedModel = /kw-video-v2-fast/i.test(model) ? "kw-video-v2-fast" : "kw-video-v2";
+    const cacheKey = `${baseUrl}:${apiKey.slice(0, 8)}:${normalizedModel}`;
+    let groupId = kwjmAssetGroupCache.get(cacheKey) || "";
+    if (!groupId) {
+        const groupJson = assertOkJson(
+            await postJsonRaw(
+                `${baseUrl}/v3/open/CreateAssetGroup`,
+                {
+                    model: normalizedModel,
+                    Name: "AIGCPanel Seedance".slice(0, 32),
+                    GroupType: "AIGC",
+                    Description: "AIGCPanel reusable media assets",
+                },
+                buildAuthHeader(apiKey),
+                30000,
+                proxyUrl
+            ),
+            "KWJM 创建资产组失败"
+        );
+        groupId = String(
+            groupJson?.data?.GroupId ||
+                groupJson?.data?.group_id ||
+                groupJson?.data?.id ||
+                groupJson?.Result?.GroupId ||
+                groupJson?.Result?.Id ||
+                groupJson?.GroupId ||
+                groupJson?.Id ||
+                groupJson?.id ||
+                ""
+        ).trim();
+        if (!groupId) {
+            throw new Error(`KWJM 创建资产组未返回 GroupId\nDetail: ${safeJsonSnippet(groupJson)}`);
+        }
+        kwjmAssetGroupCache.set(cacheKey, groupId);
+    }
+    const assetJson = assertOkJson(
+        await postJsonRaw(
+            `${baseUrl}/v3/open/CreateAsset`,
+            {
+                model: normalizedModel,
+                GroupId: groupId,
+                URL: publicUrl,
+                Name: path.basename(filePath).slice(0, 32),
+                AssetType: assetType,
+            },
+            buildAuthHeader(apiKey),
+            30000,
+            proxyUrl
+        ),
+        "KWJM 创建资产失败"
+    );
+    const createAssetMessage = responseMessageOf(assetJson, "");
+    const assetId = String(
+        assetJson?.data?.AssetId ||
+            assetJson?.data?.asset_id ||
+            assetJson?.data?.Id ||
+            assetJson?.data?.id ||
+            assetJson?.Result?.AssetId ||
+            assetJson?.Result?.Id ||
+            assetJson?.AssetId ||
+            assetJson?.Id ||
+            assetJson?.id ||
+            ""
+    ).trim();
+    if (!assetId) {
+        throw new Error(`KWJM 创建资产未返回 AssetId\nDetail: ${safeJsonSnippet(assetJson)}`);
+    }
+    for (let i = 0; i < 60; i += 1) {
+        const statusJson = assertOkJson(
+            await postJsonRaw(
+                `${baseUrl}/v3/open/GetAsset`,
+                {
+                    model: normalizedModel,
+                    Id: assetId,
+                },
+                buildAuthHeader(apiKey),
+                30000,
+                proxyUrl
+            ),
+            "KWJM 查询资产失败"
+        );
+        const diagnosticJson = statusJson?.data || statusJson?.Result || statusJson;
+        const status = String(
+            statusJson?.data?.Status ||
+                statusJson?.data?.status ||
+                statusJson?.Result?.Status ||
+                statusJson?.Result?.status ||
+                statusJson?.Status ||
+                statusJson?.status ||
+                ""
+        ).trim();
+        if (/^(Active|Success|Succeeded|Completed|Ready)$/i.test(status)) {
+            return `asset://${assetId}`;
+        }
+        if (/failed|error|reject/i.test(status)) {
+            const moderationHint = assetModerationHint(diagnosticJson);
+            const reason = moderationHint || responseMessageOf(diagnosticJson, createAssetMessage || "failed");
+            throw new Error(
+                [
+                    `KWJM 资产入库失败：${status}`,
+                    reason,
+                    `AssetId: ${assetId}`,
+                    `AssetType: ${assetType}`,
+                    `File: ${path.basename(filePath)}`,
+                    `Source: ${describeHttpSource(publicUrl)}`,
+                    `Detail: ${safeJsonSnippet(diagnosticJson)}`,
+                ]
+                    .filter(Boolean)
+                    .join("\n")
+            );
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    throw new Error("KWJM 资产入库超时");
+};
+
+const uploadFileToModelTopAssets = async (
+    apiBaseUrl: string,
+    apiKey: string,
+    filePath: string,
+    assetType: "image" | "video" | "audio" | "file" = "file",
+    proxyUrl?: string
+) => {
+    if (!apiBaseUrl || !apiKey) {
+        throw new Error("ModelTop Assets 需要 Base URL 和 API Key");
+    }
+    const body: Record<string, any> = {
+        file: filePath,
+        type: assetType,
+        asset_type: assetType,
+    };
+    const tryPaths = [
+        "/v1/assets",
+        "/v1/files",
+        "/api/v1/assets",
+    ];
+    let lastError = "";
+    for (const apiPath of tryPaths) {
+        const res = await requestFormData(apiBaseUrl, apiPath, body, apiKey, DEFAULT_DIRECT_API_TIMEOUT_MS, proxyUrl);
+        if (!res?.code) {
+            const assetId = String(
+                pickDeepValue(res, [
+                    "data.id",
+                    "data.asset_id",
+                    "data.assetId",
+                    "data.file_id",
+                    "data.fileId",
+                    "id",
+                    "asset_id",
+                    "assetId",
+                    "file_id",
+                    "fileId",
+                ]) || ""
+            );
+            const url = String(
+                pickDeepValue(res, [
+                    "data.url",
+                    "data.fileUrl",
+                    "data.file_url",
+                    "data.download_url",
+                    "data.uri",
+                    "url",
+                    "fileUrl",
+                    "file_url",
+                    "download_url",
+                    "uri",
+                ]) || ""
+            );
+            if (assetId) {
+                return `asset://${assetId}`;
+            }
+            if (url) {
+                return url;
+            }
+            lastError = "ModelTop Assets 上传成功但未返回 asset id 或 url";
+            continue;
+        }
+        lastError = responseMessageOf(res, `ModelTop Assets 上传失败：${apiPath}`);
+    }
+    throw new Error(lastError || "ModelTop Assets 上传失败");
+};
+
 const shouldRetryByNetRequest = (e: any) => {
     return /ERR_CONNECTION_CLOSED|fetch failed|other side closed|socket hang up|ECONNRESET|connReset/i.test(errorDetailOf(e));
 };
@@ -767,7 +1001,7 @@ const requestJson = async (
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
         await applyProxyRules(proxyUrl);
-        const requestBody = await normalizeJsonBodyLocalFiles(body || {}, baseUrl, apiKey, directFileRelay, proxyUrl);
+        const requestBody = await normalizeJsonBodyLocalFiles(body || {}, baseUrl, apiKey, directFileRelay, proxyUrl, String(body?.model || ""));
         const bodyText = JSON.stringify(requestBody);
         const headers = {
             "Content-Type": "application/json",
@@ -796,13 +1030,14 @@ const requestJson = async (
             requestUrl,
             method: "POST",
             requestFormat: "json",
+            requestBody,
             httpStatus: res.status,
             ok: res.ok,
         });
     } catch (e: any) {
         if (shouldRetryByNetRequest(e)) {
             try {
-                const requestBody = await normalizeJsonBodyLocalFiles(body || {}, baseUrl, apiKey, directFileRelay, proxyUrl);
+                const requestBody = await normalizeJsonBodyLocalFiles(body || {}, baseUrl, apiKey, directFileRelay, proxyUrl, String(body?.model || ""));
                 const bodyText = JSON.stringify(requestBody);
                 const headers = {
                     "Content-Type": "application/json",
@@ -825,6 +1060,7 @@ const requestJson = async (
                     requestUrl,
                     method: "POST",
                     requestFormat: "json",
+                    requestBody,
                     httpStatus: raw.statusCode,
                     ok: raw.statusCode >= 200 && raw.statusCode < 300,
                     transport: "electron-net-request",
@@ -832,7 +1068,7 @@ const requestJson = async (
                 });
             } catch (fallbackError: any) {
                 try {
-                    const requestBody = await normalizeJsonBodyLocalFiles(body || {}, baseUrl, apiKey, directFileRelay, proxyUrl);
+                    const requestBody = await normalizeJsonBodyLocalFiles(body || {}, baseUrl, apiKey, directFileRelay, proxyUrl, String(body?.model || ""));
                     const bodyText = JSON.stringify(requestBody);
                     const headers = {
                         "Content-Type": "application/json",
@@ -855,6 +1091,7 @@ const requestJson = async (
                         requestUrl,
                         method: "POST",
                         requestFormat: "json",
+                        requestBody,
                         httpStatus: raw.statusCode,
                         ok: raw.statusCode >= 200 && raw.statusCode < 300,
                         transport: "node-https",
@@ -946,27 +1183,53 @@ const normalizeJsonBodyLocalFiles = async (
     apiBaseUrl?: string,
     apiKey?: string,
     relay?: DirectFileRelayOptions,
-    proxyUrl?: string
+    proxyUrl?: string,
+    assetModel?: string
 ): Promise<any> => {
     if (Array.isArray(value)) {
-        return await Promise.all(value.map(item => normalizeJsonBodyLocalFiles(item, apiBaseUrl, apiKey, relay, proxyUrl)));
+        return await Promise.all(value.map(item => normalizeJsonBodyLocalFiles(item, apiBaseUrl, apiKey, relay, proxyUrl, assetModel)));
     }
     if (value && typeof value === "object") {
         const result: Record<string, any> = {};
         for (const [key, child] of Object.entries(value)) {
-            result[key] = await normalizeJsonBodyLocalFiles(child, apiBaseUrl, apiKey, relay, proxyUrl);
+            result[key] = await normalizeJsonBodyLocalFiles(child, apiBaseUrl, apiKey, relay, proxyUrl, assetModel);
         }
         return result;
     }
     if (typeof value === "string" && isLocalFilePath(value)) {
         const filePath = toLocalFilePath(value);
-        const useRelay = Boolean(relay?.enabled && relay?.provider === "123pan");
+        const usePan123Relay = Boolean(relay?.enabled && relay?.provider === "123pan");
+        const useModelTopAssetsRelay = Boolean(relay?.enabled && relay?.provider === "modeltop-assets");
         const ext = path.extname(filePath).toLowerCase();
         const isImage = /(\.png|\.jpe?g|\.webp|\.gif|\.bmp|\.tiff?)$/i.test(ext);
         const isVideo = /(\.mp4|\.mov)$/i.test(ext);
         const isAudio = /(\.wav|\.mp3)$/i.test(ext);
-        if (useRelay) {
+        if (useModelTopAssetsRelay) {
+            if (!apiBaseUrl || !apiKey) {
+                throw new Error("ModelTop Assets 中转需要 Base URL 和 API Key");
+            }
+            const assetType = isImage ? "image" : isVideo ? "video" : isAudio ? "audio" : "file";
+            return await uploadFileToModelTopAssets(apiBaseUrl, apiKey, filePath, assetType, proxyUrl);
+        }
+        if (usePan123Relay) {
             const uploaded = await uploadFileToPan123(filePath, relay!, proxyUrl);
+            if (/kwjm\.com/i.test(normalizeApiBaseUrl(apiBaseUrl || ""))) {
+                if ((isImage || isVideo) && relay?.assetMode !== false) {
+                    if (!apiBaseUrl || !apiKey) {
+                        throw new Error("KWJM 资产入库需要 Base URL 和 API Key");
+                    }
+                    return await createKwjmAsset(
+                        apiBaseUrl,
+                        apiKey,
+                        filePath,
+                        uploaded.directUrl,
+                        isImage ? "Image" : "Video",
+                        assetModel || "kw-video-v2",
+                        proxyUrl
+                    );
+                }
+                return uploaded.directUrl;
+            }
             if ((isImage || isVideo) && relay?.assetMode !== false) {
                 if (!apiBaseUrl || !apiKey) {
                     throw new Error("资产入库需要 ExchangeToken Base URL 和 API Key");
@@ -982,11 +1245,14 @@ const normalizeJsonBodyLocalFiles = async (
             }
             return uploaded.directUrl;
         }
+        if (/kwjm\.com/i.test(normalizeApiBaseUrl(apiBaseUrl || "")) && (isImage || isVideo)) {
+            throw new Error("KWJM 本地图片/视频需要先配置全局 123 云盘中转，并开启平台素材入库后再提交 Seedance");
+        }
         if (isImageOrAudioFile(value)) {
             return await localFileToDataUrl(value);
         }
         if (isVideo) {
-            throw new Error("本地视频需要先配置 123 云盘中转后才能提交 Seedance");
+            throw new Error("本地视频需要先配置 123 云盘或 ModelTop Assets 中转后才能提交 Seedance");
         }
     }
     if (typeof value === "string" && isLocalFilePath(value) && isImageOrAudioFile(value)) {
@@ -1391,6 +1657,22 @@ const normalizeDirectTaskResults = (value: any) => {
     const contentVideoUrl = String(content?.video_url || "").trim();
     const contentImageUrl = String(content?.image_url || "").trim();
     const outputText = String(content?.text || "").trim();
+    const directVideoUrl = String(
+        pickDeepValue(value, [
+            "video.url",
+            "video_url",
+            "output.video_url",
+            "output.url",
+            "data.video.url",
+            "data.video_url",
+            "data.output.video_url",
+            "data.output.url",
+            "result.video.url",
+            "result.video_url",
+            "result.output.video_url",
+            "result.output.url",
+        ])
+    ).trim();
     const imageDataResults = [
         value?.data,
         value?.data?.data,
@@ -1399,6 +1681,7 @@ const normalizeDirectTaskResults = (value: any) => {
         value?.output,
         value?.outputs,
         value?.result?.output,
+        value?.result?.outputs,
     ].flatMap((candidate: any) => {
         if (!Array.isArray(candidate)) {
             return [];
@@ -1406,9 +1689,16 @@ const normalizeDirectTaskResults = (value: any) => {
         return candidate
             .map((item: any) => {
                 const url = String(item?.url || item?.fileUrl || item?.image_url || item?.imageUrl || "").trim();
+                const videoUrl = String(item?.video_url || item?.videoUrl || "").trim();
                 const b64 = String(item?.b64_json || item?.base64 || item?.image_base64 || "").trim();
+                const type = String(item?.type || item?.outputType || "").toLowerCase();
+                if (videoUrl || (url && type.includes("video"))) {
+                    const fileUrl = videoUrl || url;
+                    return { url: fileUrl, outputType: "video", fileUrl };
+                }
                 if (url) {
-                    return { url, outputType: "image", fileUrl: url };
+                    const outputType = type.includes("image") || b64 ? "image" : "file";
+                    return { url, outputType, fileUrl: url };
                 }
                 if (b64) {
                     return { text: b64, outputType: "image_base64", fileUrl: "" };
@@ -1419,6 +1709,7 @@ const normalizeDirectTaskResults = (value: any) => {
     });
     const fromContent = [
         ...(contentVideoUrl ? [{ url: contentVideoUrl, outputType: "video", fileUrl: contentVideoUrl }] : []),
+        ...(directVideoUrl ? [{ url: directVideoUrl, outputType: "video", fileUrl: directVideoUrl }] : []),
         ...(contentImageUrl ? [{ url: contentImageUrl, outputType: "image", fileUrl: contentImageUrl }] : []),
         ...(outputText ? [{ text: outputText, outputType: "text", fileUrl: "" }] : []),
         ...imageDataResults,
@@ -1456,8 +1747,12 @@ const extractDirectStatus = (value: any) => {
     return String(
         pickDeepValue(value, [
             "data.status",
+            "data.taskStatus",
             "data.task.status",
+            "data.task_status",
             "status",
+            "taskStatus",
+            "task_status",
             "state",
         ]) || ""
     );
@@ -1621,12 +1916,14 @@ ipcMain.handle("runninghub:queryTask", async (event, options: {
     const directTaskId = extractDirectTaskId(directResult, options.taskId);
     const directStatus = extractDirectStatus(directResult);
     if (directStatus || Array.isArray(directResult?.results) || Array.isArray(directResult?.data) || directTaskId) {
+        const normalizedDirectStatus = normalizeStatus(directStatus || (Array.isArray(directResult?.data) ? "succeeded" : ""));
+        const failedDirectStatus = /FAILED|FAIL|ERROR|CANCEL|REJECT/.test(normalizedDirectStatus);
         return {
-            code: normalizeStatus(directStatus) === "FAILED" ? 500 : 0,
+            code: failedDirectStatus ? 500 : 0,
             msg: directResult?.errorMessage || directResult?.msg || "",
             data: {
                 taskId: directTaskId,
-                status: normalizeStatus(directStatus || (Array.isArray(directResult?.data) ? "succeeded" : "")),
+                status: normalizedDirectStatus,
                 rawStatus: directStatus,
                 results: normalizeDirectTaskResults(directResult),
                 clientId: directResult?.clientId || "",

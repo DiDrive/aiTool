@@ -13,6 +13,8 @@ from PIL import Image, ImageDraw
 from pydantic import BaseModel
 
 
+SERVICE_VERSION = "2026-06-18-safe-path-v2"
+
 app = FastAPI(title="AIGCPanel Watermark Repair Server")
 LOG_DIR = Path(os.environ.get("WATERMARK_LOG_DIR") or (Path(tempfile.gettempdir()) / "aigcpanel-watermark-logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -331,6 +333,7 @@ def mux_audio_if_needed(input_path: str, repaired_path: Path, final_path: Path, 
 @app.get("/api/watermark/status")
 def watermark_status():
     return response_ok({
+        "serviceVersion": SERVICE_VERSION,
         "engine": "propainter",
         "propainterRoot": os.environ.get("PROPAINTER_ROOT", ""),
         "hasCommandTemplate": bool(os.environ.get("PROPAINTER_COMMAND", "").strip()),

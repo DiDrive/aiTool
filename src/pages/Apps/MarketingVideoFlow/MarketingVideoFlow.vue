@@ -6,6 +6,7 @@ import {
     DirectApiPlatformRecord,
     DirectApiPlatformService,
 } from "../../../service/DirectApiPlatformService";
+import { FileRelayConfigService } from "../../../service/FileRelayConfigService";
 import { CloudTemplateTaskService } from "../../../service/CloudTemplateTaskService";
 import { CloudTemplateRecord } from "../../../service/CloudTemplateService";
 import { TaskRecord, TaskService } from "../../../service/TaskService";
@@ -17,6 +18,7 @@ import { usePageDraft } from "../../../hooks/pageDraft";
 
 type AngleType = "pain" | "desire" | "contrast" | "scene" | "conversion";
 type GenerationChannel = "direct" | "cloud";
+type VideoReferenceRole = "reference_image" | "first_frame";
 type FrameDensity = "light" | "standard" | "detailed";
 type NarrationMode = "none" | "voiceover" | "character";
 type SubtitleMode = "none" | "caption";
@@ -46,6 +48,9 @@ type MarketingAsset = {
     name: string;
     url: string;
     dataUrl?: string;
+    referenceUrl?: string;
+    referenceDataUrl?: string;
+    referenceName?: string;
     prompt?: string;
     note?: string;
     status: MarketingAssetStatus;
@@ -100,6 +105,7 @@ type SceneDraft = {
     id: string;
     title: string;
     duration: number;
+    scriptBeat?: string;
     subtitle: string;
     captionOverride?: string;
     voiceoverLine?: string;
@@ -108,6 +114,11 @@ type SceneDraft = {
     imagePrompt: string;
     videoPrompt: string;
     assetIds?: string[];
+    requiredAssets?: Array<{
+        type: MarketingAssetType;
+        name: string;
+        reason?: string;
+    }>;
     referenceImageUrl?: string;
     referenceImageName?: string;
     imageTaskId?: number;
@@ -118,9 +129,14 @@ type MarketingDraft = {
     id: string;
     angle: AngleType;
     title: string;
+    scriptText?: string;
+    synopsis?: string;
     hook: string;
     voiceover: string;
     cta: string;
+    characters?: Array<{ name: string; role?: string; description?: string }>;
+    locations?: Array<{ name: string; description?: string }>;
+    props?: Array<{ name: string; description?: string }>;
     referenceAnalysis?: {
         plot?: string;
         structure?: string;
@@ -151,6 +167,9 @@ const imageTemplateId = ref(0);
 const videoTemplateId = ref(0);
 const imageChannel = ref<GenerationChannel>("direct");
 const videoChannel = ref<GenerationChannel>("direct");
+const assetImageChannel = ref<GenerationChannel>("direct");
+const assetImagePlatformId = ref(0);
+const assetImageTemplateId = ref(0);
 const submitting = ref(false);
 const generatingScripts = ref(false);
 const selectedDraftId = ref("");
@@ -184,6 +203,8 @@ const LEGACY_DEFAULT_VISUAL_STYLE = "真实感短视频，干净都市夜景，�
 const form = ref({
     brandName: "",
     brandBrief: "",
+    scriptText: "",
+    scriptLockedNotes: "",
     targetAudience: "25-35 岁男性，关注状态提升、社交表达和个人吸引力",
     productSellingPoints: "",
     idea: "",
@@ -195,6 +216,7 @@ const form = ref({
     narrationMode: "voiceover" as NarrationMode,
     subtitleMode: "caption" as SubtitleMode,
     videoModel: "seedance-2.0-fast",
+    videoReferenceRole: "reference_image" as VideoReferenceRole,
     visualStyle: DEFAULT_VISUAL_STYLE,
 });
 const drafts = ref<MarketingDraft[]>([]);
@@ -229,6 +251,9 @@ const pageDraft = usePageDraft("MarketingVideoFlow", {
     videoTemplateId,
     imageChannel,
     videoChannel,
+    assetImageChannel,
+    assetImagePlatformId,
+    assetImageTemplateId,
 });
 
 const angles: Array<{ value: AngleType; label: string; desc: string }> = [
@@ -243,6 +268,16 @@ const sceneCountOptions = [1, 2, 3, 4, 5, 6];
 const durationOptions = Array.from({ length: 12 }, (_, index) => index + 4);
 const DEFAULT_SCENE_DURATION = 8;
 const videoModelOptions = ["seedance-2.0-fast", "seedance-2.0"];
+const normalizeUiVideoModel = (value: string) => {
+    const raw = String(value || "").trim();
+    if (raw === "kw-video-v2-fast") {
+        return "seedance-2.0-fast";
+    }
+    if (raw === "kw-video-v2") {
+        return "seedance-2.0";
+    }
+    return videoModelOptions.includes(raw) ? raw : "seedance-2.0-fast";
+};
 const narrationModeOptions: Array<{ label: string; value: NarrationMode }> = [
     { label: "无台词", value: "none" },
     { label: "画外音", value: "voiceover" },
@@ -251,6 +286,10 @@ const narrationModeOptions: Array<{ label: string; value: NarrationMode }> = [
 const subtitleModeOptions: Array<{ label: string; value: SubtitleMode }> = [
     { label: "不显示字幕", value: "none" },
     { label: "显示字幕", value: "caption" },
+];
+const videoReferenceRoleOptions: Array<{ label: string; value: VideoReferenceRole; desc: string }> = [
+    { label: "全能参考", value: "reference_image", desc: "参考人物、场景、风格，不强制作为第一帧" },
+    { label: "首帧控制", value: "first_frame", desc: "视频必须从这张分镜图开始" },
 ];
 const marketingAssetTypeOptions: Array<{ label: string; value: MarketingAssetType }> = [
     { label: "人物资产", value: "character" },
@@ -297,6 +336,14 @@ const currentImageTemplate = computed(() => {
 
 const currentVideoTemplate = computed(() => {
     return videoTemplates.value.find(item => item.id === videoTemplateId.value) || null;
+});
+
+const currentAssetImagePlatform = computed(() => {
+    return imagePlatforms.value.find(item => item.id === assetImagePlatformId.value) || currentImagePlatform.value;
+});
+
+const currentAssetImageTemplate = computed(() => {
+    return imageTemplates.value.find(item => item.id === assetImageTemplateId.value) || currentImageTemplate.value;
 });
 
 const selectedDraft = computed(() => {
@@ -385,15 +432,40 @@ const loadPlatforms = async () => {
     videoTemplateId.value = videoTemplates.value.some(item => item.id === videoTemplateId.value)
         ? videoTemplateId.value
         : videoTemplates.value[0]?.id || 0;
+    assetImagePlatformId.value = imagePlatforms.value.some(item => item.id === assetImagePlatformId.value)
+        ? assetImagePlatformId.value
+        : imagePlatformId.value;
+    assetImageTemplateId.value = imageTemplates.value.some(item => item.id === assetImageTemplateId.value)
+        ? assetImageTemplateId.value
+        : imageTemplateId.value;
 };
 
 onMounted(async () => {
     await pageDraft.restore();
+    form.value.videoModel = normalizeUiVideoModel(form.value.videoModel);
+    (form.value as any).scriptText = formText("scriptText");
+    (form.value as any).scriptLockedNotes = formText("scriptLockedNotes");
     await loadPlatforms();
+    await refreshMarketingAssetTasks(true);
+});
+
+watch(() => form.value.videoModel, value => {
+    const normalized = normalizeUiVideoModel(value);
+    if (normalized !== value) {
+        form.value.videoModel = normalized;
+    }
 });
 
 const textOr = (value: string, fallback: string) => {
-    return value.trim() || fallback;
+    return String(value || "").trim() || fallback;
+};
+
+const formText = (key: string) => {
+    return String((form.value as any)?.[key] || "");
+};
+
+const formTextTrim = (key: string) => {
+    return formText(key).trim();
 };
 
 const angleLabel = (angle: AngleType) => {
@@ -1063,6 +1135,10 @@ const assetDisplayUrl = (asset: MarketingAsset) => {
     return asset.dataUrl || asset.url || "";
 };
 
+const assetReferenceDisplayUrl = (asset: MarketingAsset) => {
+    return asset.referenceDataUrl || asset.referenceUrl || "";
+};
+
 const normalizeMarketingAssetType = (value: any): MarketingAssetType => {
     const raw = String(value || "").toLowerCase();
     if (raw.includes("scene") || raw.includes("场景") || raw.includes("环境")) {
@@ -1090,10 +1166,49 @@ const pickMarketingAsset = async () => {
             status: "ready",
             note: "手动上传",
         });
+        syncSceneAssetBindings();
         assetUploadName.value = "";
     } catch (e: any) {
         Dialog.tipError(e?.message || "资产图片读取失败");
     }
+};
+
+const uploadImageForMarketingAsset = async (asset: MarketingAsset) => {
+    const filePath = await pickImageFiles();
+    if (!filePath) {
+        return;
+    }
+    try {
+        asset.url = filePath;
+        asset.dataUrl = await pathToDataUrl(filePath);
+        asset.status = "ready";
+        asset.note = asset.note || "手动上传";
+        syncSceneAssetBindings();
+        Dialog.tipSuccess("资产图片已更新");
+    } catch (e: any) {
+        Dialog.tipError(e?.message || "资产图片读取失败");
+    }
+};
+
+const uploadReferenceImageForMarketingAsset = async (asset: MarketingAsset) => {
+    const filePath = await pickImageFiles();
+    if (!filePath) {
+        return;
+    }
+    try {
+        asset.referenceUrl = filePath;
+        asset.referenceDataUrl = await pathToDataUrl(filePath);
+        asset.referenceName = FileUtil.getBaseName(filePath, true);
+        Dialog.tipSuccess("资产参考图已上传，生成资产时会作为图生图输入");
+    } catch (e: any) {
+        Dialog.tipError(e?.message || "资产参考图读取失败");
+    }
+};
+
+const clearMarketingAssetReferenceImage = (asset: MarketingAsset) => {
+    asset.referenceUrl = "";
+    asset.referenceDataUrl = "";
+    asset.referenceName = "";
 };
 
 const removeMarketingAsset = (index: number) => {
@@ -1131,16 +1246,68 @@ const addSuggestedMarketingAsset = (asset: Partial<MarketingAsset>) => {
     });
 };
 
-const ensureSuggestedAssetsFromDrafts = (items: MarketingDraft[], json?: any) => {
-    if (readyMarketingAssets.value.length) {
-        return;
+const assetMatchKey = (value: string) => String(value || "").trim().toLowerCase();
+
+const findMarketingAssetByRequirement = (required: { type: MarketingAssetType; name: string }) => {
+    const key = assetMatchKey(required.name);
+    if (!key) {
+        return null;
     }
+    return marketingAssets.value.find(item => item.type === required.type && assetMatchKey(item.name) === key) || null;
+};
+
+const syncSceneAssetBindings = (items: MarketingDraft[] = drafts.value) => {
+    items.forEach(draft => {
+        draft.scenes.forEach(scene => {
+            const ids = new Set(scene.assetIds || []);
+            (scene.requiredAssets || []).forEach(required => {
+                const asset = findMarketingAssetByRequirement(required);
+                if (asset?.id) {
+                    ids.add(asset.id);
+                }
+            });
+            scene.assetIds = Array.from(ids);
+        });
+    });
+};
+
+const ensureRequiredAssetsFromScenes = (items: MarketingDraft[]) => {
+    items.forEach(draft => {
+        draft.scenes.forEach(scene => {
+            (scene.requiredAssets || []).forEach(required => {
+                if (findMarketingAssetByRequirement(required)) {
+                    return;
+                }
+                addSuggestedMarketingAsset({
+                    type: required.type,
+                    name: required.name,
+                    prompt: `${required.name}，${required.reason || scene.scriptBeat || scene.title}，作为短视频分镜一致性${marketingAssetTypeLabel(required.type)}参考图，主体清晰，背景干净，适合后续图生图/视频生成`,
+                    note: `分镜「${scene.title}」需要：${required.reason || "保持一致性"}`,
+                });
+            });
+        });
+    });
+};
+
+const ensureSuggestedAssetsFromDrafts = (items: MarketingDraft[], json?: any) => {
     const rawAssets = [
         ...(Array.isArray(json?.assets) ? json.assets : []),
         ...(Array.isArray(json?.referenceAssets) ? json.referenceAssets : []),
         ...items.flatMap(item => (Array.isArray(item.suggestedAssets) ? item.suggestedAssets : [])),
     ];
     rawAssets.forEach(item => addSuggestedMarketingAsset(item));
+    ensureRequiredAssetsFromScenes(items);
+    syncSceneAssetBindings(items);
+};
+
+const refreshRequiredAssetsFromCurrentDrafts = () => {
+    if (!drafts.value.length) {
+        Dialog.tipError("请先生成或填写剧本分镜");
+        return;
+    }
+    ensureRequiredAssetsFromScenes(drafts.value);
+    syncSceneAssetBindings();
+    Dialog.tipSuccess("已检查分镜所需资产，并补齐缺失资产项");
 };
 
 const pickSceneReferenceImage = async (scene: SceneDraft) => {
@@ -1165,12 +1332,66 @@ const assetUrlValue = (asset: MarketingAsset) => {
     return asset.url || asset.dataUrl || "";
 };
 
+const assetReferenceUrlValue = (asset: MarketingAsset) => {
+    return asset.referenceUrl || asset.referenceDataUrl || "";
+};
+
 const sceneReadyAssets = (scene?: SceneDraft) => {
     const selectedIds = Array.isArray(scene?.assetIds) ? scene?.assetIds || [] : [];
     const source = selectedIds.length
         ? readyMarketingAssets.value.filter(item => selectedIds.includes(item.id))
         : readyMarketingAssets.value;
     return source.filter(item => assetUrlValue(item));
+};
+
+const sceneRequiredAssetStatuses = (scene: SceneDraft) => {
+    return (scene.requiredAssets || []).map(required => {
+        const asset = findMarketingAssetByRequirement(required);
+        const ready = Boolean(asset && asset.status === "ready" && assetUrlValue(asset));
+        return {
+            ...required,
+            asset,
+            ready,
+            missing: !asset,
+            pending: Boolean(asset && !ready),
+        };
+    });
+};
+
+const sceneMissingAssetStatuses = (scene: SceneDraft) => {
+    return sceneRequiredAssetStatuses(scene).filter(item => !item.ready);
+};
+
+const draftMissingAssetStatuses = (draft: MarketingDraft) => {
+    return draft.scenes.flatMap(scene =>
+        sceneMissingAssetStatuses(scene).map(item => ({
+            ...item,
+            scene,
+        }))
+    );
+};
+
+const ensureSceneAssetsReady = (scene: SceneDraft) => {
+    const missing = sceneMissingAssetStatuses(scene);
+    if (!missing.length) {
+        return;
+    }
+    const text = missing
+        .map(item => `${scene.title}：${marketingAssetTypeLabel(item.type)}「${item.name}」${item.missing ? "未创建" : "未准备图片"}`)
+        .join("、");
+    throw new Error(`请先准备分镜所需资产：${text}`);
+};
+
+const ensureDraftAssetsReady = (draft: MarketingDraft) => {
+    const missing = draftMissingAssetStatuses(draft);
+    if (!missing.length) {
+        return;
+    }
+    const text = missing
+        .slice(0, 6)
+        .map(item => `${item.scene.title}/${marketingAssetTypeLabel(item.type)}「${item.name}」${item.missing ? "未创建" : "未准备图片"}`)
+        .join("、");
+    throw new Error(`请先准备剧本资产后再生成：${text}${missing.length > 6 ? "..." : ""}`);
 };
 
 const buildImageAssetUrls = (scene: SceneDraft, extraUrls: string[] = []) => {
@@ -1292,10 +1513,19 @@ const valueForCloudField = (
     base: Record<string, any>,
     assets: MarketingAsset[]
 ) => {
+    const baseReferenceImages = Array.isArray(base.assetReferenceImages)
+        ? base.assetReferenceImages
+        : Array.isArray(base.referenceImages)
+          ? base.referenceImages
+          : [];
     const characterAssets = assetsByTypeUrls(assets, "character");
     const sceneAssets = assetsByTypeUrls(assets, "scene");
     const propAssets = assetsByTypeUrls(assets, "prop");
-    const allAssets = assets.map(assetUrlValue).filter(Boolean);
+    const allAssets = uniqueNonEmptyStrings([
+        ...assets.map(assetUrlValue),
+        ...baseReferenceImages,
+        base.referenceImageUrl || "",
+    ]);
     const wantsArray = ["images", "audios", "videos", "files"].includes(String(field?.type || ""));
     const chooseFileValue = (items: string[]) => wantsArray ? items : items[0] || "";
 
@@ -1365,17 +1595,42 @@ const valueForCloudField = (
     return defaultCloudFieldValue(field, "");
 };
 
+const cloudTemplateLooksLikeImageToImage = (template: CloudTemplateRecord | null) => {
+    if (!template) {
+        return false;
+    }
+    const title = `${template.title || ""} ${template.content?.workflowFileName || ""}`.toLowerCase();
+    if (/图生图|参考图|首帧|垫图|换脸|换装|一致性|image\s*to\s*image|i2i|img2img/.test(title)) {
+        return true;
+    }
+    const schemaFields = CloudTemplateTaskService.parseInputSchema(template.content.inputSchemaJson || "[]");
+    return schemaFields.some((field: any) => {
+        const text = fieldText(field);
+        const required = Boolean(field?.required || field?.isRequired);
+        return required && /(image|img|file|图片|参考|首帧|素材)/i.test(text);
+    });
+};
+
 const buildCloudMarketingInput = (
     template: CloudTemplateRecord,
     capability: "image" | "video",
     base: Record<string, any>,
     scene?: SceneDraft
 ) => {
-    const assets = sceneReadyAssets(scene);
+    const assets = scene ? sceneReadyAssets(scene) : [];
     const characterAssets = assetsByTypeUrls(assets, "character");
     const sceneAssets = assetsByTypeUrls(assets, "scene");
     const propAssets = assetsByTypeUrls(assets, "prop");
-    const allAssetUrls = assets.map(assetUrlValue).filter(Boolean);
+    const baseReferenceImages = Array.isArray(base.assetReferenceImages)
+        ? base.assetReferenceImages
+        : Array.isArray(base.referenceImages)
+          ? base.referenceImages
+          : [];
+    const allAssetUrls = uniqueNonEmptyStrings([
+        ...assets.map(assetUrlValue),
+        ...baseReferenceImages,
+        base.referenceImageUrl || "",
+    ]);
     const input: Record<string, any> = {
         ...base,
         image: base.firstFrame || allAssetUrls[0] || "",
@@ -1545,15 +1800,21 @@ const normalizeSeedanceLocalImage = async (value: string) => {
     return file;
 };
 
-const directFileRelayEnabled = (platform: DirectApiPlatformRecord | null) => {
+const getEffectiveDirectFileRelay = async (platform: DirectApiPlatformRecord | null) => {
     const relay = platform?.content.directFileRelay;
-    return Boolean(
+    if (relay?.enabled && relay.provider === "modeltop-assets" && String(platform?.content.apiKey || "").trim()) {
+        return relay;
+    }
+    if (
         relay?.enabled &&
             relay?.provider === "123pan" &&
             String(relay.clientID || "").trim() &&
             String(relay.clientSecret || "").trim() &&
             String(relay.parentFileID || "").trim()
-    );
+    ) {
+        return relay;
+    }
+    return await FileRelayConfigService.getPan123Relay();
 };
 
 const resolveDirectApiImageUrl = async (value: string) => {
@@ -1563,16 +1824,26 @@ const resolveDirectApiImageUrl = async (value: string) => {
     return await pathToDataUrl(value);
 };
 
-const resolveDirectVideoReferenceImageUrl = async (platform: DirectApiPlatformRecord | null, value: string) => {
+const resolveDirectVideoReferenceImageUrl = async (directFileRelay: any, value: string) => {
     if (!value || isDataOrRemoteUrl(value)) {
         return value;
     }
     const normalizedValue = await normalizeSeedanceLocalImage(value);
-    if (directFileRelayEnabled(platform)) {
+    if (directFileRelay) {
         return normalizedValue;
     }
-    throw new Error("123 云盘资产入库失败：当前视频参考图是本地文件，但 Seedance 平台未配置可用的 123 云盘中转。请在平台设置中填写 Client ID、Client Secret、Folder ID 并开启资产模式。");
+    throw new Error("素材中转未配置：当前视频参考图是本地文件，但尚未配置可用的全局 123 云盘中转。");
 };
+
+const normalizeVideoReferenceRole = (value?: string): VideoReferenceRole => {
+    return value === "first_frame" ? "first_frame" : "reference_image";
+};
+
+const buildVideoImageReferenceContent = (url: string, role?: string) => ({
+    type: "image_url",
+    image_url: { url },
+    role: normalizeVideoReferenceRole(role),
+});
 
 const collectStringValues = (value: any, result: string[] = []) => {
     if (!value) {
@@ -1598,6 +1869,74 @@ const isImageOutput = (value: string) => {
     return /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(value) || /^data:image\//i.test(value);
 };
 
+const isZipOutput = (value: string) => {
+    return /\.zip(\?.*)?$/i.test(String(value || "").trim());
+};
+
+const bytesFromBufferLike = (value: any) => {
+    if (!value) {
+        return new Uint8Array();
+    }
+    if (value instanceof Uint8Array) {
+        return value;
+    }
+    if (value instanceof ArrayBuffer) {
+        return new Uint8Array(value);
+    }
+    if (Array.isArray(value)) {
+        return new Uint8Array(value);
+    }
+    if (value?.buffer instanceof ArrayBuffer) {
+        return new Uint8Array(value.buffer, value.byteOffset || 0, value.byteLength || value.buffer.byteLength);
+    }
+    return new Uint8Array();
+};
+
+const fileLooksLikeZip = async (path: string) => {
+    try {
+        const bytes = bytesFromBufferLike(await window.$mapi.file.readBuffer(path));
+        return bytes[0] === 0x50 && bytes[1] === 0x4b;
+    } catch (e) {
+        return false;
+    }
+};
+
+const looksLikeUsableOutputUrl = (value: string) => {
+    const text = String(value || "").trim();
+    if (!text) {
+        return false;
+    }
+    if (isImageOutput(text)) {
+        return true;
+    }
+    if (!/^(https?:\/\/|file:\/\/|[a-z]:\\|\/)/i.test(text)) {
+        return false;
+    }
+    return !/\.(mp4|mov|webm|avi|mp3|wav|m4a|aac|zip|json|txt)(\?.*)?$/i.test(text);
+};
+
+const collectOutputUrlCandidates = (value: any, path = "", result: Array<{ value: string; score: number }> = []) => {
+    if (!value) {
+        return result;
+    }
+    if (typeof value === "string") {
+        const text = value.trim();
+        if (looksLikeUsableOutputUrl(text)) {
+            const keyScore = /(image|img|fileurl|file_url|url|output|result|remote|local|cover)/i.test(path) ? 3 : 0;
+            result.push({ value: text, score: (isImageOutput(text) ? 10 : 1) + keyScore });
+        }
+        return result;
+    }
+    if (Array.isArray(value)) {
+        value.forEach((item, index) => collectOutputUrlCandidates(item, `${path}.${index}`, result));
+        return result;
+    }
+    if (typeof value === "object") {
+        Object.entries(value).forEach(([key, item]) => collectOutputUrlCandidates(item, path ? `${path}.${key}` : key, result));
+    }
+    return result;
+};
+
 const extractTaskOutputImage = (task: TaskRecord | null) => {
     if (!task) {
         return "";
@@ -1615,7 +1954,65 @@ const extractTaskOutputImage = (task: TaskRecord | null) => {
     if (fromPreferred) {
         return fromPreferred;
     }
-    return collectStringValues(task.result?.remoteResults || task.jobResult?.Query?.results || []).find(isImageOutput) || "";
+    const strictImage = collectStringValues(task.result?.remoteResults || task.jobResult?.Query?.results || []).find(isImageOutput) || "";
+    if (strictImage) {
+        return strictImage;
+    }
+    const candidates = collectOutputUrlCandidates({
+        result: task.result,
+        jobResult: task.jobResult,
+    }).sort((a, b) => b.score - a.score);
+    return candidates[0]?.value || "";
+};
+
+const resolveZipImageOutput = async (value: string) => {
+    let zipPath = value;
+    if (/^https?:\/\//i.test(zipPath)) {
+        zipPath = await window.$mapi.file.download(zipPath);
+    }
+    const dest = await window.$mapi.file.tempDir("marketing-asset-output");
+    await window.$mapi.misc.unzip(zipPath, dest);
+    const files = await window.$mapi.file.listAll(dest);
+    const imageFile = files
+        .filter(item => !item.isDirectory && isImageOutput(String(item.path || item.name || "")))
+        .sort((a, b) => {
+            const aName = String(a.path || a.name || "");
+            const bName = String(b.path || b.name || "");
+            const score = (name: string) => {
+                if (/(^|\/)(result|output|outputs|save|generated|image|000|001)/i.test(name)) {
+                    return 0;
+                }
+                if (/(^|\/)(input|source|upload|reference|mask|thumb|preview|cover)/i.test(name)) {
+                    return 2;
+                }
+                return 1;
+            };
+            return score(aName) - score(bName) || Number(b.size || 0) - Number(a.size || 0) || aName.localeCompare(bName);
+        })[0];
+    if (!imageFile) {
+        throw new Error("压缩包里没有找到可用图片");
+    }
+    return `${dest}/${String(imageFile.path || imageFile.name || "").replace(/^\/+/, "")}`;
+};
+
+const resolveTaskOutputImage = async (value: string) => {
+    if (!value) {
+        return "";
+    }
+    if (isZipOutput(value)) {
+        return await resolveZipImageOutput(value);
+    }
+    if (!isImageOutput(value) && /^(https?:\/\/|[a-z]:\\|\/)/i.test(value)) {
+        let localPath = value;
+        if (/^https?:\/\//i.test(localPath)) {
+            localPath = await window.$mapi.file.download(localPath);
+        }
+        if (await fileLooksLikeZip(localPath)) {
+            return await resolveZipImageOutput(localPath);
+        }
+        return localPath;
+    }
+    return value;
 };
 
 const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
@@ -1629,7 +2026,7 @@ const waitForTaskImage = async (taskId: number | string, timeoutMs = 12 * 60 * 1
             if (!imageUrl) {
                 throw new Error(`图片任务 #${taskId} 已完成，但没有识别到图片产物`);
             }
-            return imageUrl;
+            return await resolveTaskOutputImage(imageUrl);
         }
         if (task?.status === "fail") {
             throw new Error(task.statusMsg || `图片任务 #${taskId} 失败`);
@@ -1858,11 +2255,22 @@ const buildScriptPrompt = () => {
               `抖音解析来源：${safeJsonString(douyinImportResult.value.adapter || "")}`,
           ].join("\n")
         : "抖音导入：未导入";
+    const userScript = formTextTrim("scriptText");
+    const scriptModeInstruction = userScript
+        ? [
+              "剧本模式：用户已提供手动剧本。你必须以该剧本为最高优先级，只能做结构化、分镜拆解、表达优化、镜头化和热点/参考风格融合。",
+              "不得改变核心剧情、人物关系、关键事件、关键台词、结局、主题立意和用户标注的不可改内容。",
+              "如果参考视频或热梗与手动剧本冲突，必须服从手动剧本；参考视频只迁移风格、结构方法、镜头节奏，不改剧本主线。",
+          ].join("\n")
+        : "剧本模式：用户未提供手动剧本，请按主题、参考视频、热点灵感生成原创剧本。";
     return `
 请根据以下输入，生成 ${form.value.count} 条原创短视频 / AI 视频方案。
 
 视频主题 / 对象 / IP：${safeJsonString(form.value.brandName)}
 主题补充（可选）：${safeJsonString(form.value.brandBrief)}
+手动剧本（可选）：${safeJsonString(formText("scriptText"))}
+不可改内容 / 剧本约束（可选）：${safeJsonString(formText("scriptLockedNotes"))}
+${scriptModeInstruction}
 目标人群：${safeJsonString(form.value.targetAudience)}
 必须保留的信息（可选）：${safeJsonString(form.value.productSellingPoints)}
 生成要求 / 台词约束（可选）：${safeJsonString(form.value.idea)}
@@ -1889,6 +2297,27 @@ ${angleGuide}
     {
       "angle": "pain|desire|contrast|scene|conversion",
       "title": "短标题",
+      "synopsis": "完整剧情梗概，按起承转合说明这条视频讲了什么",
+      "scriptText": "完整剧本，包含剧情推进、关键动作、台词/旁白和结尾；如果用户提供了手动剧本，必须保留核心并只做镜头化优化",
+      "characters": [
+        {
+          "name": "人物名称",
+          "role": "剧情身份",
+          "description": "外观、人设、情绪状态和一致性要求"
+        }
+      ],
+      "locations": [
+        {
+          "name": "场景名称",
+          "description": "空间布局、光线、氛围、可复用元素"
+        }
+      ],
+      "props": [
+        {
+          "name": "道具/商品名称",
+          "description": "外观、用途、出现位置"
+        }
+      ],
       "hook": "前2秒钩子，18字以内，口语化",
       "voiceover": "完整口播文案，不要包含CTA；如果说话方式为 none 可写空字符串或只写画面表达思路",
       "cta": "行动引导，简短自然",
@@ -1915,12 +2344,20 @@ ${angleGuide}
         {
           "title": "镜头名称",
           "duration": 4,
+          "scriptBeat": "本分镜对应完整剧本中的剧情段落，写清发生了什么",
           "subtitle": "字幕文本；如果字幕模式为 none 则写空字符串",
           "voiceoverLine": "本分镜实际要说出来的中文台词；如果说话方式为 none 则写空字符串",
           "narrationMode": "none|voiceover|character",
           "subtitleMode": "none|caption",
           "imagePrompt": "中文生图提示词，包含主体、统一主角设定、场景连续性、环境、构图、光线、参考视频风格迁移点、竖屏安全区；必须原创",
-          "videoPrompt": "中文生视频提示词，必须写清本镜独有的叙事职责、场景、动作、镜头运动和节奏；字幕必须跟随 voiceoverLine，不复刻参考视频"
+          "videoPrompt": "中文生视频提示词，必须写清本镜独有的叙事职责、场景、动作、镜头运动和节奏；字幕必须跟随 voiceoverLine，不复刻参考视频",
+          "requiredAssets": [
+            {
+              "type": "character|scene|prop",
+              "name": "本分镜必须使用的人物/场景/道具资产名称",
+              "reason": "为什么本镜需要这个资产"
+            }
+          ]
         }
       ]
     }
@@ -1942,6 +2379,8 @@ ${angleGuide}
 12. scenes 必须按参考视频结构拆成不同叙事步骤，例如“街访开场/痛点反应/解决方案讲解/收束行动”；每个 scene.videoPrompt 必须明显不同，不能两个分镜都写成同一场景、同一动作或同一讲解镜头。
 13. 专有名词、产品名、账号名必须逐字保留，不要同音替换或改写；如果出现“他趣”，必须保持“他趣”两个字，不能写成或读成“其他”。
 14. 每个 draft.suggestedAssets 必须列出保持分镜一致性需要的核心资产：至少包含 1 个人物资产；如果有固定场景或关键道具，也必须分别列为 scene/prop。不要把参考视频/参考图原人物当作资产，只能生成当前主题的新资产。
+15. 如果提供了手动剧本，draft.scriptText 必须是该剧本的结构化/镜头化版本，不能换故事；每个 scene.scriptBeat 必须能对应到剧本中的一段剧情。
+16. 每个 scene.requiredAssets 必须列出本镜实际需要的人物、场景、道具；名称要和 draft.suggestedAssets 尽量一致，方便系统自动关联。
 `.trim();
 };
 
@@ -2033,10 +2472,35 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
           : Array.isArray(raw.referenceAssets)
             ? raw.referenceAssets
             : [];
+    const normalizeEntityList = (value: any) => Array.isArray(value)
+        ? value.map((item: any) => ({
+              name: String(item?.name || item?.title || ""),
+              role: String(item?.role || ""),
+              description: String(item?.description || item?.desc || item?.prompt || ""),
+          })).filter((item: any) => item.name || item.description)
+        : [];
+    const normalizeRequiredAssets = (value: any) => Array.isArray(value)
+        ? value.map((item: any) => ({
+              type: normalizeMarketingAssetType(item?.type || item?.assetType || item?.category),
+              name: String(item?.name || item?.title || ""),
+              reason: String(item?.reason || item?.note || item?.usage || ""),
+          })).filter((item: any) => item.name)
+        : [];
     const draft: MarketingDraft = {
         id: `${angle}-${Date.now()}-${index}`,
         angle,
         title: String(raw.title || `${titleSeed}_${angleLabel(angle)}_短视频`),
+        synopsis: String(raw.synopsis || raw.summary || ""),
+        scriptText: String(raw.scriptText || raw.script || formText("scriptText") || ""),
+        characters: normalizeEntityList(raw.characters || raw.roles || raw.people),
+        locations: normalizeEntityList(raw.locations || raw.scenesUsed || raw.places).map((item: any) => ({
+            name: item.name,
+            description: item.description,
+        })),
+        props: normalizeEntityList(raw.props || raw.objects || raw.products).map((item: any) => ({
+            name: item.name,
+            description: item.description,
+        })),
         hook: String(raw.hook || ""),
         voiceover: String(raw.voiceover || ""),
         cta: String(raw.cta || ""),
@@ -2066,6 +2530,7 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
             id: `${angle}-${index}-${sceneIndex}`,
             title: String(scene?.title || `镜头 ${sceneIndex + 1}`),
             duration: Math.max(4, Math.min(15, Number(scene?.duration || DEFAULT_SCENE_DURATION))),
+            scriptBeat: String(scene?.scriptBeat || scene?.beat || scene?.plot || ""),
             subtitle: String(scene?.subtitle || ""),
             captionOverride: String(scene?.captionOverride || ""),
             voiceoverLine: String(scene?.voiceoverLine || ""),
@@ -2074,6 +2539,7 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
             imagePrompt: String(scene?.imagePrompt || ""),
             videoPrompt: String(scene?.videoPrompt || ""),
             assetIds: Array.isArray(scene?.assetIds) ? scene.assetIds.map((item: any) => String(item || "")).filter(Boolean) : [],
+            requiredAssets: normalizeRequiredAssets(scene?.requiredAssets || scene?.assets || scene?.neededAssets),
             referenceImageUrl: String(scene?.referenceImageUrl || ""),
         })),
     };
@@ -2202,6 +2668,9 @@ const buildHook = (angle: AngleType) => {
 };
 
 const buildVoiceover = (angle: AngleType) => {
+    if (formTextTrim("scriptText")) {
+        return cleanSentence(formTextTrim("scriptText"));
+    }
     const theme = textOr(form.value.brandName, "这个主题");
     const brief = textOr(form.value.brandBrief, "围绕一个清晰的人设和情绪推进");
     const point = textOr(form.value.productSellingPoints, "把核心信息讲清楚");
@@ -2279,12 +2748,27 @@ const buildScene = (angle: AngleType, index: number, draftIndex: number): SceneD
         id: `${angle}-${draftIndex}-${index}`,
         title: index < templates.length ? template.title : `${template.title}${index + 1}`,
         duration,
+        scriptBeat: formTextTrim("scriptText")
+            ? `根据手动剧本推进第 ${index + 1} 段剧情，保留核心事件和关键台词。`
+            : template.subtitle,
         subtitle: template.subtitle,
         voiceoverLine: "",
         narrationMode: form.value.narrationMode,
         imagePrompt,
         videoPrompt,
         assetIds: [],
+        requiredAssets: [
+            {
+                type: "character",
+                name: `${theme}主角`,
+                reason: "保持多分镜主角一致",
+            },
+            {
+                type: "scene",
+                name: `${theme}主场景`,
+                reason: "保持场景空间和光影一致",
+            },
+        ],
         referenceImageUrl: "",
         subtitleMode: form.value.subtitleMode,
     };
@@ -2300,6 +2784,22 @@ const generateRuleDrafts = () => {
         id: `${item.value}-${Date.now()}-${draftIndex}`,
         angle: item.value,
         title: `${form.value.brandName.trim()}_${item.label}_短视频`,
+        synopsis: formTextTrim("scriptText") ? "基于手动剧本拆分为短视频分镜，保留原剧情核心。" : buildVoiceover(item.value),
+        scriptText: formTextTrim("scriptText") || [buildHook(item.value), buildVoiceover(item.value), buildCta(item.value)].join("\n"),
+        characters: [
+            {
+                name: `${form.value.brandName.trim()}主角`,
+                role: "主角",
+                description: `符合目标人群「${textOr(form.value.targetAudience, "目标用户")}」的统一人物形象`,
+            },
+        ],
+        locations: [
+            {
+                name: `${form.value.brandName.trim()}主场景`,
+                description: "承载主要剧情推进的统一场景空间",
+            },
+        ],
+        props: [],
         hook: buildHook(item.value),
         voiceover: buildVoiceover(item.value),
         cta: buildCta(item.value),
@@ -2448,24 +2948,56 @@ const submitCloudImageTask = async (draft: MarketingDraft, scene: SceneDraft) =>
     return await TaskService.submit(record);
 };
 
+const assetEntityDescriptions = (asset: MarketingAsset) => {
+    const nameKey = assetMatchKey(asset.name);
+    const matches = drafts.value.flatMap(draft => {
+        const source =
+            asset.type === "character"
+                ? draft.characters || []
+                : asset.type === "scene"
+                  ? draft.locations || []
+                  : draft.props || [];
+        return source
+            .filter(item => assetMatchKey(item.name).includes(nameKey) || nameKey.includes(assetMatchKey(item.name)))
+            .map(item => [item.name, (item as any).role, item.description].filter(Boolean).join("："));
+    });
+    return uniqueNonEmptyStrings(matches).slice(0, 4);
+};
+
 const buildMarketingAssetPrompt = (asset: MarketingAsset) => {
     const typeText = marketingAssetTypeLabel(asset.type);
-    return [
-        `生成一张可复用于短视频多分镜的一致性${typeText}参考图。`,
-        `资产名称：${asset.name}`,
-        asset.prompt ? `资产要求：${asset.prompt}` : "",
-        asset.note ? `补充说明：${asset.note}` : "",
-        form.value.visualStyle ? `整体画面风格：${form.value.visualStyle}` : "",
-        "要求：主体清晰，背景不过度复杂，适合后续作为 AI 生图参考资产；不要加入水印、UI、字幕、二维码或无关文字。",
-    ].filter(Boolean).join("\n");
+    const entityDescriptions = assetEntityDescriptions(asset);
+    const subjectRequirement =
+        asset.type === "character"
+            ? "单人，半身或中近景，自然表情，脸部清晰，发型、穿搭、身形和气质稳定，适合后续保持同一人物。"
+            : asset.type === "scene"
+              ? "完整空间，布局清晰，主要背景元素、材质、光线方向、色温和纵深稳定，画面干净，适合后续保持同一场景。"
+              : "单个道具，主体完整清晰，外形、材质、颜色、结构和识别点明确，背景简洁，适合后续复用。";
+    const referenceInstruction = assetReferenceUrlValue(asset)
+        ? "参考上传图片的核心身份、轮廓、材质、颜色和风格，重新优化构图、光线和画质。"
+        : "";
+    const visualStyle = form.value.visualStyle || selectedDraft.value?.referenceAnalysis?.visualStyle || "真实感短视频质感，自然光线，画面干净，色彩协调";
+    const visualLines = [
+        `${asset.name || typeText}，${typeText}，${subjectRequirement}`,
+        entityDescriptions.join("；"),
+        asset.prompt,
+        `风格：${visualStyle}`,
+        "9:16 竖屏，主体居中，边缘留白，清晰写实，自然光线，高质量商业短视频素材感。",
+        referenceInstruction,
+    ];
+    return uniqueNonEmptyStrings(visualLines.map(item => String(item || ""))).join("\n");
 };
 
 const submitAssetImageTask = async (asset: MarketingAsset) => {
     const prompt = buildMarketingAssetPrompt(asset);
-    if (imageChannel.value === "cloud") {
-        const template = currentImageTemplate.value;
+    const assetReferenceImages = uniqueNonEmptyStrings([assetReferenceUrlValue(asset)]);
+    if (assetImageChannel.value === "cloud") {
+        const template = currentAssetImageTemplate.value;
         if (!template?.id) {
             throw new Error("请先选择云端生图模板");
+        }
+        if (!assetReferenceImages.length && cloudTemplateLooksLikeImageToImage(template)) {
+            throw new Error("当前选择的是图生图/参考图模板。请先在资产卡片里上传参考图，或切换到文生图模板/Direct API 后再生成资产。");
         }
         const input = buildCloudMarketingInput(template, "image", {
             title: `${asset.name}_参考资产`,
@@ -2473,8 +3005,11 @@ const submitAssetImageTask = async (asset: MarketingAsset) => {
             text: prompt,
             imagePrompt: prompt,
             videoPrompt: "",
-            firstFrame: "",
-            firstFrameUrl: "",
+            firstFrame: assetReferenceImages[0] || "",
+            firstFrameUrl: assetReferenceImages[0] || "",
+            referenceImageUrl: assetReferenceImages[0] || "",
+            referenceImages: assetReferenceImages,
+            assetReferenceImages,
             lastFrame: "",
             lastFrameUrl: "",
             duration: DEFAULT_SCENE_DURATION,
@@ -2487,7 +3022,7 @@ const submitAssetImageTask = async (asset: MarketingAsset) => {
         return await TaskService.submit(record);
     }
 
-    const platform = currentImagePlatform.value;
+    const platform = currentAssetImagePlatform.value;
     if (!platform || !platform.content.apiKey.trim()) {
         throw new Error("请先配置可用的 GPT Image 2 平台");
     }
@@ -2496,8 +3031,12 @@ const submitAssetImageTask = async (asset: MarketingAsset) => {
         prompt,
         size: "1024x1536",
         quality: "high",
-        n: 1,
     };
+    if (assetReferenceImages.length) {
+        body[assetReferenceImages.length > 1 ? "image[]" : "image"] = assetReferenceImages;
+    } else {
+        body.n = 1;
+    }
     const modelConfig: RunningHubModelConfigType = {
         capability: "image",
         connectorType: "custom-api",
@@ -2509,10 +3048,10 @@ const submitAssetImageTask = async (asset: MarketingAsset) => {
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
-        submitPath: "/v1/images/generations",
+        submitPath: assetReferenceImages.length ? "/v1/images/edits" : "/v1/images/generations",
         queryPath: "",
         requestBodyJson: JSON.stringify(body, null, 2),
-        requestFormat: "json",
+        requestFormat: assetReferenceImages.length ? "form-data" : "json",
     };
     const record: TaskRecord = {
         biz: "DirectApiTask",
@@ -2521,12 +3060,13 @@ const submitAssetImageTask = async (asset: MarketingAsset) => {
         serverTitle: "",
         serverVersion: "",
         modelConfig,
-        param: { input: { source: "MarketingVideoFlow", prompt, asset } },
+        param: { input: { source: "MarketingVideoFlow", prompt, asset, assetReferenceImages } },
     };
     return await TaskService.submit(record);
 };
 
 const generateMarketingAsset = async (asset: MarketingAsset) => {
+    const previousStatus = asset.status;
     try {
         submitting.value = true;
         asset.status = "generating";
@@ -2536,16 +3076,72 @@ const generateMarketingAsset = async (asset: MarketingAsset) => {
         asset.url = imageUrl;
         asset.dataUrl = "";
         asset.status = "ready";
+        syncSceneAssetBindings();
         Dialog.tipSuccess("参考资产已生成");
     } catch (e: any) {
-        asset.status = "suggested";
+        asset.status = previousStatus === "ready" ? "ready" : "suggested";
         Dialog.tipError(e?.message || "参考资产生成失败");
     } finally {
         submitting.value = false;
     }
 };
 
+const syncMarketingAssetTask = async (asset: MarketingAsset) => {
+    if (!asset.imageTaskId) {
+        return false;
+    }
+    const task = await TaskService.get(asset.imageTaskId);
+    if (!task) {
+        return false;
+    }
+    if (task.status === "success") {
+        const rawImageUrl = extractTaskOutputImage(task);
+        const imageUrl = rawImageUrl ? await resolveTaskOutputImage(rawImageUrl) : "";
+        if (!imageUrl) {
+            asset.status = asset.url || asset.dataUrl ? "ready" : "suggested";
+            return false;
+        }
+        asset.url = imageUrl;
+        asset.dataUrl = "";
+        asset.status = "ready";
+        syncSceneAssetBindings();
+        return true;
+    }
+    if (task.status === "fail") {
+        asset.status = asset.url || asset.dataUrl ? "ready" : "suggested";
+        return false;
+    }
+    if (["queue", "wait", "running"].includes(String(task.status || ""))) {
+        asset.status = "generating";
+    }
+    return false;
+};
+
+const refreshMarketingAssetTasks = async (silent = false) => {
+    const assets = marketingAssets.value.filter(item => item.imageTaskId && (item.status === "generating" || !assetUrlValue(item)));
+    if (!assets.length) {
+        if (!silent) {
+            Dialog.tipError("没有需要同步的资产任务");
+        }
+        return;
+    }
+    let updated = 0;
+    for (const asset of assets) {
+        try {
+            if (await syncMarketingAssetTask(asset)) {
+                updated += 1;
+            }
+        } catch (e) {
+            // 单个资产同步失败不影响其他资产。
+        }
+    }
+    if (!silent) {
+        updated ? Dialog.tipSuccess(`已同步 ${updated} 个资产结果`) : Dialog.tipError("暂未发现可回填的资产结果");
+    }
+};
+
 const submitImageTask = async (draft: MarketingDraft, scene: SceneDraft) => {
+    ensureSceneAssetsReady(scene);
     const id =
         imageChannel.value === "cloud"
             ? await submitCloudImageTask(draft, scene)
@@ -2559,9 +3155,10 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
     if (!platform || !platform.content.apiKey.trim()) {
         throw new Error("请先配置可用的 Seedance 平台");
     }
+    const directFileRelay = await getEffectiveDirectFileRelay(platform);
     let referenceImageUrl = "";
     try {
-        referenceImageUrl = await resolveDirectVideoReferenceImageUrl(platform, scene.referenceImageUrl || "");
+        referenceImageUrl = await resolveDirectVideoReferenceImageUrl(directFileRelay, scene.referenceImageUrl || "");
     } catch (e: any) {
         throw new Error(e?.message || "123 云盘资产入库失败");
     }
@@ -2572,19 +3169,17 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
         sceneIndex >= 0 ? sceneIndex : undefined,
         draft.scenes.length
     );
+    const isKwjmPlatform = platform.content.platformType === "kwjm";
+    const normalizedVideoModel = isKwjmPlatform
+        ? form.value.videoModel.includes("fast")
+            ? "kw-video-v2-fast"
+            : "kw-video-v2"
+        : form.value.videoModel;
     const body: Record<string, any> = {
-        model: form.value.videoModel,
+        model: normalizedVideoModel,
         content: [
             { type: "text", text: videoPrompt },
-            ...(referenceImageUrl
-                ? [
-                      {
-                          type: "image_url",
-                          image_url: { url: referenceImageUrl },
-                          role: "first_frame",
-                      },
-                  ]
-                : []),
+            ...(referenceImageUrl ? [buildVideoImageReferenceContent(referenceImageUrl, form.value.videoReferenceRole)] : []),
         ],
         ratio: form.value.ratio,
         duration: scene.duration,
@@ -2603,9 +3198,9 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
-        directFileRelay: platform.content.directFileRelay,
-        submitPath: "/api/v3/contents/generations/tasks",
-        queryPath: "/api/v3/contents/generations/tasks/{id}",
+        directFileRelay: directFileRelay || undefined,
+        submitPath: isKwjmPlatform ? "/v1/videos/generations" : "/api/v3/contents/generations/tasks",
+        queryPath: isKwjmPlatform ? "/v1/videos/generations/{id}" : "/api/v3/contents/generations/tasks/{id}",
         requestBodyJson: JSON.stringify(body, null, 2),
         requestFormat: "json",
     };
@@ -2631,6 +3226,7 @@ const submitSceneImageToVideoTask = async (draft: MarketingDraft, scene: SceneDr
 
 const submitDraftChainTask = async (draft: MarketingDraft) => {
     ensureDraftVoiceoverLines(draft);
+    ensureDraftAssetsReady(draft);
     const record: TaskRecord = {
         biz: "MarketingVideoChainTask",
         title: `${draft.title}_图生视频链路`,
@@ -2642,6 +3238,7 @@ const submitDraftChainTask = async (draft: MarketingDraft) => {
             form: {
                 ratio: form.value.ratio,
                 videoModel: form.value.videoModel,
+                videoReferenceRole: form.value.videoReferenceRole,
             },
             imageChannel: imageChannel.value,
             videoChannel: videoChannel.value,
@@ -2699,6 +3296,7 @@ const submitCloudVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =>
 
 const submitVideoTask = async (draft: MarketingDraft, scene: SceneDraft) => {
     ensureDraftVoiceoverLines(draft);
+    ensureSceneAssetsReady(scene);
     const id =
         videoChannel.value === "cloud"
             ? await submitCloudVideoTask(draft, scene)
@@ -2728,6 +3326,7 @@ const submitDraft = async (target: MarketingDraft, type: "image" | "video" | "bo
     try {
         submitting.value = true;
         ensureDraftVoiceoverLines(target);
+        ensureDraftAssetsReady(target);
         for (const scene of target.scenes) {
             if (type === "both") {
                 await submitDraftChainTask(target);
@@ -2757,6 +3356,7 @@ const submitAll = async (type: "image" | "video" | "both") => {
         submitting.value = true;
         for (const draft of drafts.value) {
             ensureDraftVoiceoverLines(draft);
+            ensureDraftAssetsReady(draft);
             for (const scene of draft.scenes) {
                 if (type === "both") {
                     await submitDraftChainTask(draft);
@@ -2940,6 +3540,26 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                     </div>
                                 </div>
                             </a-form-item>
+                            <a-form-item label="手动剧本 / 剧情约束">
+                                <div class="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                    <div>
+                                        <div class="mb-2 text-xs font-semibold text-gray-500">手动剧本（可选）</div>
+                                        <a-textarea
+                                            v-model="form.scriptText"
+                                            :auto-size="{ minRows: 5, maxRows: 10 }"
+                                            placeholder="可粘贴完整剧情/脚本。填写后，AI 只做结构化、分镜拆解和优化，核心剧情不能改。"
+                                        />
+                                    </div>
+                                    <div>
+                                        <div class="mb-2 text-xs font-semibold text-gray-500">不可改内容（可选）</div>
+                                        <a-textarea
+                                            v-model="form.scriptLockedNotes"
+                                            :auto-size="{ minRows: 5, maxRows: 10 }"
+                                            placeholder="例如：人物关系不能变、结局不能变、必须保留某句台词、不能改产品名等。"
+                                        />
+                                    </div>
+                                </div>
+                            </a-form-item>
                             <a-form-item label="参考资产 / 资产关联">
                                 <div class="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
                                     <div class="flex min-w-0 flex-wrap items-center gap-2">
@@ -2950,9 +3570,46 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                         </a-select>
                                         <a-input v-model="assetUploadName" class="min-w-[180px] flex-1" placeholder="资产名称，可不填" allow-clear />
                                         <a-button type="primary" @click="pickMarketingAsset">上传资产图片</a-button>
+                                        <a-button @click="refreshRequiredAssetsFromCurrentDrafts">检查并创建缺失资产</a-button>
+                                        <a-button @click="refreshMarketingAssetTasks(false)">同步生成结果</a-button>
                                     </div>
                                     <div class="mt-2 text-xs leading-5 text-gray-500">
                                         这里的资产会作为生图参考输入，用于保持人物、场景、道具在多个分镜间一致；上面的参考视频/参考图片只用于脚本和画面拆解。
+                                    </div>
+                                    <div class="mt-3 rounded-md bg-white/80 p-2">
+                                        <div class="flex min-w-0 flex-wrap items-center gap-2">
+                                            <span class="text-xs text-gray-500">资产生成方式</span>
+                                            <a-radio-group v-model="assetImageChannel" type="button" size="small">
+                                                <a-radio v-for="item in channelOptions" :key="item.value" :value="item.value">
+                                                    {{ item.label }}
+                                                </a-radio>
+                                            </a-radio-group>
+                                            <a-select
+                                                v-if="assetImageChannel === 'direct'"
+                                                v-model="assetImagePlatformId"
+                                                class="!w-64"
+                                                size="small"
+                                                placeholder="选择 GPT Image 2 平台"
+                                            >
+                                                <a-option v-for="item in imagePlatforms" :key="item.id" :value="item.id">
+                                                    {{ item.title }}
+                                                </a-option>
+                                            </a-select>
+                                            <a-select
+                                                v-else
+                                                v-model="assetImageTemplateId"
+                                                class="!w-64"
+                                                size="small"
+                                                placeholder="选择云端生图模板"
+                                            >
+                                                <a-option v-for="item in imageTemplates" :key="item.id" :value="item.id">
+                                                    {{ item.title }}
+                                                </a-option>
+                                            </a-select>
+                                        </div>
+                                        <div class="mt-1 text-xs text-gray-400">
+                                            只影响这里的“生成资产”，分镜生图/生视频仍使用下方生成设置。
+                                        </div>
                                     </div>
                                     <div v-if="marketingAssets.length" class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
                                         <div
@@ -2962,7 +3619,17 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                         >
                                             <div class="flex gap-2">
                                                 <div class="h-20 w-16 shrink-0 overflow-hidden rounded-md border border-gray-100 bg-gray-50">
-                                                    <img v-if="assetDisplayUrl(asset)" :src="assetDisplayUrl(asset)" class="h-full w-full object-cover" />
+                                                    <a-popover v-if="assetDisplayUrl(asset)" trigger="hover" position="right">
+                                                        <div class="h-full w-full">
+                                                            <img :src="assetDisplayUrl(asset)" class="h-full w-full object-cover" />
+                                                        </div>
+                                                        <template #content>
+                                                            <div class="max-w-[360px]">
+                                                                <img :src="assetDisplayUrl(asset)" class="max-h-[420px] max-w-[340px] rounded-lg object-contain" />
+                                                                <div class="mt-2 max-w-[340px] truncate text-xs text-gray-500">{{ asset.name }}</div>
+                                                            </div>
+                                                        </template>
+                                                    </a-popover>
                                                     <div v-else class="flex h-full w-full items-center justify-center px-1 text-center text-[11px] text-gray-400">
                                                         待生成
                                                     </div>
@@ -2985,12 +3652,44 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                                 v-model="asset.prompt"
                                                 class="mt-2"
                                                 :auto-size="{ minRows: 2, maxRows: 4 }"
-                                                placeholder="资产生成提示词；修改后可重新生成"
+                                                placeholder="人工补充资产要求；系统会自动结合剧本、分镜用途和参考图生成完整提示词"
                                             />
+                                            <div class="mt-2 rounded-md border border-gray-100 bg-gray-50 px-2 py-2">
+                                                <div class="flex items-center gap-2">
+                                                    <div class="h-12 w-10 shrink-0 overflow-hidden rounded border border-gray-100 bg-white">
+                                                        <a-popover v-if="assetReferenceDisplayUrl(asset)" trigger="hover" position="right">
+                                                            <div class="h-full w-full">
+                                                                <img :src="assetReferenceDisplayUrl(asset)" class="h-full w-full object-cover" />
+                                                            </div>
+                                                            <template #content>
+                                                                <div class="max-w-[360px]">
+                                                                    <img :src="assetReferenceDisplayUrl(asset)" class="max-h-[420px] max-w-[340px] rounded-lg object-contain" />
+                                                                    <div class="mt-2 max-w-[340px] truncate text-xs text-gray-500">
+                                                                        {{ asset.referenceName || "资产参考图" }}
+                                                                    </div>
+                                                                </div>
+                                                            </template>
+                                                        </a-popover>
+                                                        <div v-else class="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-gray-400">
+                                                            参考
+                                                        </div>
+                                                    </div>
+                                                    <div class="min-w-0 flex-1">
+                                                        <div class="truncate text-xs text-gray-600">
+                                                            {{ asset.referenceName || "未上传生成参考图；不上传则按文字直接生成资产" }}
+                                                        </div>
+                                                        <div class="mt-1 flex flex-wrap gap-2">
+                                                            <a-button size="mini" @click="uploadReferenceImageForMarketingAsset(asset)">上传参考图</a-button>
+                                                            <a-button v-if="assetReferenceDisplayUrl(asset)" size="mini" @click="clearMarketingAssetReferenceImage(asset)">移除参考</a-button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                             <div v-if="asset.note || asset.url" class="mt-1 line-clamp-1 text-xs leading-5 text-gray-400">
                                                 {{ asset.note || asset.url }}
                                             </div>
                                             <div class="mt-2 flex flex-wrap justify-end gap-2">
+                                                <a-button size="mini" @click="uploadImageForMarketingAsset(asset)">上传成品图</a-button>
                                                 <a-button
                                                     size="mini"
                                                     type="primary"
@@ -3163,6 +3862,17 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                     <a-option v-for="item in videoModelOptions" :key="item" :value="item">{{ item }}</a-option>
                                 </a-select>
                             </div>
+                            <div v-if="videoChannel === 'direct'">
+                                <div class="text-xs font-semibold text-gray-500 mb-2">分镜图用途</div>
+                                <a-select v-model="form.videoReferenceRole" class="w-full">
+                                    <a-option v-for="item in videoReferenceRoleOptions" :key="item.value" :value="item.value">
+                                        {{ item.label }}
+                                    </a-option>
+                                </a-select>
+                                <div class="mt-1 text-xs leading-5 text-gray-400">
+                                    {{ videoReferenceRoleOptions.find(item => item.value === form.videoReferenceRole)?.desc }}
+                                </div>
+                            </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <div class="text-xs font-semibold text-gray-500 mb-2">说话方式</div>
@@ -3256,6 +3966,47 @@ const submitAll = async (type: "image" | "video" | "both") => {
                         <a-form-item label="口播文案">
                             <a-textarea v-model="selectedDraft.voiceover" :auto-size="{ minRows: 5, maxRows: 9 }" />
                         </a-form-item>
+                        <div class="mb-4 rounded-lg border border-gray-100 bg-gray-50/70 px-4 py-3">
+                            <div class="mb-3 flex items-center justify-between gap-3">
+                                <div class="text-sm font-semibold text-gray-900">完整剧本</div>
+                                <a-tag v-if="formTextTrim('scriptText')" color="arcoblue">基于手动剧本优化</a-tag>
+                            </div>
+                            <a-form-item label="剧情梗概">
+                                <a-textarea v-model="selectedDraft.synopsis" :auto-size="{ minRows: 2, maxRows: 5 }" placeholder="整体剧情梗概" />
+                            </a-form-item>
+                            <a-form-item label="完整剧本">
+                                <a-textarea v-model="selectedDraft.scriptText" :auto-size="{ minRows: 6, maxRows: 14 }" placeholder="完整剧情、关键动作、台词/旁白和结尾" />
+                            </a-form-item>
+                            <div class="grid grid-cols-1 gap-3 text-xs leading-5 text-gray-600 xl:grid-cols-3">
+                                <div class="rounded-md bg-white px-3 py-2">
+                                    <div class="mb-1 font-semibold text-gray-800">人物</div>
+                                    <div v-if="selectedDraft.characters?.length">
+                                        <div v-for="item in selectedDraft.characters" :key="item.name">
+                                            {{ item.name }}<span v-if="item.role">：{{ item.role }}</span><span v-if="item.description">，{{ item.description }}</span>
+                                        </div>
+                                    </div>
+                                    <div v-else class="text-gray-400">暂无</div>
+                                </div>
+                                <div class="rounded-md bg-white px-3 py-2">
+                                    <div class="mb-1 font-semibold text-gray-800">场景</div>
+                                    <div v-if="selectedDraft.locations?.length">
+                                        <div v-for="item in selectedDraft.locations" :key="item.name">
+                                            {{ item.name }}<span v-if="item.description">：{{ item.description }}</span>
+                                        </div>
+                                    </div>
+                                    <div v-else class="text-gray-400">暂无</div>
+                                </div>
+                                <div class="rounded-md bg-white px-3 py-2">
+                                    <div class="mb-1 font-semibold text-gray-800">道具/商品</div>
+                                    <div v-if="selectedDraft.props?.length">
+                                        <div v-for="item in selectedDraft.props" :key="item.name">
+                                            {{ item.name }}<span v-if="item.description">：{{ item.description }}</span>
+                                        </div>
+                                    </div>
+                                    <div v-else class="text-gray-400">暂无</div>
+                                </div>
+                            </div>
+                        </div>
                         <div v-if="hasReferenceInput && selectedDraft.referenceAnalysis" class="mb-4 rounded-lg border border-blue-100 bg-blue-50/50 px-4 py-3">
                             <div class="mb-2 text-sm font-semibold text-gray-900">参考视频拆解</div>
                             <div class="grid grid-cols-1 gap-2 text-xs leading-5 text-gray-600 xl:grid-cols-2">
@@ -3345,6 +4096,19 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                             {{ readyMarketingAssets.length ? `可用资产 ${readyMarketingAssets.length} 个` : "暂无可用资产" }}
                                         </span>
                                     </div>
+                                    <div v-if="scene.requiredAssets?.length" class="mb-3 rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2">
+                                        <div class="mb-1 text-xs font-semibold text-amber-800">本镜所需资产</div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <a-tag
+                                                v-for="item in sceneRequiredAssetStatuses(scene)"
+                                                :key="`${item.type}-${item.name}`"
+                                                size="small"
+                                                :color="item.ready ? 'green' : item.missing ? 'red' : 'orange'"
+                                            >
+                                                {{ marketingAssetTypeLabel(item.type) }} · {{ item.name }} · {{ item.ready ? "已准备" : item.missing ? "未创建" : "待准备图片" }}
+                                            </a-tag>
+                                        </div>
+                                    </div>
                                     <div class="grid grid-cols-1 gap-3 xl:grid-cols-[190px_190px_minmax(0,1fr)]">
                                         <a-form-item label="说话方式">
                                             <a-select v-model="scene.narrationMode" class="!w-32">
@@ -3360,6 +4124,9 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                             <a-textarea v-model="scene.voiceoverLine" :disabled="scene.narrationMode === 'none'" :auto-size="{ minRows: 2, maxRows: 4 }" />
                                         </a-form-item>
                                     </div>
+                                    <a-form-item label="剧情段落">
+                                        <a-textarea v-model="scene.scriptBeat" :auto-size="{ minRows: 2, maxRows: 4 }" placeholder="本分镜对应完整剧本中的剧情段落" />
+                                    </a-form-item>
                                     <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
                                         <a-form-item label="图片提示词">
                                             <a-textarea v-model="scene.imagePrompt" :auto-size="{ minRows: 5, maxRows: 10 }" />

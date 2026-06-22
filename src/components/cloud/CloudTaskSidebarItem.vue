@@ -225,7 +225,7 @@ const supportedToolTask = computed(() => {
     return (
         isCloudTemplateTask ||
         props.record.biz === "DirectApiTask" &&
-        (title.includes("seedance") || title.includes("gpt image 2") || body.includes("seedance-2.0") || body.includes("gpt-image-2"))
+        (title.includes("seedance") || title.includes("gpt image 2") || body.includes("seedance-2.0") || body.includes("kw-video-v2") || body.includes("gpt-image-2"))
     );
 });
 

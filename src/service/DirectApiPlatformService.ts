@@ -1,6 +1,6 @@
 import { StorageRecord, StorageService } from "./StorageService";
 
-export type DirectApiPlatformType = "exchangetoken" | "custom";
+export type DirectApiPlatformType = "exchangetoken" | "modeltop" | "kwjm" | "custom";
 export type DirectApiCapability = "seedance" | "gpt-image-2";
 
 export type DirectApiPlatformContent = {
@@ -9,7 +9,7 @@ export type DirectApiPlatformContent = {
     apiKey: string;
     proxyUrl?: string;
     directFileRelay: {
-        provider?: "123pan";
+        provider?: "123pan" | "modeltop-assets" | "kwjm-assets";
         enabled?: boolean;
         clientID?: string;
         clientSecret?: string;
@@ -29,6 +29,16 @@ export type DirectApiPlatformRecord = {
 
 const DEFAULT_CAPABILITIES: DirectApiCapability[] = ["seedance", "gpt-image-2"];
 
+export const isUsablePan123Relay = (relay?: DirectApiPlatformContent["directFileRelay"]) => {
+    return Boolean(
+        relay?.enabled &&
+            relay.provider === "123pan" &&
+            String(relay.clientID || "").trim() &&
+            String(relay.clientSecret || "").trim() &&
+            String(relay.parentFileID || "").trim()
+    );
+};
+
 const normalizeApiKey = (value?: string) => {
     let key = String(value || "")
         .trim()
@@ -40,16 +50,25 @@ const normalizeApiKey = (value?: string) => {
     return key;
 };
 
+const normalizeBaseUrl = (platformType: DirectApiPlatformType, value?: string) => {
+    const baseUrl = String(value || "").trim();
+    if (platformType === "kwjm" && /^https:\/\/kwjm\.com\/?$/i.test(baseUrl)) {
+        return "https://www.kwjm.com";
+    }
+    return baseUrl || (platformType === "kwjm" ? "https://www.kwjm.com" : "https://api.exchangetoken.ai");
+};
+
 const decode = (record: StorageRecord | null): DirectApiPlatformRecord | null => {
     if (!record) {
         return null;
     }
+    const platformType = record.content?.platformType || "exchangetoken";
     return {
         id: record.id,
         title: record.title || "",
         content: {
-            platformType: record.content?.platformType || "exchangetoken",
-            baseUrl: record.content?.baseUrl || "https://api.exchangetoken.ai",
+            platformType,
+            baseUrl: normalizeBaseUrl(platformType, record.content?.baseUrl),
             apiKey: normalizeApiKey(record.content?.apiKey || ""),
             proxyUrl: record.content?.proxyUrl || "",
             directFileRelay: {
@@ -129,5 +148,9 @@ export const DirectApiPlatformService = {
     async getDefault(capability: DirectApiCapability) {
         const records = await this.listByCapability(capability);
         return records.find(record => record.content.isDefault) || records[0] || null;
+    },
+    async getReusablePan123Relay() {
+        const records = await this.list();
+        return records.find(record => isUsablePan123Relay(record.content.directFileRelay))?.content.directFileRelay || null;
     },
 };

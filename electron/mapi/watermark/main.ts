@@ -21,6 +21,7 @@ type WatermarkBox = {
 type VideoRepairPayload = {
     input: string;
     masks: WatermarkBox[];
+    engine?: "ffmpeg-delogo" | "vsr-sttn";
     outputName?: string;
     keepAudio?: boolean;
 };
@@ -92,6 +93,35 @@ const findRepairServerScript = () => {
         throw new Error("找不到 AI_Live_Server/watermark_repair_server.py，请确认 ProPainter 修复服务文件已随应用放置");
     }
     return script;
+};
+
+const vsrRootCandidates = () => {
+    const roots = [
+        process.cwd(),
+        path.resolve(currentDir, "../../../"),
+        path.resolve(process.resourcesPath || "", "app"),
+        path.resolve(process.resourcesPath || ""),
+    ];
+    return roots
+        .filter(Boolean)
+        .flatMap(root => [
+            path.resolve(root, "AI_Live_Server", "third_party", "video-subtitle-remover"),
+            path.resolve(root, "AI_Live_Server", "third_party", "video-subtitle-remover-main"),
+            path.resolve(root, "resources", "AI_Live_Server", "third_party", "video-subtitle-remover"),
+        ]);
+};
+
+const findVsrRoot = () => {
+    return vsrRootCandidates().find(root => fs.existsSync(path.resolve(root, "backend", "main.py")));
+};
+
+const resolveVsrPython = (root: string) => {
+    const candidates = [
+        path.resolve(root, ".venv", "Scripts", "python.exe"),
+        path.resolve(root, "venv", "Scripts", "python.exe"),
+        path.resolve(root, "videoEnv", "Scripts", "python.exe"),
+    ];
+    return candidates.find(item => fs.existsSync(item)) || "python";
 };
 
 const probeRepairService = async (url?: string): Promise<RepairServiceStatus> => {
@@ -768,6 +798,68 @@ const runFfmpeg = async (args: string[]) => {
     });
 };
 
+const runProcess = async (command: string, args: string[], cwd?: string) => {
+    return new Promise<void>((resolve, reject) => {
+        const proc = spawn(command, args, {
+            cwd,
+            env: {
+                ...process.env,
+                PYTHONIOENCODING: "utf-8",
+                PYTHONUTF8: "1",
+            },
+        });
+        let stderr = "";
+        let stdout = "";
+        proc.stdout?.on("data", data => {
+            stdout += data.toString();
+        });
+        proc.stderr?.on("data", data => {
+            stderr += data.toString();
+        });
+        proc.on("error", reject);
+        proc.on("close", code => {
+            if (code === 0) {
+                resolve();
+                return;
+            }
+            reject(new Error((stderr || stdout).slice(-1600) || `${command} exited with ${code}`));
+        });
+    });
+};
+
+const repairVideoByVsr = async (payload: VideoRepairPayload, width: number, height: number) => {
+    const vsrRoot = findVsrRoot();
+    if (!vsrRoot) {
+        throw new Error("未找到 video-subtitle-remover，请安装到 AI_Live_Server/third_party/video-subtitle-remover 后再使用 VSR/STTN 修复");
+    }
+    const pythonPath = resolveVsrPython(vsrRoot);
+    const output = await Files.temp("mp4", "watermark-vsr-sttn");
+    const args = [
+        path.resolve(vsrRoot, "backend", "main.py"),
+        "-i",
+        payload.input,
+        "-o",
+        output,
+        "--inpaint-mode",
+        "sttn-auto",
+    ];
+    const masks = (payload.masks || []).filter(mask => mask.width > 0 && mask.height > 0);
+    masks.forEach(mask => {
+        const boxPixelSize = Math.max((mask.width / 100) * width, (mask.height / 100) * height);
+        const padding = Math.max(4, Number(mask.padding ?? mask.feather ?? 8), Math.round(boxPixelSize * 0.08));
+        const x1 = Math.round(clamp(Math.floor((mask.x / 100) * width - padding), 0, width - 2));
+        const y1 = Math.round(clamp(Math.floor((mask.y / 100) * height - padding), 0, height - 2));
+        const x2 = Math.round(clamp(Math.ceil(((mask.x + mask.width) / 100) * width + padding), x1 + 1, width - 1));
+        const y2 = Math.round(clamp(Math.ceil(((mask.y + mask.height) / 100) * height + padding), y1 + 1, height - 1));
+        args.push("-c", String(y1), String(y2), String(x1), String(x2));
+    });
+    await runProcess(pythonPath, args, vsrRoot);
+    if (!fs.existsSync(output)) {
+        throw new Error("VSR/STTN 修复完成但未生成输出文件");
+    }
+    return output;
+};
+
 const repairVideo = async (payload: VideoRepairPayload) => {
     if (!payload.input || !fs.existsSync(payload.input)) {
         throw new Error(`视频不存在: ${payload.input}`);
@@ -777,6 +869,9 @@ const repairVideo = async (payload: VideoRepairPayload) => {
         throw new Error("缺少水印区域");
     }
     const {width, height} = await ffprobeVideoSize(payload.input);
+    if (payload.engine === "vsr-sttn") {
+        return await repairVideoByVsr(payload, width, height);
+    }
     const filters = masks.map(mask => {
         if (mask.width >= 45 || mask.height >= 16 || mask.width * mask.height >= 420) {
             throw new Error("本地快速修复只适合小面积固定水印；当前水印框过大，请先缩小区域，或改用 ProPainter/ComfyUI 时序修复");

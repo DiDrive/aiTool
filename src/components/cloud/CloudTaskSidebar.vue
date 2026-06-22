@@ -77,7 +77,7 @@ const refresh = async () => {
 const directApiEditTarget = (record: TaskRecord) => {
     const title = String((record as any)?.modelConfig?.templateTitle || "").toLowerCase();
     const body = String((record as any)?.modelConfig?.requestBodyJson || "").toLowerCase();
-    if (title.includes("seedance") || body.includes("seedance-2.0")) {
+    if (title.includes("seedance") || body.includes("seedance-2.0") || body.includes("kw-video-v2")) {
         return { path: "/video", tab: "ToolSeedance" };
     }
     if (title.includes("gpt image 2") || body.includes("gpt-image-2")) {

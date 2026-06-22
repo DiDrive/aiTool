@@ -6,7 +6,8 @@ import {FileUtil} from "../../../lib/file";
 import {model as modelStore} from "../../../module/Model/store/model";
 
 type MediaType = "image" | "video" | "unknown";
-type RepairEngine = "lama" | "sdxl-inpaint" | "ffmpeg-delogo" | "propainter" | "comfyui";
+type RepairEngine = "lama" | "sdxl-inpaint" | "ffmpeg-delogo" | "vsr-sttn" | "propainter" | "comfyui";
+type DetectionMode = "watermark" | "hybrid" | "text";
 
 interface WatermarkMask {
     id: number;
@@ -33,9 +34,12 @@ const keepAudio = ref(true);
 const detecting = ref(false);
 const repairing = ref(false);
 const outputPath = ref("");
+const repairLog = ref("");
+const repairLogPath = ref("");
 const detectionMessage = ref("尚未检测");
 const detectionSource = ref<"none" | "vision" | "local" | "service" | "heuristic">("none");
 const selectedVisionModel = ref("");
+const detectionMode = ref<DetectionMode>("watermark");
 const masks = reactive<WatermarkMask[]>([]);
 const selectedMaskId = ref<number | null>(null);
 const dragState = ref<null | {
@@ -50,6 +54,7 @@ const dragState = ref<null | {
 const imageExts = ["jpg", "jpeg", "png", "webp"];
 const videoExts = ["mp4", "mov", "mkv", "webm"];
 const supportedExts = [...imageExts, ...videoExts];
+const requiredRepairServiceVersion = "2026-06-18-safe-path-v2";
 
 const ext = computed(() => FileUtil.getExt(filePath.value));
 const mediaType = computed<MediaType>(() => {
@@ -92,6 +97,9 @@ const repairButtonText = computed(() => {
     if (engine.value === "propainter") {
         return "ProPainter 修复视频";
     }
+    if (engine.value === "vsr-sttn") {
+        return "VSR/STTN 修复视频";
+    }
     if (engine.value === "comfyui") {
         return "ComfyUI 修复视频";
     }
@@ -100,6 +108,7 @@ const repairButtonText = computed(() => {
 const engineOptions = computed(() => {
     if (mediaType.value === "video") {
         return [
+            {label: "VSR/STTN 文本水印修复", value: "vsr-sttn"},
             {label: "本地快速修复（ffmpeg delogo）", value: "ffmpeg-delogo"},
             {label: "ProPainter 视频时序修复", value: "propainter"},
             {label: "ComfyUI 视频修复工作流", value: "comfyui"},
@@ -175,8 +184,8 @@ const payload = computed(() => ({
 }));
 
 watch(mediaType, value => {
-    if (value === "video" && !["ffmpeg-delogo", "propainter", "comfyui"].includes(engine.value)) {
-        engine.value = "ffmpeg-delogo";
+    if (value === "video" && !["ffmpeg-delogo", "vsr-sttn", "propainter", "comfyui"].includes(engine.value)) {
+        engine.value = "vsr-sttn";
     }
     if (value === "image" && !["lama", "sdxl-inpaint", "comfyui"].includes(engine.value)) {
         engine.value = "lama";
@@ -613,7 +622,12 @@ const tryVisionDetect = async (): Promise<WatermarkMask[]> => {
     const prompt = [
         "你是一个图片/视频画面水印检测器，只检测可见水印、平台标识、版权字样、半透明 logo、角标文字。",
         "不要检测普通画面物体、云朵、装饰、人物、背景纹理。",
-        "不要把剧情字幕、口播字幕、画面内招牌/路牌/正文标题当作水印；水印通常是平台标识、账号标识、版权角标、半透明 logo，固定在边角或底部。",
+        detectionMode.value === "text"
+            ? "当前模式是文字候选检测：可以返回疑似硬字幕、文字水印、平台角标，但需要在 name 中明确写出“字幕候选”或“水印”。"
+            : "当前模式是水印检测：不要把剧情字幕、口播字幕、对白字幕、画面内招牌/路牌/正文标题当作水印；用户可能需要保留这些字幕。水印通常是平台标识、账号标识、版权角标、半透明 logo，固定在边角或底部。",
+        detectionMode.value === "hybrid"
+            ? "如果无法确定是字幕还是水印，请只返回固定位置、低透明度、平台/版权/账号性质明显的候选，不要返回大段对白字幕。"
+            : "",
         mediaType.value === "video"
             ? "当前输入是同一个视频的多张抽帧，请综合所有帧：持续出现、固定在边角或固定位置的标识优先判定为水印；只在内容画面中偶然出现的普通文字不要判定为水印。"
             : "当前输入是单张图片，请检查整张图的四角、底部、顶部和中心区域。",
@@ -623,6 +637,7 @@ const tryVisionDetect = async (): Promise<WatermarkMask[]> => {
         "如果我提供了局部放大裁剪图，裁剪图只是帮助你看清淡水印；最终仍必须返回完整画面的百分比坐标，不要返回裁剪图内部坐标。",
         "返回的是用于图像修复的 mask 框，不是紧贴文字笔画的 OCR 框；必须完整包含水印文字、阴影、描边、透明边缘，并额外留出 10%-25% 安全边。",
         "不要返回整条底部横条、播放器控件区域、黑边、渐变阴影或大面积画面区域；单个可见水印框通常不应超过画面宽度 35% 或高度 15%。",
+        "对白字幕通常横跨底部中间且内容随时间变化，默认不是水印；除非当前模式是文字候选检测，否则不要返回这类字幕区域。",
         "右下角、左下角等贴边平台水印尤其要把整段文字全部框住，不要漏掉最后一个字或 logo。",
         mediaType.value === "video"
             ? "如果不同帧中同一水印位置略有差异，请返回能覆盖所有帧的并集框；同一底部平台水印被画面元素分隔时也要合并成一个完整框；如果片头/片尾有额外水印，也可以单独返回。"
@@ -1291,8 +1306,13 @@ const detectWatermark = async () => {
             }
         }
         if (mediaType.value === "video") {
-            const heuristicDetected = await detectFromVideoFrames().catch(() => []);
-            detected = stabilizeVideoMasks([...detected, ...heuristicDetected]);
+            const shouldMergeLocalCandidates = detectionMode.value !== "watermark" || detectionSource.value !== "vision" || detected.length === 0;
+            const heuristicDetected = shouldMergeLocalCandidates
+                ? await detectFromVideoFrames().catch(() => [])
+                : [];
+            detected = detectionMode.value === "watermark" && detectionSource.value === "vision" && detected.length > 0
+                ? sanitizeVideoMasks(detected)
+                : stabilizeVideoMasks([...detected, ...heuristicDetected]);
             if (detected.length === 0) {
                 detected = [createFallbackVideoMask()];
                 detectionSource.value = "heuristic";
@@ -1302,7 +1322,9 @@ const detectWatermark = async () => {
         if (detected.length > 0) {
             detectionMessage.value = detectionSource.value === "heuristic" && detected.some(item => item.name.includes("候选"))
                 ? `未稳定识别到明确水印，已添加 ${detected.length} 个可编辑候选区域`
-                : `检测到 ${detected.length} 个疑似水印区域`;
+                : detectionMode.value === "text"
+                    ? `检测到 ${detected.length} 个文字/水印候选区域`
+                    : `检测到 ${detected.length} 个疑似水印区域`;
             Dialog.tipSuccess(detectionMessage.value);
         } else {
             detectionMessage.value = "未检测到明显可见水印";
@@ -1322,6 +1344,10 @@ const repairByService = async () => {
         const status = await window.$mapi.watermark.startRepairService({url});
         if (!status?.running) {
             throw new Error(`ProPainter 服务未启动：${status?.message || "请检查服务环境"}`);
+        }
+        const serviceData = status.data?.data || status.data || {};
+        if (serviceData.serviceVersion !== requiredRepairServiceVersion) {
+            throw new Error("检测到 7860 端口仍是旧版修复服务，请完全退出当前应用后重新打开，再执行 ProPainter 修复");
         }
     }
     const response = await fetch(`${url}/api/watermark/repair`, {
@@ -1351,6 +1377,21 @@ const repairByService = async () => {
     }
     outputPath.value = output;
 };
+const refreshRepairLog = async () => {
+    const url = serviceUrl.value.replace(/\/+$/, "");
+    try {
+        const response = await fetch(`${url}/api/watermark/log`, {method: "GET"});
+        if (!response.ok) {
+            return;
+        }
+        const data = await response.json().catch(() => ({}));
+        repairLog.value = data?.data?.log || data?.log || "";
+        repairLogPath.value = data?.data?.path || data?.path || "";
+    } catch {
+        repairLog.value = "";
+        repairLogPath.value = "";
+    }
+};
 const repairMaterial = async () => {
     if (!filePath.value) {
         Dialog.tipError("请先选择需要处理的图片或视频素材");
@@ -1365,6 +1406,8 @@ const repairMaterial = async () => {
         return;
     }
     repairing.value = true;
+    repairLog.value = "";
+    repairLogPath.value = "";
     try {
         if (mediaType.value === "image" && window.$mapi?.watermark?.repairImage) {
             const result = await window.$mapi.watermark.repairImage({
@@ -1385,9 +1428,10 @@ const repairMaterial = async () => {
             Dialog.tipSuccess("本地修复完成");
             return;
         }
-        if (mediaType.value === "video" && engine.value === "ffmpeg-delogo" && window.$mapi?.watermark?.repairVideo) {
+        if (mediaType.value === "video" && ["ffmpeg-delogo", "vsr-sttn"].includes(engine.value) && window.$mapi?.watermark?.repairVideo) {
             const result = await window.$mapi.watermark.repairVideo({
                 input: filePath.value,
+                engine: engine.value as "ffmpeg-delogo" | "vsr-sttn",
                 outputName: normalizedOutputName.value,
                 keepAudio: keepAudio.value,
                 masks: masks.map(mask => ({
@@ -1403,7 +1447,7 @@ const repairMaterial = async () => {
                 })),
             });
             outputPath.value = result.output;
-            Dialog.tipSuccess("本地视频修复完成");
+            Dialog.tipSuccess(engine.value === "vsr-sttn" ? "VSR/STTN 视频修复完成" : "本地视频修复完成");
             return;
         }
         await repairByService();
@@ -1412,6 +1456,9 @@ const repairMaterial = async () => {
         const prefix = mediaType.value === "video"
             ? "本地视频修复失败：请检查水印区域是否超出画面，或改用 ProPainter/ComfyUI 服务"
             : "修复失败";
+        if (mediaType.value === "video" && ["propainter", "comfyui"].includes(engine.value)) {
+            await refreshRepairLog();
+        }
         Dialog.tipError(`${prefix}；${(e as Error).message || e}`);
     } finally {
         repairing.value = false;
@@ -1486,6 +1533,11 @@ const revealOutputFile = async () => {
                             </a-tooltip>
                         </div>
                         <div class="detect-toolbar">
+                            <a-select v-model="detectionMode" class="detection-mode-select">
+                                <a-option value="watermark">仅水印，保留字幕</a-option>
+                                <a-option value="hybrid">水印增强候选</a-option>
+                                <a-option value="text">文字/字幕候选</a-option>
+                            </a-select>
                             <a-select
                                 v-model="selectedVisionModel"
                                 class="vision-model-select"
@@ -1517,6 +1569,8 @@ const revealOutputFile = async () => {
                         <span v-if="detectionSource === 'local'">，结果来自应用内置识别</span>
                         <span v-if="detectionSource === 'service'">，结果来自本地识别服务</span>
                         <span v-else-if="detectionSource === 'heuristic'">，结果来自前端候选检测</span>
+                        <span v-if="detectionMode === 'watermark'">，已尽量排除对白字幕</span>
+                        <span v-if="detectionMode === 'text'">，请删除需要保留的字幕候选后再修复</span>
                     </a-alert>
                     <div class="preview-box">
                         <div v-if="!filePath" class="empty-preview">
@@ -1603,6 +1657,13 @@ const revealOutputFile = async () => {
                         <a-button @click="applyPreset('bottom-right')">右下角</a-button>
                         <a-button @click="applyPreset('center')">居中水印</a-button>
                     </div>
+                    <div v-if="repairLog" class="repair-log mt-4">
+                        <div class="repair-log-title">
+                            <span>ProPainter 日志</span>
+                            <span v-if="repairLogPath" class="repair-log-path">{{ repairLogPath }}</span>
+                        </div>
+                        <pre>{{ repairLog }}</pre>
+                    </div>
                     <div v-if="outputPath" class="mt-4">
                         <div class="result-header">
                             <div class="text-sm text-gray-500 min-w-0 truncate">修复结果：{{ outputPath }}</div>
@@ -1646,8 +1707,14 @@ const revealOutputFile = async () => {
                             <div v-if="mediaType === 'video' && engine === 'ffmpeg-delogo'" class="engine-hint">
                                 本地快速修复适合固定角标和纯色/低纹理背景，本质是邻域插值，复杂背景可能会有模糊或块状痕迹。
                             </div>
-                            <div v-if="mediaType === 'video' && engine !== 'ffmpeg-delogo'" class="engine-hint">
+                            <div v-if="mediaType === 'video' && engine === 'vsr-sttn'" class="engine-hint">
+                                VSR/STTN 借鉴 video-subtitle-remover 路线，适合文字水印、硬字幕类区域修复；只处理当前水印列表里的区域。
+                            </div>
+                            <div v-if="mediaType === 'video' && engine === 'propainter'" class="engine-hint">
                                 ProPainter 会自动启动本机 7860 修复服务；首次启动需要等待模型环境初始化。
+                            </div>
+                            <div v-if="mediaType === 'video' && engine === 'comfyui'" class="engine-hint">
+                                ComfyUI 模式需要外部修复工作流服务提供兼容接口。
                             </div>
                         </a-form-item>
                         <a-form-item label="本地/远程修复服务地址">
@@ -1795,11 +1862,12 @@ const revealOutputFile = async () => {
 .detect-toolbar {
     min-width: 0;
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) max-content;
+    grid-template-columns: minmax(150px, 0.55fr) minmax(220px, 1fr) max-content;
     gap: 0.5rem;
     align-items: center;
 }
 
+.detection-mode-select,
 .vision-model-select {
     width: 100%;
     min-width: 0;
@@ -1964,6 +2032,43 @@ const revealOutputFile = async () => {
     border-radius: 8px;
     padding: 0.75rem;
     margin-bottom: 0.75rem;
+}
+
+.repair-log {
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    background: #fff7ed;
+    padding: 0.75rem;
+}
+
+.repair-log-title {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: space-between;
+    color: #9a3412;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.repair-log-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #c2410c;
+    font-weight: 400;
+}
+
+.repair-log pre {
+    margin-top: 0.5rem;
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #7c2d12;
+    font-size: 12px;
+    line-height: 1.45;
 }
 
 .flow-step {

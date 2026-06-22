@@ -2,11 +2,13 @@ import { FileUtil } from "../../../lib/file";
 import { CloudTemplateTaskService } from "../../../service/CloudTemplateTaskService";
 import { CloudTemplateRecord, CloudTemplateService } from "../../../service/CloudTemplateService";
 import { DirectApiPlatformService } from "../../../service/DirectApiPlatformService";
+import { FileRelayConfigService } from "../../../service/FileRelayConfigService";
 import { TaskRecord, TaskService } from "../../../service/TaskService";
 import { TaskBiz } from "../../../store/modules/task";
 import { RunningHubModelConfigType } from "../RunningHubStudio/type";
 
 type MarketingChannel = "direct" | "cloud";
+type VideoReferenceRole = "reference_image" | "first_frame";
 type NarrationMode = "none" | "voiceover" | "character";
 type SubtitleMode = "none" | "caption";
 type MarketingAssetType = "character" | "scene" | "prop";
@@ -24,6 +26,7 @@ type MarketingChainScene = {
     id: string;
     title: string;
     duration: number;
+    scriptBeat?: string;
     subtitle: string;
     captionOverride?: string;
     voiceoverLine?: string;
@@ -32,6 +35,11 @@ type MarketingChainScene = {
     imagePrompt: string;
     videoPrompt: string;
     assetIds?: string[];
+    requiredAssets?: Array<{
+        type: MarketingAssetType;
+        name: string;
+        reason?: string;
+    }>;
     referenceImageUrl?: string;
 };
 
@@ -48,6 +56,8 @@ type MarketingReferenceAnalysis = {
 
 type MarketingChainDraft = {
     title: string;
+    scriptText?: string;
+    synopsis?: string;
     referenceAnalysis?: MarketingReferenceAnalysis;
     scenes: MarketingChainScene[];
 };
@@ -57,6 +67,7 @@ type MarketingChainParam = {
     form: {
         ratio: string;
         videoModel?: string;
+        videoReferenceRole?: VideoReferenceRole;
     };
     referenceImageUrls?: string[];
     marketingAssets?: MarketingAssetRef[];
@@ -411,27 +422,43 @@ const buildCloudMarketingInput = (
     return input;
 };
 
-const directFileRelayEnabled = (platform: any) => {
+const getEffectiveDirectFileRelay = async (platform: any) => {
     const relay = platform?.content?.directFileRelay;
-    return Boolean(
+    if (relay?.enabled && relay?.provider === "modeltop-assets" && String(platform?.content?.apiKey || "").trim()) {
+        return relay;
+    }
+    if (
         relay?.enabled &&
             relay?.provider === "123pan" &&
             String(relay.clientID || "").trim() &&
             String(relay.clientSecret || "").trim() &&
             String(relay.parentFileID || "").trim()
-    );
+    ) {
+        return relay;
+    }
+    return await FileRelayConfigService.getPan123Relay();
 };
 
-const resolveDirectVideoReferenceImageUrl = async (platform: any, value: string) => {
+const resolveDirectVideoReferenceImageUrl = async (directFileRelay: any, value: string) => {
     if (!value || isDataOrRemoteUrl(value)) {
         return value;
     }
     const normalizedValue = await normalizeSeedanceLocalImage(value);
-    if (directFileRelayEnabled(platform)) {
+    if (directFileRelay) {
         return normalizedValue;
     }
-    throw new Error("123 云盘资产入库失败：当前视频参考图是本地文件，但 Seedance 平台未配置可用的 123 云盘中转。请在平台设置中填写 Client ID、Client Secret、Folder ID 并开启资产模式。");
+    throw new Error("素材中转未配置：当前视频参考图是本地文件，但尚未配置可用的全局 123 云盘中转。");
 };
+
+const normalizeVideoReferenceRole = (value?: string): VideoReferenceRole => {
+    return value === "first_frame" ? "first_frame" : "reference_image";
+};
+
+const buildVideoImageReferenceContent = (url: string, role?: string) => ({
+    type: "image_url",
+    image_url: { url },
+    role: normalizeVideoReferenceRole(role),
+});
 
 const collectStringValues = (value: any, result: string[] = []) => {
     if (!value) {
@@ -712,7 +739,8 @@ const submitDirectVideoTask = async (
     if (!platform || !platform.content.apiKey.trim()) {
         throw new Error("请先配置可用的 Seedance 平台");
     }
-    const resolvedReferenceImageUrl = await resolveDirectVideoReferenceImageUrl(platform, referenceImageUrl);
+    const directFileRelay = await getEffectiveDirectFileRelay(platform);
+    const resolvedReferenceImageUrl = await resolveDirectVideoReferenceImageUrl(directFileRelay, referenceImageUrl);
     const sceneIndex = param.draft.scenes.findIndex(item => item.id === scene.id);
     const videoPrompt = buildVideoPromptWithSpeech(
         scene,
@@ -721,19 +749,19 @@ const submitDirectVideoTask = async (
         param.draft.scenes.length,
         param.draft.title
     );
+    const isKwjmPlatform = platform.content.platformType === "kwjm";
+    const normalizedVideoModel = (() => {
+        const model = param.form.videoModel || "seedance-2.0-fast";
+        if (!isKwjmPlatform) {
+            return model;
+        }
+        return model.includes("fast") ? "kw-video-v2-fast" : "kw-video-v2";
+    })();
     const body: Record<string, any> = {
-        model: param.form.videoModel || "seedance-2.0-fast",
+        model: normalizedVideoModel,
         content: [
             { type: "text", text: videoPrompt },
-            ...(resolvedReferenceImageUrl
-                ? [
-                      {
-                          type: "image_url",
-                          image_url: { url: resolvedReferenceImageUrl },
-                          role: "first_frame",
-                      },
-                  ]
-                : []),
+            ...(resolvedReferenceImageUrl ? [buildVideoImageReferenceContent(resolvedReferenceImageUrl, param.form.videoReferenceRole)] : []),
         ],
         ratio: param.form.ratio,
         duration: scene.duration,
@@ -752,9 +780,9 @@ const submitDirectVideoTask = async (
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
-        directFileRelay: platform.content.directFileRelay,
-        submitPath: "/api/v3/contents/generations/tasks",
-        queryPath: "/api/v3/contents/generations/tasks/{id}",
+        directFileRelay: directFileRelay || undefined,
+        submitPath: isKwjmPlatform ? "/v1/videos/generations" : "/api/v3/contents/generations/tasks",
+        queryPath: isKwjmPlatform ? "/v1/videos/generations/{id}" : "/api/v3/contents/generations/tasks/{id}",
         requestBodyJson: JSON.stringify(body, null, 2),
         requestFormat: "json",
     };
@@ -841,6 +869,7 @@ const resolveChainParam = (record: TaskRecord, bizParam?: Partial<MarketingChain
     }
     param.form = param.form || { ratio: "9:16" };
     param.form.ratio = param.form.ratio || "9:16";
+    param.form.videoReferenceRole = normalizeVideoReferenceRole(param.form.videoReferenceRole);
     return param;
 };
 

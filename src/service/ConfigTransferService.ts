@@ -1,7 +1,8 @@
 import { AppConfig } from "../config";
 import { CloudProviderProfileService } from "./CloudProviderProfileService";
 import { CloudTemplateRecord, CloudTemplateService } from "./CloudTemplateService";
-import { DirectApiPlatformRecord, DirectApiPlatformService } from "./DirectApiPlatformService";
+import { DirectApiPlatformRecord, DirectApiPlatformService, isUsablePan123Relay } from "./DirectApiPlatformService";
+import { FileRelayConfigRecord, FileRelayConfigService } from "./FileRelayConfigService";
 
 type ConfigPackage = {
     schema: "aigcpanel.config-package";
@@ -10,6 +11,7 @@ type ConfigPackage = {
     exportedAt: string;
     data: {
         directApiPlatforms?: DirectApiPlatformRecord[];
+        fileRelayConfig?: FileRelayConfigRecord;
         cloudProviderProfiles?: Awaited<ReturnType<typeof CloudProviderProfileService.list>>;
         cloudTemplates?: CloudTemplateRecord[];
     };
@@ -17,6 +19,7 @@ type ConfigPackage = {
 
 type ImportSummary = {
     directApiPlatforms: number;
+    fileRelayConfig: number;
     cloudProviderProfiles: number;
     cloudTemplates: number;
 };
@@ -25,6 +28,40 @@ const stripId = <T extends { id?: number }>(record: T): T => {
     const copy = JSON.parse(JSON.stringify(record || {}));
     delete copy.id;
     return copy;
+};
+
+const normalizePlatformBaseUrl = (platformType: string, baseUrl?: string) => {
+    const value = String(baseUrl || "").trim();
+    if (platformType === "kwjm") {
+        if (!value || /^https:\/\/kwjm\.com\/?$/i.test(value)) {
+            return "https://www.kwjm.com";
+        }
+        return value.replace(/\/docs\/?$/i, "");
+    }
+    return value || "https://api.exchangetoken.ai";
+};
+
+const legacyRelayConfigFromPlatforms = (records?: DirectApiPlatformRecord[]): FileRelayConfigRecord | null => {
+    const relay = (records || [])
+        .map(record => record.content?.directFileRelay)
+        .find(item => isUsablePan123Relay(item));
+    if (!relay) {
+        return null;
+    }
+    return {
+        title: "default",
+        content: {
+            pan123: {
+                provider: "123pan",
+                enabled: true,
+                clientID: relay.clientID || "",
+                clientSecret: relay.clientSecret || "",
+                parentFileID: relay.parentFileID || "",
+                urlAuthKey: relay.urlAuthKey || "",
+                assetMode: relay.assetMode !== false,
+            },
+        },
+    };
 };
 
 const normalizePackage = (raw: any): ConfigPackage => {
@@ -38,6 +75,7 @@ const normalizePackage = (raw: any): ConfigPackage => {
         exportedAt: String(raw.exportedAt || ""),
         data: {
             directApiPlatforms: Array.isArray(raw.data?.directApiPlatforms) ? raw.data.directApiPlatforms : [],
+            fileRelayConfig: raw.data?.fileRelayConfig || undefined,
             cloudProviderProfiles: Array.isArray(raw.data?.cloudProviderProfiles) ? raw.data.cloudProviderProfiles : [],
             cloudTemplates: Array.isArray(raw.data?.cloudTemplates) ? raw.data.cloudTemplates : [],
         },
@@ -57,7 +95,7 @@ const saveDirectApiPlatformByTitle = async (record: DirectApiPlatformRecord) => 
         content: {
             ...(record.content || {}),
             platformType: record.content?.platformType || "exchangetoken",
-            baseUrl: record.content?.baseUrl || "https://api.exchangetoken.ai",
+            baseUrl: normalizePlatformBaseUrl(record.content?.platformType || "exchangetoken", record.content?.baseUrl),
             apiKey: record.content?.apiKey || "",
             proxyUrl: record.content?.proxyUrl || "",
             directFileRelay: {
@@ -123,6 +161,7 @@ export const ConfigTransferService = {
             exportedAt: new Date().toISOString(),
             data: {
                 directApiPlatforms: (await DirectApiPlatformService.list()).map(stripId),
+                fileRelayConfig: stripId(await FileRelayConfigService.get()),
                 cloudProviderProfiles: (await CloudProviderProfileService.list()).map(stripId),
                 cloudTemplates: (await CloudTemplateService.list()).map(stripId),
             },
@@ -138,9 +177,15 @@ export const ConfigTransferService = {
         const data = normalizePackage(JSON.parse(String(content || "{}")));
         const summary: ImportSummary = {
             directApiPlatforms: 0,
+            fileRelayConfig: 0,
             cloudProviderProfiles: 0,
             cloudTemplates: 0,
         };
+        const fileRelayConfig = data.data.fileRelayConfig || legacyRelayConfigFromPlatforms(data.data.directApiPlatforms);
+        if (fileRelayConfig) {
+            await FileRelayConfigService.save(fileRelayConfig);
+            summary.fileRelayConfig = 1;
+        }
         for (const record of data.data.directApiPlatforms || []) {
             if (await saveDirectApiPlatformByTitle(record)) {
                 summary.directApiPlatforms += 1;

@@ -7,6 +7,7 @@ export type StorageBiz =
     | "CloudTemplate"
     | "CloudProviderProfile"
     | "DirectApiPlatform"
+    | "FileRelayConfig"
     | "DigitalHumanIdentity"
     | "DigitalHumanClip"
     | "DigitalHumanScenePack"
