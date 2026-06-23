@@ -10,6 +10,7 @@ import { FileRelayConfigService } from "../../service/FileRelayConfigService";
 import { TaskRecord, TaskService } from "../../service/TaskService";
 import { RunningHubModelConfigType } from "../Apps/RunningHubStudio/type";
 import { usePageDraft } from "../../hooks/pageDraft";
+import { ffprobeAudioInfo, ffprobeVideoInfo } from "../../lib/ffprobe";
 
 type CreationMode = "frames" | "reference";
 type SeedanceAssetType = "image" | "video" | "audio";
@@ -19,6 +20,11 @@ type SeedanceAsset = {
     type: SeedanceAssetType;
     role: "reference_image" | "reference_video" | "reference_audio";
     url: string;
+    size?: number;
+    duration?: number;
+    width?: number;
+    height?: number;
+    fps?: number;
 };
 
 type MentionAsset = {
@@ -86,7 +92,8 @@ const normalizeUiVideoModel = (value: string) => {
     return modelOptions.includes(raw) ? raw : "seedance-2.0-fast";
 };
 const ratioOptions = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"];
-const resolutionOptions = ["480p", "720p"];
+const baseResolutionOptions = ["480p", "720p"];
+const hdResolutionOptions = ["480p", "720p", "1080p"];
 const durationOptions = [
     { label: "自动", value: -1 },
     ...Array.from({ length: 12 }, (_, index) => {
@@ -139,13 +146,50 @@ const getEffectiveDirectFileRelay = async (platform: DirectApiPlatformRecord | n
     return await FileRelayConfigService.getPan123Relay();
 };
 const referenceFilters = {
-    image: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff"] }],
+    image: [{ name: "Image", extensions: ["jpeg", "jpg", "png", "webp", "bmp", "tiff", "gif"] }],
     video: [{ name: "Video", extensions: ["mp4", "mov"] }],
     audio: [{ name: "Audio", extensions: ["wav", "mp3"] }],
 };
 
+const MB = 1024 * 1024;
+const imageLimits = {
+    maxCount: 9,
+    maxSize: 30 * MB,
+    minSide: 300,
+    maxSide: 6000,
+    minAspect: 0.4,
+    maxAspect: 2.5,
+    requestBodyMaxSize: 64 * MB,
+};
+const videoLimits = {
+    maxCount: 3,
+    maxSize: 50 * MB,
+    minDuration: 2,
+    maxDuration: 15,
+    totalDuration: 15,
+    minSide: 300,
+    maxSide: 6000,
+    minPixels: 409600,
+    maxPixels: 927408,
+    minAspect: 0.4,
+    maxAspect: 2.5,
+    minFps: 24,
+    maxFps: 60,
+};
+const audioLimits = {
+    maxCount: 3,
+    maxSize: 15 * MB,
+    minDuration: 2,
+    maxDuration: 15,
+    totalDuration: 15,
+};
+
 const currentPlatform = computed(() => {
     return platforms.value.find(item => item.id === platformId.value) || null;
+});
+
+const resolutionOptions = computed(() => {
+    return model.value === "seedance-2.0" ? hdResolutionOptions : baseResolutionOptions;
 });
 
 const loadPlatforms = async () => {
@@ -230,6 +274,10 @@ watch(model, value => {
     const normalized = normalizeUiVideoModel(value);
     if (normalized !== value) {
         model.value = normalized;
+        return;
+    }
+    if (normalized === "seedance-2.0-fast" && resolution.value === "1080p") {
+        resolution.value = "720p";
     }
 });
 
@@ -257,6 +305,124 @@ const displayUrl = (value: string) => {
         return `file:${value.replace(/\\/g, "/")}`;
     }
     return value;
+};
+
+const fileExt = (value: string) => {
+    return String(value || "")
+        .replace(/[?#].*$/, "")
+        .split(".")
+        .pop()
+        ?.toLowerCase() || "";
+};
+
+const formatMB = (value: number) => {
+    return (value / MB).toFixed(1) + "MB";
+};
+
+const localFileSize = async (path: string) => {
+    if (!isLocalFilePath(path)) {
+        return 0;
+    }
+    const stat = await window.$mapi.file.stat(path);
+    return Number(stat?.size || 0);
+};
+
+const imageInfo = async (path: string) => {
+    return await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+        image.onerror = () => reject(new Error("无法读取图片尺寸"));
+        image.src = displayUrl(path);
+    });
+};
+
+const within = (value: number, min: number, max: number) => value >= min && value <= max;
+
+const validateImageUpload = async (path: string): Promise<{ ok: true; asset: Partial<SeedanceAsset> } | { ok: false; message: string }> => {
+    const ext = fileExt(path);
+    if (!["jpeg", "jpg", "png", "webp", "bmp", "tiff", "gif"].includes(ext)) {
+        return { ok: false, message: shortName(path) + " 格式不支持，图片仅支持 jpeg、png、webp、bmp、tiff、gif" };
+    }
+    const size = await localFileSize(path);
+    if (size > imageLimits.maxSize) {
+        return { ok: false, message: shortName(path) + " 大小为 " + formatMB(size) + "，单张图片需小于 30MB" };
+    }
+    const { width, height } = await imageInfo(path);
+    const aspect = width / height;
+    if (!within(width, imageLimits.minSide, imageLimits.maxSide) || !within(height, imageLimits.minSide, imageLimits.maxSide)) {
+        return { ok: false, message: shortName(path) + " 尺寸为 " + width + "x" + height + "px，宽高需在 300-6000px 之间" };
+    }
+    if (!within(aspect, imageLimits.minAspect, imageLimits.maxAspect)) {
+        return { ok: false, message: shortName(path) + " 宽高比为 " + aspect.toFixed(2) + "，需在 0.4-2.5 之间" };
+    }
+    return { ok: true, asset: { size, width, height } };
+};
+
+const validateVideoUpload = async (path: string): Promise<{ ok: true; asset: Partial<SeedanceAsset> } | { ok: false; message: string }> => {
+    const ext = fileExt(path);
+    if (!["mp4", "mov"].includes(ext)) {
+        return { ok: false, message: shortName(path) + " 格式不支持，视频仅支持 mp4、mov" };
+    }
+    const size = await localFileSize(path);
+    if (size > videoLimits.maxSize) {
+        return { ok: false, message: shortName(path) + " 大小为 " + formatMB(size) + "，单个视频不能超过 50MB" };
+    }
+    const info = await ffprobeVideoInfo(path);
+    const aspect = info.width / info.height;
+    const pixels = info.width * info.height;
+    if (!within(info.duration, videoLimits.minDuration, videoLimits.maxDuration)) {
+        return { ok: false, message: shortName(path) + " 时长为 " + info.duration.toFixed(1) + "s，单个视频需在 2-15s 之间" };
+    }
+    if (!within(info.width, videoLimits.minSide, videoLimits.maxSide) || !within(info.height, videoLimits.minSide, videoLimits.maxSide)) {
+        return { ok: false, message: shortName(path) + " 尺寸为 " + info.width + "x" + info.height + "px，宽高需在 300-6000px 之间" };
+    }
+    if (!within(aspect, videoLimits.minAspect, videoLimits.maxAspect)) {
+        return { ok: false, message: shortName(path) + " 宽高比为 " + aspect.toFixed(2) + "，需在 0.4-2.5 之间" };
+    }
+    if (!within(pixels, videoLimits.minPixels, videoLimits.maxPixels)) {
+        return { ok: false, message: shortName(path) + " 画面像素为 " + pixels + "，需在 409600-927408 之间" };
+    }
+    if (!within(info.fps, videoLimits.minFps, videoLimits.maxFps)) {
+        return { ok: false, message: shortName(path) + " 帧率为 " + info.fps.toFixed(2) + " FPS，需在 24-60 FPS 之间" };
+    }
+    return { ok: true, asset: { size, duration: info.duration, width: info.width, height: info.height, fps: info.fps } };
+};
+
+const validateAudioUpload = async (path: string): Promise<{ ok: true; asset: Partial<SeedanceAsset> } | { ok: false; message: string }> => {
+    const ext = fileExt(path);
+    if (!["wav", "mp3"].includes(ext)) {
+        return { ok: false, message: shortName(path) + " 格式不支持，音频仅支持 wav、mp3" };
+    }
+    const size = await localFileSize(path);
+    if (size > audioLimits.maxSize) {
+        return { ok: false, message: shortName(path) + " 大小为 " + formatMB(size) + "，单个音频不能超过 15MB" };
+    }
+    const info = await ffprobeAudioInfo(path);
+    if (!within(info.duration, audioLimits.minDuration, audioLimits.maxDuration)) {
+        return { ok: false, message: shortName(path) + " 时长为 " + info.duration.toFixed(1) + "s，单个音频需在 2-15s 之间" };
+    }
+    return { ok: true, asset: { size, duration: info.duration } };
+};
+
+const validateUpload = async (type: SeedanceAssetType, path: string) => {
+    try {
+        if (type === "image") {
+            return await validateImageUpload(path);
+        }
+        if (type === "video") {
+            return await validateVideoUpload(path);
+        }
+        return await validateAudioUpload(path);
+    } catch (e: any) {
+        return { ok: false as const, message: shortName(path) + " 读取失败：" + String(e?.message || e || "无法识别文件") };
+    }
+};
+
+const uploadLimitMessage = (messages: string[]) => {
+    if (!messages.length) {
+        return;
+    }
+    Dialog.tipError(messages.slice(0, 3).join("\n"));
 };
 
 const shortName = (value: string) => {
@@ -296,6 +462,11 @@ const pickFrame = async (target: "first" | "last") => {
     if (!filePath || Array.isArray(filePath)) {
         return;
     }
+    const result = await validateUpload("image", filePath);
+    if (!result.ok) {
+        uploadLimitMessage([result.message]);
+        return;
+    }
     if (target === "first") {
         firstFrame.value = filePath;
     } else {
@@ -303,13 +474,48 @@ const pickFrame = async (target: "first" | "last") => {
     }
 };
 
-const addReferenceAsset = (type: SeedanceAssetType, url: string) => {
+const addReferenceAsset = (type: SeedanceAssetType, url: string, meta: Partial<SeedanceAsset> = {}) => {
     assets.value.push({
-        id: `${Date.now()}-${Math.random()}`,
+        id: Date.now() + "-" + Math.random(),
         type,
         role: referenceRoleMap[type],
         url,
+        ...meta,
     });
+};
+
+const currentAssetsOf = (type: SeedanceAssetType) => assets.value.filter(item => item.type === type);
+
+const validateReferenceGroupLimit = (type: SeedanceAssetType, newItems: Array<Partial<SeedanceAsset>>) => {
+    const current = currentAssetsOf(type);
+    if (type === "image") {
+        if (current.length + newItems.length > imageLimits.maxCount) {
+            return "参考图片最多上传 " + imageLimits.maxCount + " 张";
+        }
+        const totalSize = [...current, ...newItems].reduce((sum, item) => sum + Number(item.size || 0), 0);
+        if (totalSize > imageLimits.requestBodyMaxSize) {
+            return "参考图片总体大小约 " + formatMB(totalSize) + "，请求体需不超过 64MB；大文件请减少图片数量或压缩后再传";
+        }
+        return "";
+    }
+    if (type === "video") {
+        if (current.length + newItems.length > videoLimits.maxCount) {
+            return "参考视频最多上传 " + videoLimits.maxCount + " 个";
+        }
+        const totalDuration = [...current, ...newItems].reduce((sum, item) => sum + Number(item.duration || 0), 0);
+        if (totalDuration > videoLimits.totalDuration) {
+            return "参考视频总时长为 " + totalDuration.toFixed(1) + "s，不能超过 15s";
+        }
+        return "";
+    }
+    if (current.length + newItems.length > audioLimits.maxCount) {
+        return "参考音频最多上传 " + audioLimits.maxCount + " 段";
+    }
+    const totalDuration = [...current, ...newItems].reduce((sum, item) => sum + Number(item.duration || 0), 0);
+    if (totalDuration > audioLimits.totalDuration) {
+        return "参考音频总时长为 " + totalDuration.toFixed(1) + "s，不能超过 15s";
+    }
+    return "";
 };
 
 const pickReference = async (type: SeedanceAssetType) => {
@@ -321,7 +527,23 @@ const pickReference = async (type: SeedanceAssetType) => {
         return;
     }
     const list = Array.isArray(filePath) ? filePath : [filePath];
-    list.forEach(url => addReferenceAsset(type, url));
+    const valid: Array<{ url: string; meta: Partial<SeedanceAsset> }> = [];
+    const errors: string[] = [];
+    for (const url of list) {
+        const result = await validateUpload(type, url);
+        if (result.ok) {
+            valid.push({ url, meta: result.asset });
+        } else {
+            errors.push(result.message);
+        }
+    }
+    const groupError = validateReferenceGroupLimit(type, valid.map(item => item.meta));
+    if (groupError) {
+        errors.push(groupError);
+    } else {
+        valid.forEach(item => addReferenceAsset(type, item.url, item.meta));
+    }
+    uploadLimitMessage(errors);
 };
 
 const removeAsset = (id: string) => {
@@ -497,6 +719,33 @@ const buildContent = () => {
     return content;
 };
 
+const validateCurrentLimits = async () => {
+    if (model.value === "seedance-2.0-fast" && resolution.value === "1080p") {
+        return "1080p 仅 seedance-2.0 支持，fast 模型请使用 480p 或 720p";
+    }
+    if (mode.value === "frames") {
+        for (const frame of [firstFrame.value, lastFrame.value].filter(Boolean)) {
+            if (isLocalFilePath(frame)) {
+                const result = await validateUpload("image", frame);
+                if (!result.ok) {
+                    return result.message;
+                }
+            }
+        }
+        return "";
+    }
+    for (const item of assets.value.filter(item => item.url && isLocalFilePath(item.url))) {
+        const result = await validateUpload(item.type, item.url);
+        if (!result.ok) {
+            return result.message;
+        }
+        Object.assign(item, result.asset);
+    }
+    return validateReferenceGroupLimit("image", [])
+        || validateReferenceGroupLimit("video", [])
+        || validateReferenceGroupLimit("audio", []);
+};
+
 const submit = async () => {
     const platform = currentPlatform.value;
     if (!platform) {
@@ -510,6 +759,11 @@ const submit = async () => {
     const content = buildContent();
     if (content.length === 0) {
         Dialog.tipError("请输入提示词或添加参考素材");
+        return;
+    }
+    const limitError = await validateCurrentLimits();
+    if (limitError) {
+        Dialog.tipError(limitError);
         return;
     }
     const localVideoAsset = assets.value.find(item => {
