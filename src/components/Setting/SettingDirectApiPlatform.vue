@@ -285,6 +285,11 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
 </script>
 
 <template>
+    <div class="mb-3 flex justify-end gap-2">
+        <a-button @click="importConfigPackage">一键导入配置</a-button>
+        <a-button @click="exportConfigPackage">一键导出配置</a-button>
+    </div>
+
     <div class="mb-4 rounded-xl border border-solid border-gray-200 p-4">
         <div class="mb-3 flex items-center justify-between">
             <div>
@@ -330,10 +335,6 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
                 <div class="text-gray-400 text-sm">
                     普通模型 API 的平台账号统一在这里维护。导出配置包会同时带上直连 API 平台、全局 123 云盘中转、云端供应商和云端能力模板，新电脑导入一次即可使用。
                 </div>
-            </div>
-            <div class="mr-2 flex gap-2">
-                <a-button @click="importConfigPackage">一键导入配置</a-button>
-                <a-button @click="exportConfigPackage">一键导出配置</a-button>
             </div>
             <a-button type="primary" @click="openAdd">新增平台</a-button>
         </div>
