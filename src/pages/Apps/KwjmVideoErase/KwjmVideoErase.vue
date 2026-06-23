@@ -13,13 +13,13 @@ import { usePageDraft } from "../../../hooks/pageDraft";
 const platforms = ref<DirectApiPlatformRecord[]>([]);
 const platformId = ref(0);
 const model = ref("seedance-2.0-fast");
-const videoUrl = ref("");
+const videoPath = ref("");
 const submitting = ref(false);
 
 const pageDraft = usePageDraft("KwjmVideoErase", {
     platformId,
     model,
-    videoUrl,
+    videoPath,
 });
 
 const modelOptions = ["seedance-2.0-fast", "seedance-2.0"];
@@ -54,12 +54,21 @@ const shortTaskText = (value: string, fallback = "字幕擦除") => {
 
 const pickVideo = async () => {
     const filePath = await window.$mapi.file.openFile({
-        filters: [{ name: "Video", extensions: ["mp4", "mov", "webm", "m4v"] }],
+        filters: [{ name: "Video", extensions: ["mp4", "mov", "webm", "m4v", "mkv"] }],
     });
     if (!filePath || Array.isArray(filePath)) {
         return;
     }
-    videoUrl.value = filePath;
+    videoPath.value = filePath;
+};
+
+const clearVideo = () => {
+    videoPath.value = "";
+};
+
+const isLocalVideoPath = (value: string) => {
+    const text = value.trim();
+    return /^[a-zA-Z]:[\\/]/.test(text) || /^file:\/\//i.test(text);
 };
 
 const submit = async () => {
@@ -72,21 +81,24 @@ const submit = async () => {
         Dialog.tipError("当前 KWJM 平台未配置 API Key");
         return;
     }
-    if (!videoUrl.value.trim()) {
-        Dialog.tipError("请上传本地视频或填写视频 URL");
+    if (!videoPath.value.trim()) {
+        Dialog.tipError("请先上传本地视频");
+        return;
+    }
+    if (!isLocalVideoPath(videoPath.value)) {
+        Dialog.tipError("字幕擦除只支持上传本地视频，请重新选择本地文件");
         return;
     }
     const relay = await FileRelayConfigService.getPan123Relay();
-    const isLocalVideo = /^[a-zA-Z]:[\\/]/.test(videoUrl.value.trim()) || /^file:\/\//i.test(videoUrl.value.trim());
-    if (isLocalVideo && !relay) {
-        Dialog.tipError("本地视频需要先配置全局 123 云盘中转，字幕擦除接口只接受公网原始视频 URL");
+    if (!relay) {
+        Dialog.tipError("本地视频需要先配置全局 123 云盘中转");
         return;
     }
     try {
         submitting.value = true;
         const body = {
             model: platformModel(),
-            video_url: videoUrl.value.trim(),
+            video_url: videoPath.value.trim(),
         };
         const modelConfig: RunningHubModelConfigType = {
             capability: "video",
@@ -107,7 +119,7 @@ const submit = async () => {
         };
         const record: TaskRecord = {
             biz: "DirectApiTask",
-            title: `${shortTaskText(videoUrl.value)}_字幕擦除_${new Date().toLocaleString()}`,
+            title: `${shortTaskText(videoPath.value)}_字幕擦除_${new Date().toLocaleString()}`,
             serverName: "",
             serverTitle: "",
             serverVersion: "",
@@ -115,7 +127,7 @@ const submit = async () => {
             param: {
                 input: {
                     source: "KwjmVideoErase",
-                    videoUrl: videoUrl.value,
+                    videoPath: videoPath.value,
                     model: model.value,
                 },
             },
@@ -131,6 +143,9 @@ const submit = async () => {
 
 onMounted(async () => {
     await pageDraft.restore();
+    if (videoPath.value.trim() && !isLocalVideoPath(videoPath.value)) {
+        videoPath.value = "";
+    }
     await loadPlatforms();
 });
 </script>
@@ -161,10 +176,11 @@ onMounted(async () => {
                         </a-select>
                     </a-form-item>
                 </div>
-                <a-form-item label="视频 URL / 本地视频">
+                <a-form-item label="本地视频">
                     <div class="flex gap-2">
-                        <a-input v-model="videoUrl" allow-clear placeholder="粘贴视频 URL 或上传本地视频" />
+                        <a-input v-model="videoPath" readonly placeholder="请选择本地视频文件" />
                         <a-button @click="pickVideo">上传视频</a-button>
+                        <a-button v-if="videoPath" @click="clearVideo">清空</a-button>
                     </div>
                 </a-form-item>
             </div>
