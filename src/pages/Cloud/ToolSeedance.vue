@@ -268,6 +268,7 @@ onMounted(async () => {
     await loadPlatforms();
     await hydrateFromTask();
     model.value = normalizeUiVideoModel(model.value);
+    syncMentionIdsFromPrompt();
 });
 
 watch(model, value => {
@@ -612,7 +613,14 @@ const selectedMentionAssets = computed(() => {
 });
 
 const mentionTokenOf = (asset: MentionAsset) => {
-    return `@${asset.label.replace(/\s+/g, "_")}`;
+    return "@" + asset.label.replace(/\s+/g, "_");
+};
+
+const syncMentionIdsFromPrompt = () => {
+    const current = mentionAssets.value.filter(asset => prompt.value.includes(mentionTokenOf(asset)));
+    const currentIds = current.map(asset => asset.id);
+    const keptIds = mentionAssetIds.value.filter(id => currentIds.includes(id));
+    mentionAssetIds.value = Array.from(new Set([...keptIds, ...currentIds]));
 };
 
 const filteredMentionAssets = computed(() => {
@@ -645,13 +653,7 @@ const syncMentionPicker = async () => {
     assetPickerVisible.value = Boolean(match && mentionAssets.value.length);
     assetPickerKeyword.value = match?.[1] || "";
     mentionRange.value = match ? { start: cursor - match[0].length, end: cursor } : null;
-    mentionAssetIds.value = mentionAssetIds.value.filter(id => {
-        const asset = mentionAssets.value.find(item => item.id === id);
-        if (!asset) {
-            return false;
-        }
-        return prompt.value.includes(mentionTokenOf(asset));
-    });
+    syncMentionIdsFromPrompt();
 };
 
 watch(prompt, syncMentionPicker);
