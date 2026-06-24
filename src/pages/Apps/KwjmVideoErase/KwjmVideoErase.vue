@@ -28,6 +28,18 @@ const currentPlatform = computed(() => {
     return platforms.value.find(item => item.id === platformId.value) || null;
 });
 
+const videoFileName = computed(() => {
+    return videoPath.value.replace(/\\/g, "/").split("/").pop() || "";
+});
+
+const videoPreviewUrl = computed(() => {
+    const value = videoPath.value.trim();
+    if (/^[a-zA-Z]:[\\/]/.test(value)) {
+        return "file:///" + value.replace(/\\/g, "/");
+    }
+    return value;
+});
+
 const platformModel = () => {
     return model.value.includes("fast") ? "kw-video-v2-fast" : "kw-video-v2";
 };
@@ -71,6 +83,20 @@ const isLocalVideoPath = (value: string) => {
     return /^[a-zA-Z]:[\\/]/.test(text) || /^file:\/\//i.test(text);
 };
 
+const getEraseFileRelay = async (platform: DirectApiPlatformRecord) => {
+    const platformRelay = platform.content.directFileRelay;
+    if (
+        platformRelay?.enabled &&
+        platformRelay.provider === "123pan" &&
+        String(platformRelay.clientID || "").trim() &&
+        String(platformRelay.clientSecret || "").trim() &&
+        String(platformRelay.parentFileID || "").trim()
+    ) {
+        return platformRelay;
+    }
+    return await FileRelayConfigService.getPan123Relay();
+};
+
 const submit = async () => {
     const platform = currentPlatform.value;
     if (!platform) {
@@ -89,9 +115,9 @@ const submit = async () => {
         Dialog.tipError("字幕擦除只支持上传本地视频，请重新选择本地文件");
         return;
     }
-    const relay = await FileRelayConfigService.getPan123Relay();
+    const relay = await getEraseFileRelay(platform);
     if (!relay) {
-        Dialog.tipError("本地视频需要先配置全局 123 云盘中转");
+        Dialog.tipError("本地视频需要先配置 123 云盘中转，并开启平台素材入库");
         return;
     }
     try {
@@ -111,7 +137,7 @@ const submit = async () => {
             baseUrl: platform.content.baseUrl,
             apiKey: platform.content.apiKey,
             proxyUrl: platform.content.proxyUrl || "",
-            directFileRelay: relay ? { ...relay, assetMode: false } : undefined,
+            directFileRelay: { ...relay, assetMode: true },
             submitPath: "/v3/tools/erase-video-subtitle",
             queryPath: "/v3/tools/tasks/{id}",
             requestBodyJson: JSON.stringify(body, null, 2),
@@ -177,9 +203,26 @@ onMounted(async () => {
                     </a-form-item>
                 </div>
                 <a-form-item label="本地视频">
-                    <div class="flex gap-2">
-                        <a-input v-model="videoPath" readonly placeholder="请选择本地视频文件" />
-                        <a-button @click="pickVideo">上传视频</a-button>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <a-popover v-if="videoPath" trigger="hover" position="right">
+                            <div class="flex max-w-[360px] cursor-default items-center gap-3 rounded-lg bg-gray-50 px-3 py-2">
+                                <video :src="videoPreviewUrl" class="h-14 w-24 rounded bg-black object-cover" muted />
+                                <div class="min-w-0">
+                                    <div class="truncate text-sm font-medium text-gray-800">{{ videoFileName }}</div>
+                                    <div class="mt-1 text-xs text-gray-400">悬浮预览</div>
+                                </div>
+                            </div>
+                            <template #content>
+                                <div class="w-80">
+                                    <video :src="videoPreviewUrl" class="max-h-56 w-full rounded bg-black" controls />
+                                    <div class="mt-2 truncate text-xs text-gray-500">{{ videoFileName }}</div>
+                                </div>
+                            </template>
+                        </a-popover>
+                        <div v-else class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-400">
+                            未选择视频
+                        </div>
+                        <a-button @click="pickVideo">{{ videoPath ? "替换视频" : "上传视频" }}</a-button>
                         <a-button v-if="videoPath" @click="clearVideo">清空</a-button>
                     </div>
                 </a-form-item>
