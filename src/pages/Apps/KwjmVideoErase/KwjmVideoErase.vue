@@ -137,7 +137,7 @@ const submit = async () => {
             baseUrl: platform.content.baseUrl,
             apiKey: platform.content.apiKey,
             proxyUrl: platform.content.proxyUrl || "",
-            directFileRelay: { ...relay, assetMode: true },
+            directFileRelay: { ...relay, assetMode: true, kwjmAssetReturnUrl: true },
             submitPath: "/v3/tools/erase-video-subtitle",
             queryPath: "/v3/tools/tasks/{id}",
             requestBodyJson: JSON.stringify(body, null, 2),

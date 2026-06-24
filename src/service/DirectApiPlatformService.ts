@@ -16,6 +16,7 @@ export type DirectApiPlatformContent = {
         parentFileID?: number | string;
         urlAuthKey?: string;
         assetMode?: boolean;
+        kwjmAssetReturnUrl?: boolean;
     };
     capabilities: DirectApiCapability[];
     isDefault?: boolean;

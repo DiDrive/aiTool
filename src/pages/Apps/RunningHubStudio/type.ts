@@ -30,6 +30,7 @@ export type RunningHubModelConfigType = {
         parentFileID?: number | string;
         urlAuthKey?: string;
         assetMode?: boolean;
+        kwjmAssetReturnUrl?: boolean;
     };
     submitPath?: string;
     queryPath?: string;

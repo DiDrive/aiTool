@@ -21,6 +21,7 @@ type DirectFileRelayOptions = {
     parentFileID?: number | string;
     urlAuthKey?: string;
     assetMode?: boolean;
+    kwjmAssetReturnUrl?: boolean;
 };
 
 const normalizeApiBaseUrl = (url?: string) => {
@@ -673,7 +674,8 @@ const createKwjmAsset = async (
     publicUrl: string,
     assetType: "Image" | "Video",
     model = "kw-video-v2",
-    proxyUrl?: string
+    proxyUrl?: string,
+    returnAssetUrl = false
 ) => {
     const baseUrl = normalizeApiBaseUrl(apiBaseUrl);
     const normalizedModel = /kw-video-v2-fast/i.test(model) ? "kw-video-v2-fast" : "kw-video-v2";
@@ -768,7 +770,25 @@ const createKwjmAsset = async (
                 ""
         ).trim();
         if (/^(Active|Success|Succeeded|Completed|Ready)$/i.test(status)) {
-            return `asset://${assetId}`;
+            if (returnAssetUrl) {
+                const assetUrl = String(
+                    statusJson?.data?.URL ||
+                        statusJson?.data?.Url ||
+                        statusJson?.data?.url ||
+                        statusJson?.Result?.URL ||
+                        statusJson?.Result?.Url ||
+                        statusJson?.Result?.url ||
+                        statusJson?.URL ||
+                        statusJson?.Url ||
+                        statusJson?.url ||
+                        ""
+                ).trim();
+                if (!assetUrl) {
+                    throw new Error("KWJM 资产入库成功但未返回素材 URL\nAssetId: " + assetId + "\nDetail: " + safeJsonSnippet(diagnosticJson));
+                }
+                return assetUrl;
+            }
+            return "asset://" + assetId;
         }
         if (/failed|error|reject/i.test(status)) {
             const moderationHint = assetModerationHint(diagnosticJson);
@@ -1225,7 +1245,8 @@ const normalizeJsonBodyLocalFiles = async (
                         uploaded.directUrl,
                         isImage ? "Image" : "Video",
                         assetModel || "kw-video-v2",
-                        proxyUrl
+                        proxyUrl,
+                        Boolean(relay?.kwjmAssetReturnUrl)
                     );
                 }
                 return uploaded.directUrl;
