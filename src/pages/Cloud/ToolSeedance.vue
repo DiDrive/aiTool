@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Dialog } from "../../lib/dialog";
 import {
@@ -57,6 +57,7 @@ const assetPickerVisible = ref(false);
 const assetPickerKeyword = ref("");
 const promptTextareaRef = ref<any>(null);
 const mentionRange = ref<{ start: number; end: number } | null>(null);
+const draggingUpload = ref(false);
 const pageDraft = usePageDraft("ToolSeedance", {
     platformId,
     prompt,
@@ -260,6 +261,7 @@ const buildSeedanceTaskTitle = () => {
 };
 
 onMounted(async () => {
+    bindPageDropUpload();
     if (!route.query.editTaskId) {
         await pageDraft.restore();
     } else {
@@ -269,6 +271,10 @@ onMounted(async () => {
     await hydrateFromTask();
     model.value = normalizeUiVideoModel(model.value);
     syncMentionIdsFromPrompt();
+});
+
+onBeforeUnmount(() => {
+    unbindPageDropUpload();
 });
 
 watch(model, value => {
@@ -314,6 +320,21 @@ const fileExt = (value: string) => {
         .split(".")
         .pop()
         ?.toLowerCase() || "";
+};
+
+const detectAssetType = (file: File, path: string): SeedanceAssetType | "" => {
+    const mime = String(file.type || "").toLowerCase();
+    const ext = fileExt(path || file.name);
+    if (mime.startsWith("image/") || ["jpeg", "jpg", "png", "webp", "bmp", "tiff", "gif"].includes(ext)) {
+        return "image";
+    }
+    if (mime.startsWith("video/") || ["mp4", "mov"].includes(ext)) {
+        return "video";
+    }
+    if (mime.startsWith("audio/") || ["wav", "mp3"].includes(ext)) {
+        return "audio";
+    }
+    return "";
 };
 
 const formatMB = (value: number) => {
@@ -485,6 +506,19 @@ const addReferenceAsset = (type: SeedanceAssetType, url: string, meta: Partial<S
     });
 };
 
+const addReferenceAssetsByType = (type: SeedanceAssetType, valid: Array<{ url: string; meta: Partial<SeedanceAsset> }>, errors: string[]) => {
+    if (!valid.length) {
+        return 0;
+    }
+    const groupError = validateReferenceGroupLimit(type, valid.map(item => item.meta));
+    if (groupError) {
+        errors.push(groupError);
+        return 0;
+    }
+    valid.forEach(item => addReferenceAsset(type, item.url, item.meta));
+    return valid.length;
+};
+
 const currentAssetsOf = (type: SeedanceAssetType) => assets.value.filter(item => item.type === type);
 
 const validateReferenceGroupLimit = (type: SeedanceAssetType, newItems: Array<Partial<SeedanceAsset>>) => {
@@ -519,6 +553,36 @@ const validateReferenceGroupLimit = (type: SeedanceAssetType, newItems: Array<Pa
     return "";
 };
 
+const validateReferenceSubmissionLimit = () => {
+    const currentImages = activeReferenceAssets().filter(item => item.type === "image");
+    if (currentImages.length > imageLimits.maxCount) {
+        return "本次引用图片最多 " + imageLimits.maxCount + " 张";
+    }
+    const totalImageSize = currentImages.reduce((sum, item) => sum + Number(item.size || 0), 0);
+    if (totalImageSize > imageLimits.requestBodyMaxSize) {
+        return "本次引用图片总体大小约 " + formatMB(totalImageSize) + "，请求体需不超过 64MB；请减少引用或压缩后再传";
+    }
+
+    const currentVideos = activeReferenceAssets().filter(item => item.type === "video");
+    if (currentVideos.length > videoLimits.maxCount) {
+        return "本次引用视频最多 " + videoLimits.maxCount + " 个";
+    }
+    const totalVideoDuration = currentVideos.reduce((sum, item) => sum + Number(item.duration || 0), 0);
+    if (totalVideoDuration > videoLimits.totalDuration) {
+        return "本次引用视频总时长为 " + totalVideoDuration.toFixed(1) + "s，不能超过 15s";
+    }
+
+    const currentAudios = activeReferenceAssets().filter(item => item.type === "audio");
+    if (currentAudios.length > audioLimits.maxCount) {
+        return "本次引用音频最多 " + audioLimits.maxCount + " 段";
+    }
+    const totalAudioDuration = currentAudios.reduce((sum, item) => sum + Number(item.duration || 0), 0);
+    if (totalAudioDuration > audioLimits.totalDuration) {
+        return "本次引用音频总时长为 " + totalAudioDuration.toFixed(1) + "s，不能超过 15s";
+    }
+    return "";
+};
+
 const pickReference = async (type: SeedanceAssetType) => {
     const filePath = await window.$mapi.file.openFile({
         filters: referenceFilters[type],
@@ -545,6 +609,138 @@ const pickReference = async (type: SeedanceAssetType) => {
         valid.forEach(item => addReferenceAsset(type, item.url, item.meta));
     }
     uploadLimitMessage(errors);
+};
+
+const droppedFilePath = (file: File) => {
+    return String((file as any)?.path || (file as any)?.webkitRelativePath || "").trim();
+};
+
+const hasDraggedFiles = (event: DragEvent) => {
+    return Array.from(event.dataTransfer?.types || []).includes("Files");
+};
+
+const onDragEnterUpload = (event: DragEvent) => {
+    if (hasDraggedFiles(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        draggingUpload.value = true;
+    }
+};
+
+const onDragOverUpload = (event: DragEvent) => {
+    if (hasDraggedFiles(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        draggingUpload.value = true;
+    }
+};
+
+const onDragLeaveUpload = (event: DragEvent) => {
+    const current = event.currentTarget as HTMLElement | null;
+    const related = event.relatedTarget as Node | null;
+    if (!current || !related || !current.contains(related)) {
+        draggingUpload.value = false;
+    }
+};
+
+const handleReferenceDrop = async (files: File[]) => {
+    const groups: Record<SeedanceAssetType, Array<{ url: string; meta: Partial<SeedanceAsset> }>> = {
+        image: [],
+        video: [],
+        audio: [],
+    };
+    const errors: string[] = [];
+    for (const file of files) {
+        const path = droppedFilePath(file);
+        const type = detectAssetType(file, path);
+        if (!path) {
+            errors.push(file.name + " 无法获取本地路径，请使用上传按钮选择文件");
+            continue;
+        }
+        if (!type) {
+            errors.push(file.name + " 格式不支持，仅支持图片、视频、音频素材");
+            continue;
+        }
+        const result = await validateUpload(type, path);
+        if (result.ok) {
+            groups[type].push({ url: path, meta: result.asset });
+        } else {
+            errors.push(result.message);
+        }
+    }
+    let added = 0;
+    added += addReferenceAssetsByType("image", groups.image, errors);
+    added += addReferenceAssetsByType("video", groups.video, errors);
+    added += addReferenceAssetsByType("audio", groups.audio, errors);
+    uploadLimitMessage(errors);
+    if (added && !errors.length) {
+        Dialog.tipSuccess("已添加 " + added + " 个素材，可在输入框用 @ 引用");
+    }
+};
+
+const handleFrameDrop = async (files: File[]) => {
+    const errors: string[] = [];
+    let added = 0;
+    for (const file of files) {
+        const path = droppedFilePath(file);
+        const type = detectAssetType(file, path);
+        if (!path) {
+            errors.push(file.name + " 无法获取本地路径，请使用上传按钮选择文件");
+            continue;
+        }
+        if (type !== "image") {
+            errors.push(file.name + " 不是图片；首尾帧模式仅支持拖入图片");
+            continue;
+        }
+        const result = await validateUpload("image", path);
+        if (!result.ok) {
+            errors.push(result.message);
+            continue;
+        }
+        if (!firstFrame.value) {
+            firstFrame.value = path;
+            added += 1;
+        } else if (!lastFrame.value) {
+            lastFrame.value = path;
+            added += 1;
+        } else {
+            errors.push(file.name + " 未添加；首帧和尾帧已存在");
+        }
+    }
+    uploadLimitMessage(errors);
+    if (added && !errors.length) {
+        Dialog.tipSuccess("已添加 " + added + " 张帧图");
+    }
+};
+
+const onDropUpload = async (event: DragEvent) => {
+    if (!hasDraggedFiles(event)) {
+        return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    draggingUpload.value = false;
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (!files.length) {
+        return;
+    }
+    if (mode.value === "frames") {
+        await handleFrameDrop(files);
+        return;
+    }
+    await handleReferenceDrop(files);
+};
+
+const bindPageDropUpload = () => {
+    window.addEventListener("dragenter", onDragEnterUpload, true);
+    window.addEventListener("dragover", onDragOverUpload, true);
+    window.addEventListener("drop", onDropUpload, true);
+};
+
+const unbindPageDropUpload = () => {
+    window.removeEventListener("dragenter", onDragEnterUpload, true);
+    window.removeEventListener("dragover", onDragOverUpload, true);
+    window.removeEventListener("drop", onDropUpload, true);
 };
 
 const removeAsset = (id: string) => {
@@ -611,6 +807,15 @@ const selectedMentionAssets = computed(() => {
         .map(id => mentionAssets.value.find(item => item.id === id))
         .filter(Boolean) as MentionAsset[];
 });
+
+const activeReferenceAssets = () => {
+    const ids = Array.from(new Set(selectedMentionAssets.value
+        .filter(item => item.source === "asset")
+        .map(item => item.id)));
+    return ids
+        .map(id => assets.value.find(item => item.id === id))
+        .filter(item => item?.url?.trim()) as SeedanceAsset[];
+};
 
 const mentionTokenOf = (asset: MentionAsset) => {
     return "@" + asset.label.replace(/\s+/g, "_");
@@ -701,6 +906,7 @@ const removeMention = (id: string) => {
 
 const buildContent = () => {
     const content: any[] = [];
+    syncMentionIdsFromPrompt();
     const cleanPrompt = prompt.value.replace(/@\S+/g, "").trim();
     if (cleanPrompt) {
         content.push({ type: "text", text: cleanPrompt });
@@ -714,7 +920,7 @@ const buildContent = () => {
         }
     }
     if (mode.value === "reference") {
-        for (const item of assets.value.filter(item => item.url.trim())) {
+        for (const item of activeReferenceAssets()) {
             content.push(buildVideoContentItem(item.type, item.url, referenceRoleOfAssetType(item.type)));
         }
     }
@@ -736,16 +942,14 @@ const validateCurrentLimits = async () => {
         }
         return "";
     }
-    for (const item of assets.value.filter(item => item.url && isLocalFilePath(item.url))) {
+    for (const item of activeReferenceAssets().filter(item => item.url && isLocalFilePath(item.url))) {
         const result = await validateUpload(item.type, item.url);
         if (!result.ok) {
             return result.message;
         }
         Object.assign(item, result.asset);
     }
-    return validateReferenceGroupLimit("image", [])
-        || validateReferenceGroupLimit("video", [])
-        || validateReferenceGroupLimit("audio", []);
+    return validateReferenceSubmissionLimit();
 };
 
 const submit = async () => {
@@ -760,7 +964,7 @@ const submit = async () => {
     }
     const content = buildContent();
     if (content.length === 0) {
-        Dialog.tipError("请输入提示词或添加参考素材");
+        Dialog.tipError("请输入提示词，或用 @ 引用已上传素材");
         return;
     }
     const limitError = await validateCurrentLimits();
@@ -768,7 +972,7 @@ const submit = async () => {
         Dialog.tipError(limitError);
         return;
     }
-    const localVideoAsset = assets.value.find(item => {
+    const localVideoAsset = activeReferenceAssets().find(item => {
         return item.type === "video" && item.url.trim() && !/^https?:\/\//i.test(item.url.trim()) && !/^asset:\/\//i.test(item.url.trim());
     });
     const directFileRelay = await getEffectiveDirectFileRelay(platform);
@@ -857,7 +1061,20 @@ const submit = async () => {
                     </button>
                 </div>
 
-                <div class="min-w-0 rounded-lg bg-white p-5 shadow-sm">
+                <div
+                    class="relative min-w-0 rounded-lg bg-white p-5 shadow-sm transition-colors"
+                    :class="draggingUpload ? 'ring-2 ring-blue-400 bg-blue-50/40' : ''"
+                    @dragenter.prevent="onDragEnterUpload"
+                    @dragover.prevent="draggingUpload = true"
+                    @dragleave.prevent="onDragLeaveUpload"
+                    @drop.prevent="onDropUpload"
+                >
+                    <div
+                        v-if="draggingUpload"
+                        class="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-400 bg-white/80 text-sm font-medium text-blue-600 shadow-sm backdrop-blur"
+                    >
+                        松开后自动识别图片、视频、音频并添加
+                    </div>
                     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <div class="flex flex-wrap items-center gap-2">
                             <a-tag color="arcoblue">{{ model }}</a-tag>

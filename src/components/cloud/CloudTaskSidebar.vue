@@ -126,6 +126,79 @@ const canRegenerateTask = (record: TaskRecord) => {
     return !!taskEditTarget(record);
 };
 
+const shortPathName = (value: string) => {
+    return String(value || "")
+        .replace(/\\/g, "/")
+        .split("/")
+        .pop() || "素材";
+};
+
+const mentionTokenOfPath = (value: string) => {
+    return "@" + shortPathName(value).replace(/\s+/g, "_");
+};
+
+const urlKeyOfSeedanceAsset = (type: string) => {
+    return type === "image" ? "image_url" : type === "video" ? "video_url" : "audio_url";
+};
+
+const buildSeedanceContentItem = (type: string, url: string, role: string) => {
+    const key = urlKeyOfSeedanceAsset(type);
+    return {
+        type: key,
+        [key]: { url },
+        role,
+    };
+};
+
+const normalizeSeedanceClone = (cloned: TaskRecord) => {
+    const config = (cloned as any)?.modelConfig;
+    const bodyText = String(config?.requestBodyJson || "");
+    const title = String(config?.templateTitle || "").toLowerCase();
+    if (!title.includes("seedance") && !bodyText.toLowerCase().includes("seedance-2.0") && !bodyText.toLowerCase().includes("kw-video-v2")) {
+        return;
+    }
+    try {
+        const body = JSON.parse(bodyText || "{}");
+        const input = (cloned as any)?.param?.input || {};
+        const hasSeedanceInput =
+            typeof input.prompt === "string" ||
+            typeof input.mode === "string" ||
+            typeof input.firstFrame === "string" ||
+            typeof input.lastFrame === "string" ||
+            Array.isArray(input.assets);
+        if (!hasSeedanceInput) {
+            return;
+        }
+        const prompt = String(input.prompt || "");
+        const cleanPrompt = prompt.replace(/@\S+/g, "").trim();
+        const content: any[] = [];
+        if (cleanPrompt) {
+            content.push({ type: "text", text: cleanPrompt });
+        }
+        if (input.mode === "frames") {
+            if (input.firstFrame) {
+                content.push(buildSeedanceContentItem("image", String(input.firstFrame), "first_frame"));
+            }
+            if (input.lastFrame) {
+                content.push(buildSeedanceContentItem("image", String(input.lastFrame), "last_frame"));
+            }
+        } else {
+            const assets = Array.isArray(input.assets) ? input.assets : [];
+            for (const asset of assets) {
+                const url = String(asset?.url || "").trim();
+                const type = String(asset?.type || "");
+                if (url && prompt.includes(mentionTokenOfPath(url))) {
+                    content.push(buildSeedanceContentItem(type, url, type === "image" ? "reference_image" : type === "video" ? "reference_video" : "reference_audio"));
+                }
+            }
+        }
+        body.content = content;
+        config.requestBodyJson = JSON.stringify(body, null, 2);
+    } catch (e) {
+        // 旧任务请求体异常时保留原样，避免再次生成入口直接失效。
+    }
+};
+
 const cloneTaskRecord = (record: TaskRecord): TaskRecord => {
     const cloned = JSON.parse(JSON.stringify(record || {}));
     delete cloned.id;
@@ -137,6 +210,7 @@ const cloneTaskRecord = (record: TaskRecord): TaskRecord => {
     delete cloned.result;
     delete cloned.runtime;
     cloned.title = `${String(record.title || "任务").replace(/_再次生成\d*$/, "")}_再次生成`;
+    normalizeSeedanceClone(cloned);
     return cloned;
 };
 
@@ -182,7 +256,7 @@ const filteredRecords = computed(() => {
     });
 });
 
-const displayedRecords = computed(() => filteredRecords.value.slice(0, 30));
+const displayedRecords = computed(() => filteredRecords.value);
 
 const summary = computed(() => {
     const result = {
@@ -420,12 +494,6 @@ onBeforeUnmount(() => {
                         @regenerate-task="regenerateTask"
                         @delete-task="deleteTask"
                     />
-                </div>
-                <div
-                    v-if="filteredRecords.length > displayedRecords.length"
-                    class="mt-3 rounded-xl bg-white px-3 py-3 text-xs text-gray-400"
-                >
-                    当前仅显示前 {{ displayedRecords.length }} 条，切换筛选可缩小结果范围。
                 </div>
                 <m-empty v-if="filteredRecords.length === 0" class="mt-10" text="没有符合条件的任务" />
             </div>
