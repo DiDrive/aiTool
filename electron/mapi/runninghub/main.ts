@@ -153,6 +153,41 @@ const assetModerationHint = (value: any) => {
     return "";
 };
 
+const collectMaterialUrls = (value: any, result: string[] = []) => {
+    if (typeof value === "string") {
+        if (/^(https?:\/\/|mediakit:\/\/|tos:\/\/|vod:\/\/)/i.test(value.trim())) {
+            result.push(value.trim());
+        }
+        return result;
+    }
+    if (Array.isArray(value)) {
+        value.forEach(item => collectMaterialUrls(item, result));
+        return result;
+    }
+    if (value && typeof value === "object") {
+        Object.values(value).forEach(item => collectMaterialUrls(item, result));
+    }
+    return result;
+};
+
+const pickKwjmMaterialUrl = (value: any, publicUrl = "") => {
+    const source = String(publicUrl || "").trim();
+    const candidates = Array.from(new Set(collectMaterialUrls(value)));
+    const preferred = candidates.find(url => /^(mediakit:\/\/|tos:\/\/|vod:\/\/)/i.test(url));
+    if (preferred) {
+        return preferred;
+    }
+    return candidates.find(url => {
+        if (!/^https?:\/\//i.test(url)) {
+            return false;
+        }
+        if (source && url === source) {
+            return false;
+        }
+        return !/123pan\.(com|cn)|\.123pan\.(com|cn)/i.test(url);
+    }) || "";
+};
+
 const attachDiagnostics = (json: any, diagnostics: Record<string, any>) => {
     const result = json && typeof json === "object" ? json : {};
     result._diagnostics = {
@@ -771,20 +806,9 @@ const createKwjmAsset = async (
         ).trim();
         if (/^(Active|Success|Succeeded|Completed|Ready)$/i.test(status)) {
             if (returnAssetUrl) {
-                const assetUrl = String(
-                    statusJson?.data?.URL ||
-                        statusJson?.data?.Url ||
-                        statusJson?.data?.url ||
-                        statusJson?.Result?.URL ||
-                        statusJson?.Result?.Url ||
-                        statusJson?.Result?.url ||
-                        statusJson?.URL ||
-                        statusJson?.Url ||
-                        statusJson?.url ||
-                        ""
-                ).trim();
+                const assetUrl = pickKwjmMaterialUrl(statusJson, publicUrl);
                 if (!assetUrl) {
-                    throw new Error("KWJM 资产入库成功但未返回素材 URL\nAssetId: " + assetId + "\nDetail: " + safeJsonSnippet(diagnosticJson));
+                    throw new Error("KWJM 资产入库成功但未返回可用于字幕擦除的素材 URL\nAssetId: " + assetId + "\nSource: " + describeHttpSource(publicUrl) + "\nDetail: " + safeJsonSnippet(diagnosticJson));
                 }
                 return assetUrl;
             }

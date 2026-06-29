@@ -17,7 +17,11 @@ if not exist "%VSR_PYTHON%" (
   python -m venv "%VSR_ROOT%\.venv"
 )
 
+set NO_PROXY=*
+set no_proxy=*
+
 "%VSR_PYTHON%" -m pip install --upgrade pip
-"%VSR_PYTHON%" -m pip install -r "%VSR_ROOT%\requirements.txt"
+"%VSR_PYTHON%" -m pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
+"%VSR_PYTHON%" -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn -r "%VSR_ROOT%\requirements.txt"
 echo.
 echo VSR environment setup finished.

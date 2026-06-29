@@ -58,6 +58,7 @@ const assetPickerKeyword = ref("");
 const promptTextareaRef = ref<any>(null);
 const mentionRange = ref<{ start: number; end: number } | null>(null);
 const draggingUpload = ref(false);
+const mentionPromptSyncReady = ref(false);
 const pageDraft = usePageDraft("ToolSeedance", {
     platformId,
     prompt,
@@ -107,6 +108,7 @@ const referenceRoleMap = {
     video: "reference_video",
     audio: "reference_audio",
 } as const;
+const referenceRoles = new Set(Object.values(referenceRoleMap));
 const urlKeyOfAssetType = (type: SeedanceAssetType) => {
     return type === "image" ? "image_url" : type === "video" ? "video_url" : "audio_url";
 };
@@ -122,6 +124,14 @@ const buildVideoContentItem = (
         [key]: { url },
         role,
     };
+};
+
+const contentUrlOf = (item: any) => {
+    if (!item || !referenceRoles.has(item.role)) {
+        return "";
+    }
+    const key = item.type;
+    return String(item?.[key]?.url || "").trim();
 };
 const isKwjmPlatform = (platform: DirectApiPlatformRecord | null) => platform?.content.platformType === "kwjm";
 const platformVideoModel = (platform: DirectApiPlatformRecord | null, value: string) => {
@@ -226,6 +236,9 @@ const hydrateFromTask = async () => {
     firstFrame.value = String(input.firstFrame || "");
     lastFrame.value = String(input.lastFrame || "");
     assets.value = Array.isArray(input.assets) ? input.assets : [];
+    const selectedIds = Array.isArray(input.mentionAssetIds) ? input.mentionAssetIds.map((item: any) => String(item)) : [];
+    const validAssetIds = new Set(assets.value.map(item => item.id));
+    mentionAssetIds.value = selectedIds.filter((id: string) => validAssetIds.has(id));
     if (!firstFrame.value || !lastFrame.value) {
         const content = Array.isArray(body.content) ? body.content : [];
         firstFrame.value =
@@ -234,6 +247,12 @@ const hydrateFromTask = async () => {
         lastFrame.value =
             lastFrame.value ||
             String(content.find((item: any) => item?.role === "last_frame")?.image_url?.url || "");
+    }
+    if (!mentionAssetIds.value.length) {
+        const referencedUrls = new Set((Array.isArray(body.content) ? body.content : []).map(contentUrlOf).filter(Boolean));
+        mentionAssetIds.value = assets.value
+            .filter(item => referencedUrls.has(String(item.url || "").trim()))
+            .map(item => item.id);
     }
 };
 
@@ -249,7 +268,7 @@ const shortTaskText = (value: string, fallback = "Seedance") => {
 };
 
 const buildSeedanceTaskTitle = () => {
-    const assetName = assets.value.map(item => item.url).find(Boolean);
+    const assetName = activeReferenceAssets().map(item => item.url).find(Boolean) || assets.value.map(item => item.url).find(Boolean);
     const frameName = firstFrame.value || lastFrame.value || "";
     const sourceName = String(assetName || frameName || "")
         .replace(/\\/g, "/")
@@ -270,7 +289,12 @@ onMounted(async () => {
     await loadPlatforms();
     await hydrateFromTask();
     model.value = normalizeUiVideoModel(model.value);
-    syncMentionIdsFromPrompt();
+    ensureSelectedMentionTokens();
+    if (!route.query.editTaskId) {
+        syncMentionIdsFromPrompt();
+    }
+    await nextTick();
+    mentionPromptSyncReady.value = true;
 });
 
 onBeforeUnmount(() => {
@@ -772,7 +796,7 @@ const removeFrame = (target: "first" | "last") => {
 
 const mentionAssets = computed<MentionAsset[]>(() => {
     const list: MentionAsset[] = [];
-    if (firstFrame.value) {
+    if (mode.value === "frames" && firstFrame.value) {
         list.push({
             id: "first-frame",
             label: `首帧 ${shortName(firstFrame.value)}`,
@@ -781,7 +805,7 @@ const mentionAssets = computed<MentionAsset[]>(() => {
             source: "first_frame",
         });
     }
-    if (lastFrame.value) {
+    if (mode.value === "frames" && lastFrame.value) {
         list.push({
             id: "last-frame",
             label: `尾帧 ${shortName(lastFrame.value)}`,
@@ -790,14 +814,16 @@ const mentionAssets = computed<MentionAsset[]>(() => {
             source: "last_frame",
         });
     }
-    for (const item of assets.value.filter(item => item.url)) {
-        list.push({
-            id: item.id,
-            label: shortName(item.url),
-            type: item.type,
-            url: item.url,
-            source: "asset",
-        });
+    if (mode.value === "reference") {
+        for (const item of assets.value.filter(item => item.url)) {
+            list.push({
+                id: item.id,
+                label: shortName(item.url),
+                type: item.type,
+                url: item.url,
+                source: "asset",
+            });
+        }
     }
     return list;
 });
@@ -821,11 +847,69 @@ const mentionTokenOf = (asset: MentionAsset) => {
     return "@" + asset.label.replace(/\s+/g, "_");
 };
 
+const mentionLabelOf = (asset: MentionAsset, index: number) => {
+    if (asset.type === "image" || asset.type === "frame") {
+        return `参考图${index + 1}`;
+    }
+    if (asset.type === "video") {
+        return `参考视频${index + 1}`;
+    }
+    return `参考音频${index + 1}`;
+};
+
+const splitSpeechFromVisualText = (value: string) => {
+    const speeches: string[] = [];
+    const visualText = value.replace(/(说|说道|喊|念|口播|对白|台词)[：:]\s*([^。！？；;\n]+[。！？]?)/g, (_match, verb, line) => {
+        const index = speeches.length + 1;
+        speeches.push(String(line || "").trim());
+        return `${verb}台词${index}`;
+    });
+    return { visualText, speeches };
+};
+
+const buildPromptText = () => {
+    let text = prompt.value.trim();
+    const referencedAssets = selectedMentionAssets.value.filter(item => item.source === "asset");
+    if (!referencedAssets.length) {
+        return text.replace(/@\S+/g, "").trim();
+    }
+    const legend = referencedAssets.map((asset, index) => {
+        const label = mentionLabelOf(asset, index);
+        text = text.split(mentionTokenOf(asset)).join(`「${label}」`);
+        return `${label} = ${assetTypeText(asset.type)}「${asset.label}」`;
+    });
+    text = text.replace(/@\S+/g, "").replace(/\s{2,}/g, " ").trim();
+    const speechSplit = splitSpeechFromVisualText(text);
+    const speechLines = speechSplit.speeches.map((line, index) => `台词${index + 1}：「${line}」`);
+    return [
+        "参考素材绑定（必须严格遵守，不要互换、融合或串用）：",
+        ...legend,
+        "生成时凡是提到某个参考素材编号，只能使用该编号对应素材的身份、外观、服装、车辆、场景或动作信息；多个角色同时出现时，必须分别保持各自参考图的人物身份，不要把一个角色的脸、身体或服装套到另一个角色身上。",
+        "台词、字幕或对白中的姓名、自称、品牌名只作为口播文本，不得据此改变参考素材绑定的人物身份或长相；如果台词姓名与参考素材外观冲突，必须以参考素材外观为准。",
+        "画面身份优先级最高：视觉外观只来自参考素材编号和画面动作描述；禁止因为台词里出现名人姓名而生成该名人的脸。",
+        "",
+        "画面/动作要求（只决定画面，不把台词里的姓名当作人物身份）：",
+        speechSplit.visualText,
+        ...(speechLines.length ? ["", "口播/字幕要求（只决定嘴型、字幕和声音，不参与人物外观身份）：", ...speechLines] : []),
+    ].filter(Boolean).join("\n");
+};
+
 const syncMentionIdsFromPrompt = () => {
-    const current = mentionAssets.value.filter(asset => prompt.value.includes(mentionTokenOf(asset)));
-    const currentIds = current.map(asset => asset.id);
-    const keptIds = mentionAssetIds.value.filter(id => currentIds.includes(id));
-    mentionAssetIds.value = Array.from(new Set([...keptIds, ...currentIds]));
+    const visibleAssetsById = new Map(mentionAssets.value.map(asset => [asset.id, asset]));
+    mentionAssetIds.value = Array.from(new Set(mentionAssetIds.value)).filter(id => {
+        const asset = visibleAssetsById.get(id);
+        return !asset || prompt.value.includes(mentionTokenOf(asset));
+    });
+};
+
+const ensureSelectedMentionTokens = () => {
+    const missingTokens = selectedMentionAssets.value
+        .map(mentionTokenOf)
+        .filter(token => token && !prompt.value.includes(token));
+    if (!missingTokens.length) {
+        return;
+    }
+    prompt.value = `${prompt.value.trimEnd()}${prompt.value.trim() ? " " : ""}${missingTokens.join(" ")} `.trimEnd();
 };
 
 const filteredMentionAssets = computed(() => {
@@ -858,7 +942,9 @@ const syncMentionPicker = async () => {
     assetPickerVisible.value = Boolean(match && mentionAssets.value.length);
     assetPickerKeyword.value = match?.[1] || "";
     mentionRange.value = match ? { start: cursor - match[0].length, end: cursor } : null;
-    syncMentionIdsFromPrompt();
+    if (mentionPromptSyncReady.value) {
+        syncMentionIdsFromPrompt();
+    }
 };
 
 watch(prompt, syncMentionPicker);
@@ -888,10 +974,92 @@ const hideMentionPickerLater = () => {
     }, 120);
 };
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const mentionTokenRanges = (text: string) => {
+    const ranges: Array<{ start: number; end: number; asset: MentionAsset }> = [];
+    for (const asset of mentionAssets.value) {
+        const token = mentionTokenOf(asset);
+        if (!token) {
+            continue;
+        }
+        const reg = new RegExp(escapeRegExp(token), "g");
+        let match: RegExpExecArray | null;
+        while ((match = reg.exec(text))) {
+            ranges.push({ start: match.index, end: match.index + token.length, asset });
+        }
+    }
+    return ranges.sort((a, b) => a.start - b.start);
+};
+
+const trimRemovedTokenWhitespace = (text: string, start: number, end: number) => {
+    let removeStart = start;
+    let removeEnd = end;
+    if (removeStart > 0 && /\s/.test(text[removeStart - 1])) {
+        removeStart -= 1;
+    } else if (removeEnd < text.length && /\s/.test(text[removeEnd])) {
+        removeEnd += 1;
+    }
+    return {
+        value: `${text.slice(0, removeStart)}${text.slice(removeEnd)}`,
+        cursor: removeStart,
+    };
+};
+
+const removePromptTokenRange = async (range: { start: number; end: number; asset: MentionAsset }) => {
+    const result = trimRemovedTokenWhitespace(prompt.value, range.start, range.end);
+    prompt.value = result.value;
+    mentionAssetIds.value = mentionAssetIds.value.filter(id => id !== range.asset.id);
+    await nextTick();
+    const textarea = getPromptTextarea();
+    textarea?.setSelectionRange(result.cursor, result.cursor);
+};
+
+const handlePromptKeydown = (event: KeyboardEvent) => {
+    if (event.key !== "Backspace" && event.key !== "Delete") {
+        return;
+    }
+    const textarea = event.target as HTMLTextAreaElement | null;
+    if (!textarea || typeof textarea.selectionStart !== "number" || typeof textarea.selectionEnd !== "number") {
+        return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const ranges = mentionTokenRanges(prompt.value);
+    if (start !== end) {
+        const touchedRanges = ranges.filter(item => start < item.end && end > item.start);
+        if (!touchedRanges.length) {
+            return;
+        }
+        const removeStart = Math.min(start, ...touchedRanges.map(item => item.start));
+        const removeEnd = Math.max(end, ...touchedRanges.map(item => item.end));
+        const removedIds = new Set(touchedRanges.map(item => item.asset.id));
+        event.preventDefault();
+        prompt.value = `${prompt.value.slice(0, removeStart)}${prompt.value.slice(removeEnd)}`;
+        mentionAssetIds.value = mentionAssetIds.value.filter(id => !removedIds.has(id));
+        void nextTick(() => {
+            const currentTextarea = getPromptTextarea();
+            currentTextarea?.setSelectionRange(removeStart, removeStart);
+        });
+        return;
+    }
+    const range = ranges.find(item => {
+        if (event.key === "Backspace") {
+            return start > item.start && start <= item.end;
+        }
+        return start >= item.start && start < item.end;
+    });
+    if (!range) {
+        return;
+    }
+    event.preventDefault();
+    void removePromptTokenRange(range);
+};
+
 const removeMentionToken = (asset: MentionAsset) => {
-    const token = mentionTokenOf(asset).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const token = escapeRegExp(mentionTokenOf(asset));
     prompt.value = prompt.value
-        .replace(new RegExp(`(^|\\s)${token}(?=\\s|$)`, "g"), "$1")
+        .replace(new RegExp(token, "g"), "")
         .replace(/\s{2,}/g, " ")
         .trimStart();
 };
@@ -907,7 +1075,7 @@ const removeMention = (id: string) => {
 const buildContent = () => {
     const content: any[] = [];
     syncMentionIdsFromPrompt();
-    const cleanPrompt = prompt.value.replace(/@\S+/g, "").trim();
+    const cleanPrompt = buildPromptText();
     if (cleanPrompt) {
         content.push({ type: "text", text: cleanPrompt });
     }
@@ -992,6 +1160,7 @@ const submit = async () => {
     if (webSearch.value) {
         body.tools = [{ type: "web_search" }];
     }
+    const selectedReferenceAssets = activeReferenceAssets();
     const modelConfig: RunningHubModelConfigType = {
         capability: "video",
         connectorType: "custom-api",
@@ -1016,7 +1185,16 @@ const submit = async () => {
         serverTitle: "",
         serverVersion: "",
         modelConfig,
-        param: { input: { mode: mode.value, prompt: prompt.value, firstFrame: firstFrame.value, lastFrame: lastFrame.value, assets: assets.value } },
+        param: {
+            input: {
+                mode: mode.value,
+                prompt: prompt.value,
+                firstFrame: firstFrame.value,
+                lastFrame: lastFrame.value,
+                assets: mode.value === "reference" ? selectedReferenceAssets : [],
+                mentionAssetIds: mode.value === "reference" ? selectedReferenceAssets.map(item => item.id) : [],
+            },
+        },
     };
     await TaskService.submit(record);
     Dialog.tipSuccess("任务已提交");
@@ -1232,6 +1410,7 @@ const submit = async () => {
                             :auto-size="{ minRows: 2, maxRows: 5 }"
                             placeholder="描述画面、角色、动作和镜头。输入 @ 选择已上传素材。"
                             @input="syncMentionPicker"
+                            @keydown="handlePromptKeydown"
                             @keyup="syncMentionPicker"
                             @click="syncMentionPicker"
                             @focus="syncMentionPicker"

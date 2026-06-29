@@ -8,6 +8,7 @@ import {model as modelStore} from "../../../module/Model/store/model";
 type MediaType = "image" | "video" | "unknown";
 type RepairEngine = "lama" | "sdxl-inpaint" | "ffmpeg-delogo" | "vsr-sttn" | "propainter" | "comfyui";
 type DetectionMode = "watermark" | "hybrid" | "text";
+type VideoDetectionScan = "sample" | "frame";
 
 interface WatermarkMask {
     id: number;
@@ -19,6 +20,8 @@ interface WatermarkMask {
     feather: number;
     startTime: string;
     endTime: string;
+    text?: string;
+    evidence?: string;
     confidence?: number;
     source?: "vision" | "local" | "service" | "heuristic" | "manual";
 }
@@ -29,7 +32,7 @@ const engine = ref<RepairEngine>("lama");
 const serviceUrl = ref("http://127.0.0.1:7860");
 const outputName = ref("");
 const strength = ref(0.78);
-const maskPadding = ref(8);
+const maskPadding = ref(12);
 const keepAudio = ref(true);
 const detecting = ref(false);
 const repairing = ref(false);
@@ -40,6 +43,7 @@ const detectionMessage = ref("尚未检测");
 const detectionSource = ref<"none" | "vision" | "local" | "service" | "heuristic">("none");
 const selectedVisionModel = ref("");
 const detectionMode = ref<DetectionMode>("watermark");
+const videoDetectionScan = ref<VideoDetectionScan>("frame");
 const masks = reactive<WatermarkMask[]>([]);
 const selectedMaskId = ref<number | null>(null);
 const dragState = ref<null | {
@@ -54,7 +58,7 @@ const dragState = ref<null | {
 const imageExts = ["jpg", "jpeg", "png", "webp"];
 const videoExts = ["mp4", "mov", "mkv", "webm"];
 const supportedExts = [...imageExts, ...videoExts];
-const requiredRepairServiceVersion = "2026-06-18-safe-path-v2";
+const requiredRepairServiceVersion = "2026-06-22-propainter-auto-weights";
 
 const ext = computed(() => FileUtil.getExt(filePath.value));
 const mediaType = computed<MediaType>(() => {
@@ -98,7 +102,7 @@ const repairButtonText = computed(() => {
         return "ProPainter 修复视频";
     }
     if (engine.value === "vsr-sttn") {
-        return "VSR/STTN 修复视频";
+        return "VSR/STTN 修复硬字幕";
     }
     if (engine.value === "comfyui") {
         return "ComfyUI 修复视频";
@@ -108,9 +112,9 @@ const repairButtonText = computed(() => {
 const engineOptions = computed(() => {
     if (mediaType.value === "video") {
         return [
-            {label: "VSR/STTN 文本水印修复", value: "vsr-sttn"},
-            {label: "本地快速修复（ffmpeg delogo）", value: "ffmpeg-delogo"},
-            {label: "ProPainter 视频时序修复", value: "propainter"},
+            {label: "ProPainter 视频时序修复（推荐）", value: "propainter"},
+            {label: "本地快速修复（静态角标/小水印）", value: "ffmpeg-delogo"},
+            {label: "VSR/STTN 硬字幕/文字专用", value: "vsr-sttn"},
             {label: "ComfyUI 视频修复工作流", value: "comfyui"},
         ];
     }
@@ -185,7 +189,7 @@ const payload = computed(() => ({
 
 watch(mediaType, value => {
     if (value === "video" && !["ffmpeg-delogo", "vsr-sttn", "propainter", "comfyui"].includes(engine.value)) {
-        engine.value = "vsr-sttn";
+        engine.value = "propainter";
     }
     if (value === "image" && !["lama", "sdxl-inpaint", "comfyui"].includes(engine.value)) {
         engine.value = "lama";
@@ -202,14 +206,18 @@ onMounted(async () => {
     const savedModel = await window.$mapi.config.get("watermarkVisionModel", "");
     const defaultVision = visionModels.value[0];
     const defaultAny = enabledModels.value[0];
-    selectedVisionModel.value =
-        savedModel ||
-        (defaultVision ? `${defaultVision.providerId}|${defaultVision.modelId}` : "") ||
-        (defaultAny ? `${defaultAny.providerId}|${defaultAny.modelId}` : "");
+    const savedEnabled = enabledModels.value.find(item => `${item.providerId}|${item.modelId}` === savedModel);
+    selectedVisionModel.value = savedEnabled
+        ? savedModel
+        : defaultVision
+            ? `${defaultVision.providerId}|${defaultVision.modelId}`
+            : defaultAny
+                ? `${defaultAny.providerId}|${defaultAny.modelId}`
+                : "";
 });
 
 const addMask = () => {
-    const item = {
+    const item: WatermarkMask = {
         id: Date.now(),
         name: `水印区域 ${masks.length + 1}`,
         x: 70,
@@ -237,19 +245,6 @@ const removeMask = (id: number) => {
         selectedMaskId.value = masks[0]?.id || null;
     }
 };
-const createFallbackVideoMask = (): WatermarkMask => ({
-    id: Date.now() + 99,
-    name: "右下角淡水印候选",
-    x: 85,
-    y: 86,
-    width: 14,
-    height: 8,
-    feather: 10,
-    startTime: "00:00:00",
-    endTime: "",
-    confidence: 0.42,
-    source: "heuristic",
-});
 const isOverbroadVideoMask = (mask: WatermarkMask) => (
     mask.width >= 55 ||
     mask.height >= 18 ||
@@ -259,10 +254,19 @@ const compactOverbroadVideoMask = (mask: WatermarkMask, index: number): Watermar
     const lower = mask.y + mask.height / 2 >= 55;
     const right = mask.x + mask.width / 2 >= 50;
     if (lower && right) {
+        const width = clampPercent(Math.min(Math.max(16, mask.width * 0.58), 34), 8, 45);
+        const height = clampPercent(Math.min(Math.max(8, mask.height * 0.58), 14), 4, 16);
+        const x = clampPercent(mask.x + mask.width - width, 48, 100 - width);
+        const y = clampPercent(mask.y + mask.height - height, 58, 100 - height);
         return {
-            ...createFallbackVideoMask(),
+            ...mask,
             id: mask.id || Date.now() + index,
-            name: "右下角淡水印候选",
+            name: "右下角水印区域",
+            x,
+            y,
+            width,
+            height,
+            feather: Math.max(mask.feather || 0, 10),
             confidence: Math.min(mask.confidence || 0.6, 0.58),
             source: "heuristic",
         };
@@ -271,7 +275,7 @@ const compactOverbroadVideoMask = (mask: WatermarkMask, index: number): Watermar
         return {
             ...mask,
             id: mask.id || Date.now() + index,
-            name: "底部水印候选",
+            name: "底部水印区域",
             x: 28,
             y: 72,
             width: 44,
@@ -534,6 +538,8 @@ const normalizeDetectedMask = (raw: any, index: number, source: "vision" | "loca
     return {
         id: Date.now() + index,
         name: raw?.name || raw?.text || `疑似水印 ${index + 1}`,
+        text: raw?.text || raw?.content || raw?.label || "",
+        evidence: raw?.evidence || raw?.reason || raw?.description || raw?.brand || raw?.logo || "",
         x: expanded.x,
         y: expanded.y,
         width: expanded.width,
@@ -545,6 +551,21 @@ const normalizeDetectedMask = (raw: any, index: number, source: "vision" | "loca
         source,
     };
 };
+const hasSpecificWatermarkEvidence = (mask: WatermarkMask) => {
+    const text = String(mask.text || "").trim();
+    const evidence = String(mask.evidence || "").trim();
+    const name = String(mask.name || "").trim();
+    const combined = [text, evidence, name].filter(Boolean).join(" ");
+    const platformOrMark = /抖音|快手|小红书|微博|微信|视频号|公众号|B站|哔哩|西瓜|头条|腾讯|优酷|爱奇艺|芒果|YouTube|TikTok|Instagram|Facebook|Twitter|XHS|CapCut|剪映|可灵|Kling|即梦|豆包|Runway|Pika|Midjourney|Copyright|版权|©|®|@[\w\-.一-龥]+|AI生成|AIGC/i;
+    const cleanedText = [text, evidence]
+        .join("")
+        .replace(/水印|区域|疑似|候选|位置|左上角|右上角|左下角|右下角|左侧|右侧|顶部|底部|居中|中心|平台|文字|标识|角标|logo|LOGO|半透明|浅色|低对比度|淡字|可见|明显|检测到|画面/g, "")
+        .replace(/[^\w@©®一-龥]/g, "");
+    return platformOrMark.test(combined) || cleanedText.length >= 2;
+};
+const filterStrictVisionMasks = (items: WatermarkMask[]) => items.filter(mask => (
+    mask.source !== "vision" || hasSpecificWatermarkEvidence(mask)
+));
 const canvasToDataUrl = async () => {
     const canvas = mediaType.value === "image" ? await canvasFromImage() : canvasFromVideo();
     return canvas.toDataURL("image/png", 0.92);
@@ -613,10 +634,17 @@ const parseAiJson = (text: string) => {
     return JSON.parse(value);
 };
 const tryVisionDetect = async (): Promise<WatermarkMask[]> => {
-    const modelValue = selectedVisionModel.value || visionModels.value[0]?.providerId + "|" + visionModels.value[0]?.modelId || "";
+    const fallbackVision = visionModels.value[0];
+    const fallbackAny = enabledModels.value[0];
+    const fallbackValue = fallbackVision ? `${fallbackVision.providerId}|${fallbackVision.modelId}` : "";
+    const fallbackAnyValue = fallbackAny ? `${fallbackAny.providerId}|${fallbackAny.modelId}` : "";
+    const modelValue = enabledModels.value.some(item => `${item.providerId}|${item.modelId}` === selectedVisionModel.value)
+        ? selectedVisionModel.value
+        : fallbackValue || fallbackAnyValue;
     if (!modelValue) {
-        throw new Error("没有可用的 AI 视觉模型");
+        throw new Error("没有可用的 AI 模型");
     }
+    selectedVisionModel.value = modelValue;
     const [providerId, modelId] = modelValue.split("|");
     await window.$mapi.config.set("watermarkVisionModel", modelValue);
     const prompt = [
@@ -632,7 +660,9 @@ const tryVisionDetect = async (): Promise<WatermarkMask[]> => {
             ? "当前输入是同一个视频的多张抽帧，请综合所有帧：持续出现、固定在边角或固定位置的标识优先判定为水印；只在内容画面中偶然出现的普通文字不要判定为水印。"
             : "当前输入是单张图片，请检查整张图的四角、底部、顶部和中心区域。",
         "请返回严格 JSON，不要 markdown，不要解释。",
-        "格式：{\"watermarks\":[{\"name\":\"右下角平台文字水印\",\"text\":\"豆包AI生成\",\"x\":86.5,\"y\":91.8,\"width\":12.2,\"height\":5.1,\"confidence\":0.96}]}",
+        "格式：{\"watermarks\":[{\"name\":\"豆包AI生成水印\",\"text\":\"豆包AI生成\",\"evidence\":\"右下角可读到豆包AI生成字样\",\"x\":86.5,\"y\":91.8,\"width\":12.2,\"height\":5.1,\"confidence\":0.96}]}",
+        "严格要求：name/text/evidence 必须写出你实际看见的文字、品牌、logo 或版权/@账号证据；不要返回“右上角水印区域”“左上角水印区域”这类只有位置、没有内容证据的泛称。",
+        "如果某个区域只是高亮边缘、几何线条、背景纹理、装饰物、物体轮廓或颜色块，即使在角落也不要当作水印。",
         "坐标必须是百分比，x/y 是左上角，width/height 是宽高。",
         "如果我提供了局部放大裁剪图，裁剪图只是帮助你看清淡水印；最终仍必须返回完整画面的百分比坐标，不要返回裁剪图内部坐标。",
         "返回的是用于图像修复的 mask 框，不是紧贴文字笔画的 OCR 框；必须完整包含水印文字、阴影、描边、透明边缘，并额外留出 10%-25% 安全边。",
@@ -645,7 +675,7 @@ const tryVisionDetect = async (): Promise<WatermarkMask[]> => {
         "没有水印返回 {\"watermarks\":[]}。",
     ].filter(Boolean).join("\n");
     const frameParts = mediaType.value === "video"
-        ? (await videoFramesToCanvases()).flatMap((frame, index) =>
+        ? (await videoFramesToCanvases(detectionMode.value !== "watermark")).flatMap((frame, index) =>
             canvasVisionParts(frame.canvas, `视频抽帧 ${index + 1}，时间 ${frame.time.toFixed(1)} 秒`, index === 0 || index === 1)
         )
         : canvasVisionParts(await canvasFromImage(), "图片", true);
@@ -658,9 +688,10 @@ const tryVisionDetect = async (): Promise<WatermarkMask[]> => {
     }
     const parsed = parseAiJson(result.data?.content || "");
     const rawItems = Array.isArray(parsed) ? parsed : parsed?.watermarks || parsed?.masks || parsed?.boxes || [];
-    return rawItems
+    const masks = rawItems
         .map((item: any, index: number) => normalizeDetectedMask(item, index, "vision"))
         .filter(Boolean) as WatermarkMask[];
+    return detectionMode.value === "watermark" ? filterStrictVisionMasks(masks) : masks;
 };
 const tryLocalDetect = async (): Promise<WatermarkMask[]> => {
     if (!window.$mapi?.watermark?.detect) {
@@ -765,13 +796,64 @@ const ensureVideoReady = async () => {
     }
     return video;
 };
-const videoFrameTimes = (duration: number) => {
+const videoFrameTimes = (duration: number, preferredTime?: number) => {
     if (!Number.isFinite(duration) || duration <= 0) {
         return [0];
     }
-    const ratios = duration <= 6 ? [0.08, 0.35, 0.65, 0.92] : [0.04, 0.16, 0.33, 0.5, 0.72, 0.92];
-    const values = ratios.map(ratio => Math.min(Math.max(duration * ratio, 0.08), Math.max(0.08, duration - 0.08)));
+    const ratios = duration <= 6
+        ? [0.05, 0.18, 0.35, 0.55, 0.75, 0.92]
+        : [0.03, 0.08, 0.16, 0.28, 0.42, 0.58, 0.72, 0.86, 0.96];
+    const clampTime = (value: number) => Math.min(Math.max(value, 0.08), Math.max(0.08, duration - 0.08));
+    const values = [
+        ...(Number.isFinite(preferredTime) ? [clampTime(preferredTime as number)] : []),
+        ...ratios.map(ratio => clampTime(duration * ratio)),
+    ];
     return Array.from(new Set(values.map(value => Math.round(value * 10) / 10)));
+};
+const formatVideoTimestamp = (seconds: number) => {
+    const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+    const total = Math.floor(safe);
+    const ms = Math.round((safe - total) * 1000);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const base = [h, m, s].map(item => String(item).padStart(2, "0")).join(":");
+    return ms > 0 ? `${base}.${String(ms).padStart(3, "0")}` : base;
+};
+const medianFrameStep = (times: number[]) => {
+    const gaps = times
+        .slice(1)
+        .map((time, index) => time - times[index])
+        .filter(gap => Number.isFinite(gap) && gap > 0)
+        .sort((a, b) => a - b);
+    return gaps.length ? gaps[Math.floor(gaps.length / 2)] : 1;
+};
+const videoDetectionFrameTimes = (duration: number, preferredTime: number | undefined, scanMode: VideoDetectionScan) => {
+    if (scanMode === "sample") {
+        return videoFrameTimes(duration, preferredTime).slice(0, 6);
+    }
+    if (!Number.isFinite(duration) || duration <= 0) {
+        return [0];
+    }
+    const estimatedFps =
+        duration <= 12 ? 24 :
+            duration <= 45 ? 12 :
+                duration <= 120 ? 6 :
+                    3;
+    const maxFrames =
+        duration <= 12 ? 360 :
+            duration <= 45 ? 480 :
+                duration <= 120 ? 540 :
+                    720;
+    const desiredStep = 1 / estimatedFps;
+    const frameCount = Math.ceil(duration / desiredStep);
+    const step = frameCount > maxFrames ? duration / maxFrames : desiredStep;
+    const clampTime = (value: number) => Math.min(Math.max(value, 0.03), Math.max(0.03, duration - 0.03));
+    const values = Number.isFinite(preferredTime) ? [clampTime(preferredTime as number)] : [];
+    for (let time = 0.03; time < duration; time += step) {
+        values.push(clampTime(time));
+    }
+    return Array.from(new Set(values.map(value => Math.round(value * 100) / 100))).sort((a, b) => a - b);
 };
 const seekVideo = async (video: HTMLVideoElement, time: number) => {
     const target = Math.min(Math.max(time, 0), Math.max(0, Number(video.duration || 0) - 0.05));
@@ -790,7 +872,7 @@ const videoFramesToDataUrls = async () => {
     }
     const frames: Array<{time: number; dataUrl: string}> = [];
     try {
-        for (const time of videoFrameTimes(video.duration)) {
+        for (const time of videoFrameTimes(video.duration, originalTime)) {
             await seekVideo(video, time);
             const canvas = canvasFromVideo();
             frames.push({
@@ -806,7 +888,7 @@ const videoFramesToDataUrls = async () => {
     }
     return frames;
 };
-const videoFramesToCanvases = async () => {
+const videoFramesToCanvases = async (includeCurrentFrame = true) => {
     const video = await ensureVideoReady();
     const originalTime = video.currentTime || 0;
     const wasPaused = video.paused;
@@ -815,7 +897,7 @@ const videoFramesToCanvases = async () => {
     }
     const frames: Array<{time: number; canvas: HTMLCanvasElement}> = [];
     try {
-        for (const time of videoFrameTimes(video.duration).slice(0, 4)) {
+        for (const time of videoFrameTimes(video.duration, includeCurrentFrame ? originalTime : undefined).slice(0, 6)) {
             await seekVideo(video, time);
             frames.push({
                 time,
@@ -1156,7 +1238,7 @@ const detectLowContrastTextWatermarks = (ctx: CanvasRenderingContext2D, canvas: 
             const density = totalArea / Math.max(1, boxWidth * boxHeight);
             const aspect = boxWidth / Math.max(1, boxHeight);
             const nearEdge = region.align === "right" ? maxX > w * 0.45 : minX < w * 0.55;
-            if (!nearEdge || boxWidth < 12 || boxHeight < 4 || aspect < 1.2 || aspect > 18 || density < 0.006) {
+            if (!nearEdge || boxWidth < 12 || boxHeight < 5 || aspect < 1.8 || aspect > 18 || density < 0.01) {
                 return null;
             }
 
@@ -1247,21 +1329,172 @@ const detectFromCanvas = (canvas: HTMLCanvasElement): WatermarkMask[] => {
     const textMasks = [...lightTextMasks, ...lowContrastMasks];
     return mergeDetectedMasks(textMasks.length > 0 ? textMasks : edgeMasks);
 };
-const detectFromVideoFrames = async () => {
+const strictWatermarkShape = (mask: WatermarkMask, allowUpperArea = true) => {
+    const centerX = mask.x + mask.width / 2;
+    const centerY = mask.y + mask.height / 2;
+    const nearEdge = centerX <= 38 || centerX >= 62 || centerY <= 30 || centerY >= 68;
+    const allowedArea = allowUpperArea || centerY >= 62;
+    const aspect = mask.width / Math.max(1, mask.height);
+    const sizeOk =
+        mask.width >= 3 &&
+        mask.height >= 2.5 &&
+        mask.width <= 38 &&
+        mask.height <= 15 &&
+        mask.width * mask.height <= 360;
+    return allowedArea && nearEdge && sizeOk && aspect >= 1.1 && aspect <= 18 && (mask.confidence || 0) >= 0.56;
+};
+const strictMaskName = (name: string) => {
+    const cleaned = name
+        .replace(/^逐帧/, "")
+        .replace(/候选/g, "")
+        .replace(/疑似/g, "")
+        .replace(/浅色文字水印|低对比度水印|淡字水印/g, "水印区域")
+        .replace(/\s+/g, "")
+        .trim();
+    return cleaned || "水印区域";
+};
+const detectStrictFromCanvas = (canvas: HTMLCanvasElement): WatermarkMask[] => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        return [];
+    }
+    const textMasks = [
+        ...detectLightTextWatermarks(ctx, canvas),
+        ...detectLowContrastTextWatermarks(ctx, canvas),
+    ];
+    return mergeDetectedMasks(textMasks)
+        .filter(mask => strictWatermarkShape(mask, false))
+        .map((mask, index) => ({
+            ...mask,
+            id: Date.now() + index,
+            name: strictMaskName(mask.name),
+            source: "local",
+        }));
+};
+type TimedWatermarkMask = WatermarkMask & {frameTime: number};
+const stripFrameTime = (mask: TimedWatermarkMask): WatermarkMask => {
+    const {frameTime, ...rest} = mask;
+    return rest;
+};
+const splitTimedTrack = (items: TimedWatermarkMask[], frameStep: number) => {
+    const sorted = [...items].sort((a, b) => a.frameTime - b.frameTime);
+    const segments: TimedWatermarkMask[][] = [];
+    let current: TimedWatermarkMask[] = [];
+    let currentMask: WatermarkMask | null = null;
+    let lastTime = -Infinity;
+    sorted.forEach(item => {
+        const base = stripFrameTime(item);
+        const nextMask = currentMask ? unionMask(currentMask, base) : base;
+        const gapTooLarge = current.length > 0 && item.frameTime - lastTime > frameStep * 2.5 + 0.05;
+        const currentCenter = currentMask ? maskCenter(currentMask) : null;
+        const itemCenter = maskCenter(base);
+        const movementTooLarge = currentCenter
+            ? Math.abs(itemCenter.x - currentCenter.x) > Math.max(8, (currentMask?.width || 1) * 0.9) ||
+                Math.abs(itemCenter.y - currentCenter.y) > Math.max(5, (currentMask?.height || 1) * 1.2)
+            : false;
+        const unionTooLarge = currentMask ? isOverbroadVideoMask(nextMask) : false;
+        if (current.length > 0 && (gapTooLarge || movementTooLarge || unionTooLarge)) {
+            segments.push(current);
+            current = [];
+            currentMask = null;
+        }
+        current.push(item);
+        currentMask = currentMask ? unionMask(currentMask, base) : base;
+        lastTime = item.frameTime;
+    });
+    if (current.length > 0) {
+        segments.push(current);
+    }
+    return segments;
+};
+const buildVideoMaskTracks = (items: TimedWatermarkMask[], times: number[], duration: number, strict = false) => {
+    const totalFrames = Math.max(1, times.length);
+    const frameStep = medianFrameStep(times);
+    const minTrackSupport = strict
+        ? totalFrames <= 12 ? 3 : Math.max(4, Math.ceil(totalFrames * 0.035))
+        : totalFrames <= 12 ? 2 : Math.max(3, Math.ceil(totalFrames * 0.025));
+    const groups: Array<{items: TimedWatermarkMask[]; mask: WatermarkMask}> = [];
+    items
+        .filter(mask => mask.width > 0 && mask.height > 0)
+        .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+        .forEach(mask => {
+            const base = stripFrameTime(mask);
+            const group = groups.find(item => item.items.some(existing => sameWatermarkTrack(existing, base)));
+            if (group) {
+                group.items.push(mask);
+                group.mask = unionMask(group.mask, base);
+            } else {
+                groups.push({items: [mask], mask: base});
+            }
+        });
+
+    const tracked: WatermarkMask[] = [];
+    groups.forEach((group, groupIndex) => {
+        const support = group.items.length;
+        const bestConfidence = Math.max(...group.items.map(item => item.confidence || 0));
+        const lowContrastEvidence = group.items.some(item => /低对比度|淡字|浅色文字/.test(item.name));
+        if (strict) {
+            if (support < minTrackSupport && !(support >= 3 && bestConfidence >= 0.84)) {
+                return;
+            }
+        } else if (support < minTrackSupport && bestConfidence < 0.72 && !lowContrastEvidence) {
+            return;
+        }
+        splitTimedTrack(group.items, frameStep).forEach((segment, segmentIndex) => {
+            const segmentSupport = segment.length;
+            const segmentBestConfidence = Math.max(...segment.map(item => item.confidence || 0));
+            const minSegmentSupport = strict ? Math.max(3, Math.ceil(totalFrames * 0.018)) : Math.min(2, minTrackSupport);
+            if (segmentSupport < minSegmentSupport && segmentBestConfidence < (strict ? 0.86 : 0.78)) {
+                return;
+            }
+            const segmentMask = segment
+                .map(stripFrameTime)
+                .reduce((merged, item) => unionMask(merged, item));
+            const start = Math.max(0, segment[0].frameTime - frameStep * 0.6);
+            const end = Math.min(duration, segment[segment.length - 1].frameTime + frameStep * 0.6);
+            const supportBoost = Math.min(0.2, segmentSupport / Math.max(6, totalFrames) * 0.65);
+            const compacted = isOverbroadVideoMask(segmentMask)
+                ? compactOverbroadVideoMask(segmentMask, tracked.length)
+                : segmentMask;
+            tracked.push({
+                ...compacted,
+                id: Date.now() + groupIndex * 100 + segmentIndex,
+                name: strict ? strictMaskName(compacted.name) : compacted.name.includes("逐帧") ? compacted.name : `逐帧${compacted.name}`,
+                confidence: Math.min(0.98, segmentBestConfidence + supportBoost),
+                startTime: formatVideoTimestamp(start),
+                endTime: end >= duration - frameStep * 1.2 ? "" : formatVideoTimestamp(end),
+                source: strict ? "local" : "heuristic",
+            });
+        });
+    });
+
+    return tracked
+        .filter(mask => mask.width <= 45 && mask.height <= 16 && mask.width * mask.height <= 420)
+        .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+        .slice(0, strict ? 3 : 8);
+};
+const detectFromVideoFrames = async (scanMode: VideoDetectionScan = "sample") => {
     const video = await ensureVideoReady();
     const originalTime = video.currentTime || 0;
     const wasPaused = video.paused;
     if (!wasPaused) {
         video.pause();
     }
-    const detected: WatermarkMask[] = [];
+    const times = videoDetectionFrameTimes(video.duration, originalTime, scanMode);
+    const detected: TimedWatermarkMask[] = [];
     try {
-        for (const time of videoFrameTimes(video.duration).slice(0, 4)) {
+        for (let index = 0; index < times.length; index += 1) {
+            const time = times[index];
+            if (scanMode === "frame") {
+                detectionMessage.value = `正在逐帧识别水印 ${index + 1}/${times.length}...`;
+            }
             await seekVideo(video, time);
             const frameMasks = detectFromCanvas(canvasFromVideo()).map(mask => ({
                 ...mask,
                 confidence: Math.min(0.96, (mask.confidence || 0.55) + 0.02),
                 startTime: mask.startTime || "00:00:00",
+                endTime: mask.endTime || "",
+                frameTime: time,
             }));
             detected.push(...frameMasks);
         }
@@ -1271,7 +1504,38 @@ const detectFromVideoFrames = async () => {
             video.play().catch(() => {});
         }
     }
-    return stabilizeVideoMasks(detected);
+    return scanMode === "frame"
+        ? buildVideoMaskTracks(detected, times, Number(video.duration || 0))
+        : stabilizeVideoMasks(detected.map(stripFrameTime));
+};
+const detectStableWatermarksFromVideoFrames = async () => {
+    const video = await ensureVideoReady();
+    const originalTime = video.currentTime || 0;
+    const wasPaused = video.paused;
+    if (!wasPaused) {
+        video.pause();
+    }
+    const times = videoDetectionFrameTimes(video.duration, undefined, "frame");
+    const detected: TimedWatermarkMask[] = [];
+    try {
+        for (let index = 0; index < times.length; index += 1) {
+            const time = times[index];
+            detectionMessage.value = `正在逐帧稳定检测水印 ${index + 1}/${times.length}...`;
+            await seekVideo(video, time);
+            const frameMasks = detectStrictFromCanvas(canvasFromVideo()).map(mask => ({
+                ...mask,
+                confidence: Math.min(0.96, (mask.confidence || 0.58) + 0.02),
+                frameTime: time,
+            }));
+            detected.push(...frameMasks);
+        }
+    } finally {
+        await seekVideo(video, Math.min(originalTime, Math.max(0, Number(video.duration || 0) - 0.05))).catch(() => {});
+        if (!wasPaused) {
+            video.play().catch(() => {});
+        }
+    }
+    return buildVideoMaskTracks(detected, times, Number(video.duration || 0), true);
 };
 const detectWatermark = async () => {
     if (!filePath.value) {
@@ -1286,45 +1550,95 @@ const detectWatermark = async () => {
     detectionMessage.value = "正在智能检测水印...";
     try {
         let detected: WatermarkMask[] = [];
+        let ranStableStrictDetection = false;
+        const strictWatermarkMode = detectionMode.value === "watermark";
         try {
             detected = await tryVisionDetect();
             detectionSource.value = "vision";
         } catch (e) {
-            try {
-                detected = await tryLocalDetect();
-                detectionSource.value = "local";
-            } catch (e) {
+            if (strictWatermarkMode) {
                 try {
                     detected = await tryServiceDetect();
                     detectionSource.value = "service";
                 } catch (e) {
-                    detected = mediaType.value === "image"
-                        ? detectFromCanvas(await canvasFromImage())
-                        : await detectFromVideoFrames();
-                    detectionSource.value = "heuristic";
+                    detected = [];
+                    detectionSource.value = "none";
+                }
+            } else {
+                try {
+                    detected = await tryLocalDetect();
+                    detectionSource.value = "local";
+                } catch (e) {
+                    try {
+                        detected = await tryServiceDetect();
+                        detectionSource.value = "service";
+                    } catch (e) {
+                        detected = mediaType.value === "image"
+                            ? detectFromCanvas(await canvasFromImage())
+                            : await detectFromVideoFrames(videoDetectionScan.value);
+                        detectionSource.value = "heuristic";
+                    }
                 }
             }
         }
         if (mediaType.value === "video") {
-            const shouldMergeLocalCandidates = detectionMode.value !== "watermark" || detectionSource.value !== "vision" || detected.length === 0;
-            const heuristicDetected = shouldMergeLocalCandidates
-                ? await detectFromVideoFrames().catch(() => [])
-                : [];
-            detected = detectionMode.value === "watermark" && detectionSource.value === "vision" && detected.length > 0
-                ? sanitizeVideoMasks(detected)
-                : stabilizeVideoMasks([...detected, ...heuristicDetected]);
-            if (detected.length === 0) {
-                detected = [createFallbackVideoMask()];
-                detectionSource.value = "heuristic";
+            if (strictWatermarkMode) {
+                detected = detectionSource.value === "vision" && detected.length > 0
+                    ? sanitizeVideoMasks(detected)
+                    : stabilizeVideoMasks(detected);
+                if (videoDetectionScan.value === "frame") {
+                    ranStableStrictDetection = true;
+                    const stableDetected = await detectStableWatermarksFromVideoFrames().catch(() => []);
+                    if (stableDetected.length > 0) {
+                        const missingStableMasks = stableDetected.filter(mask => !detected.some(item => shouldMergeMasks(item, mask)));
+                        detected = [...detected, ...missingStableMasks].slice(0, 3);
+                        if (detectionSource.value !== "vision") {
+                            detectionSource.value = "local";
+                        }
+                    }
+                }
+            } else {
+                const frameScan = videoDetectionScan.value === "frame";
+                const shouldMergeLocalCandidates = frameScan || detectionSource.value !== "vision" || detected.length === 0;
+                const heuristicDetected = shouldMergeLocalCandidates
+                    ? detectionSource.value === "heuristic"
+                        ? detected
+                        : await detectFromVideoFrames(videoDetectionScan.value).catch(() => [])
+                    : [];
+                if (frameScan) {
+                    const baseMasks = detectionSource.value === "vision" && detected.length > 0
+                        ? sanitizeVideoMasks(detected)
+                        : detectionSource.value === "heuristic"
+                            ? []
+                            : stabilizeVideoMasks(detected);
+                    const missingVisionMasks = baseMasks.filter(mask => !heuristicDetected.some(item => shouldMergeMasks(item, mask)));
+                    detected = [...heuristicDetected, ...missingVisionMasks].slice(0, 8);
+                    if (heuristicDetected.length > 0) {
+                        detectionSource.value = "heuristic";
+                    }
+                } else {
+                    detected = stabilizeVideoMasks([...detected, ...heuristicDetected]);
+                }
+            }
+        }
+        if (strictWatermarkMode && detected.length === 0) {
+            const stableDetected = mediaType.value === "image"
+                ? detectStrictFromCanvas(await canvasFromImage())
+                : !ranStableStrictDetection && videoDetectionScan.value === "frame"
+                    ? await detectStableWatermarksFromVideoFrames().catch(() => [])
+                    : [];
+            if (stableDetected.length > 0) {
+                detected = stableDetected;
+                detectionSource.value = "local";
             }
         }
         setMasks(detected);
         if (detected.length > 0) {
-            detectionMessage.value = detectionSource.value === "heuristic" && detected.some(item => item.name.includes("候选"))
-                ? `未稳定识别到明确水印，已添加 ${detected.length} 个可编辑候选区域`
+            detectionMessage.value = strictWatermarkMode
+                ? `检测到 ${detected.length} 个水印区域`
                 : detectionMode.value === "text"
                     ? `检测到 ${detected.length} 个文字/水印候选区域`
-                    : `检测到 ${detected.length} 个疑似水印区域`;
+                    : `检测到 ${detected.length} 个水印增强候选区域`;
             Dialog.tipSuccess(detectionMessage.value);
         } else {
             detectionMessage.value = "未检测到明显可见水印";
@@ -1532,11 +1846,22 @@ const revealOutputFile = async () => {
                                 </div>
                             </a-tooltip>
                         </div>
-                        <div class="detect-toolbar">
+                        <div
+                            class="detect-toolbar"
+                            :class="{ 'video-detect-toolbar': mediaType === 'video' }"
+                        >
                             <a-select v-model="detectionMode" class="detection-mode-select">
                                 <a-option value="watermark">仅水印，保留字幕</a-option>
                                 <a-option value="hybrid">水印增强候选</a-option>
                                 <a-option value="text">文字/字幕候选</a-option>
+                            </a-select>
+                            <a-select
+                                v-if="mediaType === 'video'"
+                                v-model="videoDetectionScan"
+                                class="detection-scan-select"
+                            >
+                                <a-option value="frame">逐帧稳定检测</a-option>
+                                <a-option value="sample">快速抽帧检测</a-option>
                             </a-select>
                             <a-select
                                 v-model="selectedVisionModel"
@@ -1705,13 +2030,13 @@ const revealOutputFile = async () => {
                                 </a-option>
                             </a-select>
                             <div v-if="mediaType === 'video' && engine === 'ffmpeg-delogo'" class="engine-hint">
-                                本地快速修复适合固定角标和纯色/低纹理背景，本质是邻域插值，复杂背景可能会有模糊或块状痕迹。
+                                本地快速修复适合固定不动的小角标/小水印，速度快但本质是邻域插值，复杂背景可能会有模糊或块状痕迹。
                             </div>
                             <div v-if="mediaType === 'video' && engine === 'vsr-sttn'" class="engine-hint">
-                                VSR/STTN 借鉴 video-subtitle-remover 路线，适合文字水印、硬字幕类区域修复；只处理当前水印列表里的区域。
+                                VSR/STTN 主要适合硬字幕、横向文字水印；普通角标、半透明 logo 或复杂背景水印经常会残留，建议优先使用 ProPainter。
                             </div>
                             <div v-if="mediaType === 'video' && engine === 'propainter'" class="engine-hint">
-                                ProPainter 会自动启动本机 7860 修复服务；首次启动需要等待模型环境初始化。
+                                ProPainter 更适合普通视频水印、半透明角标和复杂背景；会自动启动本机 7860 修复服务，首次启动需要等待模型环境初始化。
                             </div>
                             <div v-if="mediaType === 'video' && engine === 'comfyui'" class="engine-hint">
                                 ComfyUI 模式需要外部修复工作流服务提供兼容接口。
@@ -1867,7 +2192,12 @@ const revealOutputFile = async () => {
     align-items: center;
 }
 
+.video-detect-toolbar {
+    grid-template-columns: minmax(150px, 0.55fr) minmax(120px, 0.42fr) minmax(220px, 1fr) max-content;
+}
+
 .detection-mode-select,
+.detection-scan-select,
 .vision-model-select {
     width: 100%;
     min-width: 0;

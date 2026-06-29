@@ -44,7 +44,8 @@
         "oneClick": false,
         "perMachine": false,
         "allowToChangeInstallationDirectory": true,
-        "deleteAppDataOnUninstall": false
+        "deleteAppDataOnUninstall": true,
+        "include": "electron/resources/build/installer.nsh"
     },
     "portable": {
         "artifactName": "${productName}-${version}-win-portable-${arch}.${ext}",

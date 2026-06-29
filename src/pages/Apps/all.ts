@@ -5,6 +5,7 @@ import CloudVideo from "../Cloud/CloudVideo.vue";
 import MarketingVideoFlow from "./MarketingVideoFlow/MarketingVideoFlow.vue";
 import CloudLipSync from "../Cloud/CloudLipSync.vue";
 import CloudDigitalHuman from "../Cloud/CloudDigitalHuman.vue";
+import CloudDigitalHumanClipWizard from "../Cloud/CloudDigitalHumanClipWizard.vue";
 import CloudDigitalHumanClips from "../Cloud/CloudDigitalHumanClips.vue";
 import CloudDigitalHumanExecConfig from "../Cloud/CloudDigitalHumanExecConfig.vue";
 import CloudDigitalHumanScenePack from "../Cloud/CloudDigitalHumanScenePack.vue";
@@ -19,7 +20,6 @@ import ToolSeedance from "../Cloud/ToolSeedance.vue";
 import TextToImageIcon from "./TextToImage/assets/icon.svg";
 import WatermarkInpaint from "./WatermarkInpaint/WatermarkInpaint.vue";
 import WatermarkInpaintIcon from "./WatermarkInpaint/assets/icon.svg";
-import KwjmVideoErase from "./KwjmVideoErase/KwjmVideoErase.vue";
 
 export const SoundApps = [
     {
@@ -63,6 +63,13 @@ export const VideoApps = [
 ];
 
 export const DigitalHumanApps = [
+    {
+        name: "CloudDigitalHumanClipWizard",
+        title: "直播片段生成向导",
+        description: "根据商品资料一键生成直播话术、片段草稿和触发规则",
+        icon: VideoGenFlowIcon,
+        component: CloudDigitalHumanClipWizard,
+    },
     {
         name: "CloudLipSync",
         title: "云端对口型",
@@ -118,13 +125,6 @@ export const ImageApps = [
 ];
 
 export const ToolApps = [
-    {
-        name: "KwjmVideoErase",
-        title: "字幕擦除",
-        description: "使用 KWJM 擦除视频字幕",
-        icon: VideoGenFlowIcon,
-        component: KwjmVideoErase,
-    },
     {
         name: "WatermarkInpaint",
         title: "水印智能修复",

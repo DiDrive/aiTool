@@ -372,12 +372,12 @@ def run_propainter(input_path: str, mask_path: Path, output_path: Path, work_dir
         run_command(args, timeout=None)
     else:
         propainter_root = os.environ.get("PROPAINTER_ROOT", "").strip()
-        if not propainter_root:
+        root = Path(propainter_root) if propainter_root else propainter_root_path()
+        if not root:
             raise RuntimeError(
                 "未配置 ProPainter。请设置 PROPAINTER_ROOT 指向 ProPainter 项目目录，"
                 "或设置 PROPAINTER_COMMAND 自定义推理命令模板。"
             )
-        root = Path(propainter_root)
         script = root / "inference_propainter.py"
         if not script.exists():
             raise RuntimeError(f"找不到 ProPainter 推理脚本: {script}")
@@ -438,10 +438,11 @@ def mux_audio_if_needed(input_path: str, repaired_path: Path, final_path: Path, 
 @app.get("/api/watermark/status")
 def watermark_status():
     weights_dir = propainter_weights_dir()
+    root = propainter_root_path()
     return response_ok({
         "serviceVersion": SERVICE_VERSION,
         "engine": "propainter",
-        "propainterRoot": os.environ.get("PROPAINTER_ROOT", ""),
+        "propainterRoot": str(root) if root else "",
         "hasCommandTemplate": bool(os.environ.get("PROPAINTER_COMMAND", "").strip()),
         "weightsDir": str(weights_dir) if weights_dir else "",
         "weightsReady": not missing_propainter_weights(),

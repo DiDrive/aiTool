@@ -104,15 +104,13 @@ const importConfigPackage = async () => {
         return;
     }
     await Dialog.confirm(
-        "配置包会一次性导入直连 API 平台、全局 123 云盘中转、云端供应商和云端能力模板。配置包可能包含 API Key、123 云盘 Client Secret、URL 鉴权密钥等敏感信息。导入会按名称合并：同名配置更新，不同名配置新增。确认导入？",
+        "将导入管理员提供的配置 JSON。导入后会自动完成配置，确认继续？",
         "导入配置"
     );
     try {
-        const summary = await ConfigTransferService.importFromFile(String(filePath));
+        await ConfigTransferService.importFromFile(String(filePath));
         await refresh();
-        Dialog.tipSuccess(
-            `配置包已导入：直连 API 平台 ${summary.directApiPlatforms} 个、全局 123 云盘中转 ${summary.fileRelayConfig} 个、云端供应商 ${summary.cloudProviderProfiles} 个、云端能力模板 ${summary.cloudTemplates} 个`
-        );
+        Dialog.tipSuccess("配置已导入，可以开始使用");
     } catch (e: any) {
         Dialog.alertError(e?.message || "导入配置失败", "导入配置");
     }
@@ -285,12 +283,24 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
 </script>
 
 <template>
-    <div class="mb-3 flex justify-end gap-2">
+    <div class="mb-4 rounded-xl border border-solid border-blue-100 bg-blue-50/60 p-5">
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="min-w-0 flex-grow">
+                <div class="text-base font-bold text-gray-900">导入配置 JSON</div>
+                <div class="mt-1 text-sm leading-6 text-gray-500">
+                    新电脑首次使用时，只需要上传管理员提供的 aigcpanel-config JSON，即可一次性完成配置。
+                </div>
+            </div>
+            <a-button type="primary" @click="importConfigPackage">上传 JSON 并导入</a-button>
+        </div>
+    </div>
+
+    <div v-if="false" class="mb-3 flex justify-end gap-2">
         <a-button @click="importConfigPackage">一键导入配置</a-button>
         <a-button @click="exportConfigPackage">一键导出配置</a-button>
     </div>
 
-    <div class="mb-4 rounded-xl border border-solid border-gray-200 p-4">
+    <div v-if="false" class="mb-4 rounded-xl border border-solid border-gray-200 p-4">
         <div class="mb-3 flex items-center justify-between">
             <div>
                 <div class="text-base font-bold">全局文件素材中转</div>
@@ -328,7 +338,7 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
         </a-form>
     </div>
 
-    <div class="rounded-xl border border-solid border-gray-200 p-4">
+    <div v-if="false" class="rounded-xl border border-solid border-gray-200 p-4">
         <div class="flex items-center mb-3">
             <div class="flex-grow">
                 <div class="text-base font-bold">平台接入</div>

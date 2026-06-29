@@ -281,9 +281,21 @@ const normalizeDirectApiResults = (res: any) => {
         const imageResults = dataList
             .map((item: any) => {
                 const url = String(item?.url || item?.fileUrl || item?.image_url || item?.imageUrl || "").trim();
+                const videoUrl = String(item?.video_url || item?.videoUrl || "").trim();
+                const audioUrl = String(item?.audio_url || item?.audioUrl || "").trim();
                 const b64 = String(item?.b64_json || item?.base64 || item?.image_base64 || "").trim();
+                const type = String(item?.type || item?.outputType || item?.fileType || "").toLowerCase();
+                if (videoUrl || (url && type.includes("video"))) {
+                    const fileUrl = videoUrl || url;
+                    return { url: fileUrl, fileUrl, outputType: "video" };
+                }
+                if (audioUrl || (url && type.includes("audio"))) {
+                    const fileUrl = audioUrl || url;
+                    return { url: fileUrl, fileUrl, outputType: "audio" };
+                }
                 if (url) {
-                    return { url, fileUrl: url, outputType: "image" };
+                    const outputType = type.includes("image") ? "image" : "file";
+                    return { url, fileUrl: url, outputType };
                 }
                 if (b64) {
                     return { text: b64, outputType: "image_base64", fileUrl: "" };

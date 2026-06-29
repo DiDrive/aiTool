@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { TimeUtil } from "../../lib/util";
 import {
     DigitalHumanClipRecord,
@@ -10,6 +11,7 @@ import {
 import { DigitalHumanIdentityRecord, DigitalHumanIdentityService } from "../../service/DigitalHumanIdentityService";
 
 const loading = ref(false);
+const router = useRouter();
 const records = ref<DigitalHumanClipRecord[]>([]);
 const identities = ref<DigitalHumanIdentityRecord[]>([]);
 const selectedId = ref(0);
@@ -74,7 +76,7 @@ const filteredRecords = computed(() => {
     });
 });
 
-const displayedRecords = computed(() => filteredRecords.value.slice(0, 30));
+const displayedRecords = computed(() => filteredRecords.value);
 
 const selectedRecord = computed(() => {
     return (
@@ -90,6 +92,8 @@ const stats = computed(() => ({
     talk: records.value.filter(record => record.content.clipType === "talk").length,
     holding: records.value.filter(record => record.content.clipType === "holding").length,
 }));
+
+const missingAssetRecords = computed(() => filteredRecords.value.filter(record => assetType(record) === "none"));
 
 const identityTitle = (id?: number) => {
     const found = identities.value.find(item => Number(item.id || 0) === Number(id || 0));
@@ -198,6 +202,38 @@ const openAsset = async () => {
     }
 };
 
+const goGenerateVideo = async (record: DigitalHumanClipRecord | null) => {
+    if (!record?.id) {
+        return;
+    }
+    await router.replace({
+        path: "/live",
+        query: {
+            tab: "CloudDigitalHumanClipWizard",
+            clipId: String(record.id),
+            _t: String(Date.now()),
+        },
+    });
+};
+
+const goBatchGenerateMissingVideos = async () => {
+    const ids = missingAssetRecords.value
+        .map(record => Number(record.id || 0))
+        .filter(id => id > 0);
+    if (!ids.length) {
+        actionMessage.value = "当前筛选范围没有缺失素材的片段";
+        return;
+    }
+    await router.replace({
+        path: "/live",
+        query: {
+            tab: "CloudDigitalHumanClipWizard",
+            clipIds: ids.join(","),
+            _t: String(Date.now()),
+        },
+    });
+};
+
 const refresh = async () => {
     if (loading.value) {
         return;
@@ -293,6 +329,9 @@ onBeforeUnmount(() => {
             <button class="plain-button" type="button" :disabled="loading" @click="refresh">
                 {{ loading ? "刷新中" : "刷新" }}
             </button>
+            <button class="primary-button" type="button" :disabled="loading || missingAssetRecords.length === 0" @click="goBatchGenerateMissingVideos">
+                批量生成缺失视频({{ missingAssetRecords.length }})
+            </button>
         </section>
 
         <section class="stats-grid">
@@ -337,6 +376,13 @@ onBeforeUnmount(() => {
                         <p>{{ assetText(selectedRecord) }} / {{ durationText(selectedRecord) }}</p>
                     </div>
                     <div class="asset-actions">
+                        <button
+                            v-if="assetType(selectedRecord) === 'none'"
+                            type="button"
+                            @click="goGenerateVideo(selectedRecord)"
+                        >
+                            去生成视频
+                        </button>
                         <button type="button" :disabled="!assetUrl(selectedRecord)" @click="copyAssetPath">
                             复制路径
                         </button>

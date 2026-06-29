@@ -799,7 +799,7 @@ const runFfmpeg = async (args: string[]) => {
 };
 
 const runProcess = async (command: string, args: string[], cwd?: string) => {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<{stdout: string; stderr: string}>((resolve, reject) => {
         const proc = spawn(command, args, {
             cwd,
             env: {
@@ -818,13 +818,61 @@ const runProcess = async (command: string, args: string[], cwd?: string) => {
         });
         proc.on("error", reject);
         proc.on("close", code => {
+            const combined = stderr + "\n" + stdout;
             if (code === 0) {
-                resolve();
+                if (/Error during video processing|Traceback \(most recent call last\)|CUDA out of memory|RuntimeError:/i.test(combined)) {
+                    reject(new Error(combined.slice(-1600) || "VSR/STTN 内部处理失败"));
+                    return;
+                }
+                resolve({stdout, stderr});
                 return;
             }
-            reject(new Error((stderr || stdout).slice(-1600) || `${command} exited with ${code}`));
+            reject(new Error((stderr || stdout).slice(-1600) || (command + " exited with " + code)));
         });
     });
+};
+
+const tryMuxOriginalAudio = async (input: string, repaired: string, keepAudio?: boolean) => {
+    const output = await Files.temp("mp4", keepAudio === false ? "watermark-vsr-sttn-muted" : "watermark-vsr-sttn-audio");
+    const args = keepAudio === false
+        ? [
+            "-y",
+            "-i",
+            repaired,
+            "-map",
+            "0:v:0",
+            "-c:v",
+            "copy",
+            "-an",
+            "-movflags",
+            "+faststart",
+            output,
+        ]
+        : [
+            "-y",
+            "-i",
+            repaired,
+            "-i",
+            input,
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a?",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "copy",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            output,
+        ];
+    try {
+        await runFfmpeg(args);
+        return fs.existsSync(output) ? output : repaired;
+    } catch {
+        return repaired;
+    }
 };
 
 const repairVideoByVsr = async (payload: VideoRepairPayload, width: number, height: number) => {
@@ -846,18 +894,35 @@ const repairVideoByVsr = async (payload: VideoRepairPayload, width: number, heig
     const masks = (payload.masks || []).filter(mask => mask.width > 0 && mask.height > 0);
     masks.forEach(mask => {
         const boxPixelSize = Math.max((mask.width / 100) * width, (mask.height / 100) * height);
-        const padding = Math.max(4, Number(mask.padding ?? mask.feather ?? 8), Math.round(boxPixelSize * 0.08));
-        const x1 = Math.round(clamp(Math.floor((mask.x / 100) * width - padding), 0, width - 2));
-        const y1 = Math.round(clamp(Math.floor((mask.y / 100) * height - padding), 0, height - 2));
-        const x2 = Math.round(clamp(Math.ceil(((mask.x + mask.width) / 100) * width + padding), x1 + 1, width - 1));
-        const y2 = Math.round(clamp(Math.ceil(((mask.y + mask.height) / 100) * height + padding), y1 + 1, height - 1));
+        const basePadding = Number(mask.padding ?? mask.feather ?? 12);
+        const padding = Math.max(24, basePadding * 4, Math.round(boxPixelSize * 0.26));
+        const nearRight = mask.x + mask.width >= 94;
+        const nearBottom = mask.y + mask.height >= 94;
+        const nearLeft = mask.x <= 6;
+        const nearTop = mask.y <= 6;
+        const rawX1 = Math.floor((mask.x / 100) * width - padding);
+        const rawY1 = Math.floor((mask.y / 100) * height - padding);
+        const rawX2 = Math.ceil(((mask.x + mask.width) / 100) * width + padding);
+        const rawY2 = Math.ceil(((mask.y + mask.height) / 100) * height + padding);
+        const x1 = Math.round(nearLeft ? 0 : clamp(rawX1, 0, width - 2));
+        const y1 = Math.round(nearTop ? 0 : clamp(rawY1, 0, height - 2));
+        const x2 = Math.round(nearRight ? width - 1 : clamp(rawX2, x1 + 1, width - 1));
+        const y2 = Math.round(nearBottom ? height - 1 : clamp(rawY2, y1 + 1, height - 1));
         args.push("-c", String(y1), String(y2), String(x1), String(x2));
     });
-    await runProcess(pythonPath, args, vsrRoot);
+    try {
+        await runProcess(pythonPath, args, vsrRoot);
+    } catch (e) {
+        const message = String((e as Error).message || e);
+        const audioOnlyFailure = /Audio extraction failed|FailToExtractAudio|FailToMergeAudio|Output saved to|Subtitles removed|Completed/i.test(message);
+        if (!fs.existsSync(output) || !audioOnlyFailure) {
+            throw e;
+        }
+    }
     if (!fs.existsSync(output)) {
         throw new Error("VSR/STTN 修复完成但未生成输出文件");
     }
-    return output;
+    return await tryMuxOriginalAudio(payload.input, output, payload.keepAudio);
 };
 
 const repairVideo = async (payload: VideoRepairPayload) => {

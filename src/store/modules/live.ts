@@ -221,7 +221,7 @@ export const liveStore = defineStore("live", {
         // 记录最近发送的消息，用于防回声（避免抓取自己发送的消息）
         recentSentMessages: [] as {text: string, time: number}[],
         // 播报队列系统
-        replyQueue: [] as { username: string; text: string; eventType: string; doVoice: boolean; doText: boolean }[],
+        replyQueue: [] as { username: string; text: string; eventType: string; doVoice: boolean; doText: boolean; clipId?: number }[],
         isSpeaking: false, // 标记当前是否正在播报语音
         pendingTalkWaiters: [] as { resolve: () => void; timer: any }[],
         engineActionListenerBound: false,
@@ -490,7 +490,7 @@ export const liveStore = defineStore("live", {
             return !!this.localConfig.video.enable || (this.localConfig.config.engineMode === "local" && this.hasScenePackPlaybackVideo());
         },
         buildScenePackFlowOverrides() {
-            if (this.localConfig.config.engineMode !== "local" || !this.hasScenePackSelected()) {
+            if (this.localConfig.config.engineMode !== "local" || (!this.hasScenePackSelected() && !Number(this.scenePackRuntime.currentClipId || 0))) {
                 return null;
             }
             const videoUrl = this.scenePackCurrentVideoUrl();
@@ -635,6 +635,31 @@ export const liveStore = defineStore("live", {
             await this.syncScenePackExecution({
                 silent: true,
             });
+            return true;
+        },
+        async playDigitalHumanClip(clipId: number, option: { silent?: boolean } = {}) {
+            const record = await DigitalHumanClipService.get(Number(clipId || 0));
+            if (!record?.id) {
+                if (!option.silent) {
+                    Dialog.tipError("片段不存在或已被删除");
+                }
+                return false;
+            }
+            this.clearScenePackReturnTimer();
+            this.applySceneClip(record);
+            if (this.status !== "running") {
+                return true;
+            }
+            if (this.localConfig.config.engineMode === "local") {
+                return await this.syncLocalSceneExecution({
+                    silent: option.silent ?? true,
+                });
+            }
+            if (this.localConfig.config.engineMode === "cloud") {
+                return await this.syncCloudSceneExecution({
+                    silent: option.silent ?? true,
+                });
+            }
             return true;
         },
         async returnToIdleClip(option: { silent?: boolean } = {}) {
@@ -2304,6 +2329,7 @@ export const liveStore = defineStore("live", {
                     }
                     
                     let finalReplyText = "";
+                    let matchedClipId = 0;
 
                     if (eventType === "Comment") {
                         // 匹配知识库逻辑
@@ -2315,6 +2341,7 @@ export const liveStore = defineStore("live", {
                                 for (const keyword of keywords) {
                                     if (keyword.trim() && content.includes(keyword.trim())) {
                                         matchedReply = record.content.reply;
+                                        matchedClipId = Number(record.content.clipId || 0);
                                         break;
                                     }
                                 }
@@ -2448,7 +2475,8 @@ export const liveStore = defineStore("live", {
                             text: finalReplyText,
                             eventType,
                             doVoice,
-                            doText
+                            doText,
+                            clipId: matchedClipId || undefined,
                         });
                         
                         this.processReplyQueue();
@@ -2496,7 +2524,17 @@ export const liveStore = defineStore("live", {
 
             // 2. 处理语音播报 (需要等待播放完毕)
             if (task.doVoice) {
-                if (this.localConfig.config.engineMode === 'local' && this.server) {
+                if (task.clipId) {
+                    const sent = await this.playDigitalHumanClip(task.clipId, {silent: true});
+                    if (sent) {
+                        const durationMs = Math.max(1500, Number(this.scenePackRuntime.currentClipDurationSeconds || 0) * 1000 || 3000);
+                        if (this.localConfig.config.engineMode === 'local' && this.server) {
+                            await this.waitLocalTalkDone(durationMs + 5000);
+                        } else {
+                            await new Promise(resolve => setTimeout(resolve, durationMs));
+                        }
+                    }
+                } else if (this.localConfig.config.engineMode === 'local' && this.server) {
                     const sent = await this.talk(task.text, {silent: true});
                     if (sent) {
                         await this.waitLocalTalkDone();

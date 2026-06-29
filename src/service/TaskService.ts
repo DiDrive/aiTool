@@ -23,7 +23,9 @@ export type TaskBiz =
     // direct model APIs
     | "DirectApiTask"
     // marketing video orchestration
-    | "MarketingVideoChainTask";
+    | "MarketingVideoChainTask"
+    // digital human live clip orchestration
+    | "DigitalHumanClipChainTask";
 
 export type TaskJobResultStepStatus = undefined | "queue" | "pending" | "running" | "success" | "fail";
 

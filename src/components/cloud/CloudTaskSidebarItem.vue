@@ -13,7 +13,7 @@ import {
     DigitalHumanDisplayMode,
 } from "../../service/DigitalHumanClipService";
 import { DigitalHumanIdentityRecord, DigitalHumanIdentityService } from "../../service/DigitalHumanIdentityService";
-import { TaskRecord } from "../../service/TaskService";
+import { TaskRecord, TaskService } from "../../service/TaskService";
 import { doSaveFile } from "../common/util";
 
 type DisplayStatus = "queue" | "running" | "success" | "fail";
@@ -109,6 +109,16 @@ const extractUrlName = (url: string) => {
     }
 };
 
+const ensureFileExt = (name: string, ext: string) => {
+    const cleanExt = ext.replace(/^\./, "");
+    const base = String(name || "output").trim() || "output";
+    const suffix = "." + cleanExt;
+    if (base.toLowerCase().endsWith(suffix.toLowerCase())) {
+        return base;
+    }
+    return base.replace(/\.[^.]*$/, "") + suffix;
+};
+
 const outputItems = computed<OutputItem[]>(() => {
     const localFiles = Array.isArray((props.record as any)?.jobResult?.End?.localFiles)
         ? (props.record as any).jobResult.End.localFiles
@@ -122,12 +132,16 @@ const outputItems = computed<OutputItem[]>(() => {
         if (!file) {
             return;
         }
+        const remote = remoteResults[index] || {};
+        const remoteUrl = String(remote?.url || remote?.fileUrl || remote?.video_url || remote?.videoUrl || "").trim();
+        const remoteOutputType = String(remote?.outputType || remote?.type || "").toLowerCase();
+        const useRemoteVideo = /^https?:\/\//i.test(remoteUrl) && (remoteOutputType.includes("video") || getOutputType(remoteUrl) === "video");
         items.push({
-            key: `local-${index}`,
-            name: window.$mapi.file.pathToName(file, true, 48),
-            url: file,
-            isLocal: true,
-            type: getOutputType(file),
+            key: "local-" + index,
+            name: useRemoteVideo ? extractUrlName(remoteUrl) : window.$mapi.file.pathToName(file, true, 48),
+            url: useRemoteVideo ? remoteUrl : file,
+            isLocal: !useRemoteVideo,
+            type: useRemoteVideo ? "video" : getOutputType(file),
         });
     });
 
@@ -229,6 +243,39 @@ const supportedToolTask = computed(() => {
     );
 });
 
+const isKwjmTask = computed(() => {
+    const config = (props.record as any)?.modelConfig || {};
+    const body = String(config?.requestBodyJson || "").toLowerCase();
+    return config?.providerType === "kwjm" || body.includes("kw-video-v2");
+});
+
+const remoteVideoUrl = computed(() => {
+    const remoteResults = Array.isArray((props.record as any)?.jobResult?.Query?.results)
+        ? (props.record as any).jobResult.Query.results
+        : [];
+    for (const item of remoteResults) {
+        const url = String(item?.url || item?.fileUrl || item?.video_url || item?.videoUrl || "").trim();
+        if (!/^https?:\/\//i.test(url)) {
+            continue;
+        }
+        const outputType = String(item?.outputType || item?.type || "").toLowerCase();
+        if (outputType.includes("video") || getOutputType(url) === "video") {
+            return url;
+        }
+    }
+    return "";
+});
+
+const canEraseSubtitle = computed(() => {
+    return Boolean(
+        props.displayStatus === "success" &&
+            isKwjmTask.value &&
+            remoteVideoUrl.value
+    );
+});
+
+const showTaskActions = computed(() => supportedToolTask.value || canEraseSubtitle.value);
+
 const canDeleteTask = computed(() => {
     return props.displayStatus === "success" || props.displayStatus === "fail";
 });
@@ -293,21 +340,23 @@ const downloadOutput = async (item: OutputItem) => {
     }
     try {
         downloadingKey.value = item.key;
+        const defaultName = item.type === "video" ? ensureFileExt(item.name || "video", "mp4") : item.name;
         if (/^data:/i.test(item.url)) {
             const link = document.createElement("a");
             link.href = item.url;
-            link.download = item.name || "output";
+            link.download = defaultName || item.name || "output";
             link.click();
             return;
         }
         if (item.isLocal) {
-            await doSaveFile(item.url);
+            await doSaveFile(item.url, defaultName);
             return;
         }
         Dialog.loadingOn("正在准备下载...");
-        const downloaded = await window.$mapi.file.download(item.url);
+        const downloadPath = item.type === "video" ? await window.$mapi.file.temp("mp4", "download") : null;
+        const downloaded = await window.$mapi.file.download(item.url, downloadPath);
         Dialog.loadingOff();
-        await doSaveFile(downloaded);
+        await doSaveFile(downloaded, defaultName);
     } catch (e: any) {
         Dialog.loadingOff();
         Dialog.tipError(String(e?.message || e || "下载失败"));
@@ -383,6 +432,70 @@ const saveAsClip = async () => {
         Dialog.tipError(String(e?.message || e || "保存直播片段失败"));
     } finally {
         savingClip.value = false;
+    }
+};
+
+const kwjmEraseModel = () => {
+    const requestBodyJson = String((props.record as any)?.modelConfig?.requestBodyJson || "{}");
+    try {
+        const body = JSON.parse(requestBodyJson);
+        return String(body?.model || "").includes("fast") ? "kw-video-v2-fast" : "kw-video-v2";
+    } catch (e) {
+        return requestBodyJson.includes("fast") ? "kw-video-v2-fast" : "kw-video-v2";
+    }
+};
+
+const submitSubtitleErase = async () => {
+    const videoUrl = remoteVideoUrl.value;
+    if (!videoUrl) {
+        Dialog.tipError("当前任务没有可用于字幕擦除的远程视频 URL");
+        return;
+    }
+    const sourceConfig = ((props.record as any)?.modelConfig || {}) as any;
+    if (!sourceConfig?.baseUrl || !sourceConfig?.apiKey) {
+        Dialog.tipError("原任务缺少 KWJM 平台配置，无法提交字幕擦除");
+        return;
+    }
+    try {
+        const body = {
+            model: kwjmEraseModel(),
+            video_url: videoUrl,
+        };
+        const record: TaskRecord = {
+            biz: "DirectApiTask",
+            title: String(props.record.title || "视频").slice(0, 28) + "_字幕擦除_" + new Date().toLocaleString(),
+            serverName: "",
+            serverTitle: "",
+            serverVersion: "",
+            modelConfig: {
+                capability: "video",
+                connectorType: "custom-api",
+                providerType: sourceConfig.providerType || "kwjm",
+                providerProfileId: sourceConfig.providerProfileId,
+                providerProfileTitle: sourceConfig.providerProfileTitle || "KWJM",
+                templateTitle: "KWJM 字幕擦除",
+                templateType: "custom-api",
+                baseUrl: sourceConfig.baseUrl,
+                apiKey: sourceConfig.apiKey,
+                proxyUrl: sourceConfig.proxyUrl || "",
+                submitPath: "/v3/tools/erase-video-subtitle",
+                queryPath: "/v3/tools/tasks/{id}",
+                requestBodyJson: JSON.stringify(body, null, 2),
+                requestFormat: "json",
+            },
+            param: {
+                input: {
+                    source: "CloudTaskSidebarItem",
+                    sourceTaskId: props.record.id,
+                    videoUrl,
+                    model: body.model,
+                },
+            },
+        };
+        await TaskService.submit(record);
+        Dialog.tipSuccess("已提交字幕擦除任务");
+    } catch (e: any) {
+        Dialog.tipError(String(e?.message || e || "提交字幕擦除失败"));
     }
 };
 </script>
@@ -486,10 +599,11 @@ const saveAsClip = async () => {
                 <span v-if="outputItems.length === 0" class="text-xs text-gray-300">-</span>
             </div>
 
-            <div v-if="supportedToolTask" class="text-xs font-medium text-gray-400">操作</div>
-            <div v-if="supportedToolTask" class="min-w-0 flex flex-wrap gap-2">
-                <a-button size="mini" type="outline" @click="emit('edit-task', record)">重新编辑</a-button>
-                <a-button size="mini" type="outline" @click="emit('regenerate-task', record)">再次生成</a-button>
+            <div v-if="showTaskActions" class="text-xs font-medium text-gray-400">操作</div>
+            <div v-if="showTaskActions" class="min-w-0 flex flex-wrap gap-2">
+                <a-button v-if="canEraseSubtitle" size="mini" type="outline" @click="submitSubtitleErase">字幕擦除</a-button>
+                <a-button v-if="supportedToolTask" size="mini" type="outline" @click="emit('edit-task', record)">重新编辑</a-button>
+                <a-button v-if="supportedToolTask" size="mini" type="outline" @click="emit('regenerate-task', record)">再次生成</a-button>
             </div>
 
             <div v-if="canDeleteTask" class="text-xs font-medium text-gray-400">管理</div>

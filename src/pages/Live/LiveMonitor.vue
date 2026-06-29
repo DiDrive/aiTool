@@ -581,7 +581,7 @@ onUnmounted(() => {
                                 刷新方案
                             </a-button>
                         </div>
-                        <div class="mt-4 grid grid-cols-[minmax(260px,340px)_minmax(0,1fr)] gap-4 max-[1120px]:grid-cols-1">
+                        <div class="mt-4 grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-4">
                             <div class="rounded-2xl bg-slate-50 px-4 py-4">
                                 <div class="text-xs text-slate-500 mb-2">编排方案</div>
                                 <a-select v-model="selectedScenePackId" placeholder="请选择编排方案" @change="doActivateScenePack">

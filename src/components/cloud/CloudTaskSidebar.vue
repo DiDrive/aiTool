@@ -150,6 +150,61 @@ const buildSeedanceContentItem = (type: string, url: string, role: string) => {
     };
 };
 
+const seedanceReferenceUrlOf = (item: any) => {
+    if (!item || !["reference_image", "reference_video", "reference_audio"].includes(String(item.role || ""))) {
+        return "";
+    }
+    return String(item?.[item.type]?.url || "").trim();
+};
+
+const seedanceMentionLabelOf = (type: string, index: number) => {
+    if (type === "image") {
+        return `参考图${index + 1}`;
+    }
+    if (type === "video") {
+        return `参考视频${index + 1}`;
+    }
+    return `参考音频${index + 1}`;
+};
+
+const splitSeedanceSpeechFromVisualText = (value: string) => {
+    const speeches: string[] = [];
+    const visualText = value.replace(/(说|说道|喊|念|口播|对白|台词)[：:]\s*([^。！？；;\n]+[。！？]?)/g, (_match, verb, line) => {
+        const index = speeches.length + 1;
+        speeches.push(String(line || "").trim());
+        return `${verb}台词${index}`;
+    });
+    return { visualText, speeches };
+};
+
+const buildSeedancePromptText = (prompt: string, selectedAssets: any[]) => {
+    let text = String(prompt || "").trim();
+    if (!selectedAssets.length) {
+        return text.replace(/@\S+/g, "").trim();
+    }
+    const legend = selectedAssets.map((asset, index) => {
+        const url = String(asset?.url || "");
+        const type = String(asset?.type || "");
+        const label = seedanceMentionLabelOf(type, index);
+        text = text.split(mentionTokenOfPath(url)).join(`「${label}」`);
+        return `${label} = ${type === "video" ? "视频" : type === "audio" ? "音频" : "图片"}「${shortPathName(url)}」`;
+    });
+    text = text.replace(/@\S+/g, "").replace(/\s{2,}/g, " ").trim();
+    const speechSplit = splitSeedanceSpeechFromVisualText(text);
+    const speechLines = speechSplit.speeches.map((line, index) => `台词${index + 1}：「${line}」`);
+    return [
+        "参考素材绑定（必须严格遵守，不要互换、融合或串用）：",
+        ...legend,
+        "生成时凡是提到某个参考素材编号，只能使用该编号对应素材的身份、外观、服装、车辆、场景或动作信息；多个角色同时出现时，必须分别保持各自参考图的人物身份，不要把一个角色的脸、身体或服装套到另一个角色身上。",
+        "台词、字幕或对白中的姓名、自称、品牌名只作为口播文本，不得据此改变参考素材绑定的人物身份或长相；如果台词姓名与参考素材外观冲突，必须以参考素材外观为准。",
+        "画面身份优先级最高：视觉外观只来自参考素材编号和画面动作描述；禁止因为台词里出现名人姓名而生成该名人的脸。",
+        "",
+        "画面/动作要求（只决定画面，不把台词里的姓名当作人物身份）：",
+        speechSplit.visualText,
+        ...(speechLines.length ? ["", "口播/字幕要求（只决定嘴型、字幕和声音，不参与人物外观身份）：", ...speechLines] : []),
+    ].filter(Boolean).join("\n");
+};
+
 const normalizeSeedanceClone = (cloned: TaskRecord) => {
     const config = (cloned as any)?.modelConfig;
     const bodyText = String(config?.requestBodyJson || "");
@@ -170,12 +225,12 @@ const normalizeSeedanceClone = (cloned: TaskRecord) => {
             return;
         }
         const prompt = String(input.prompt || "");
-        const cleanPrompt = prompt.replace(/@\S+/g, "").trim();
         const content: any[] = [];
-        if (cleanPrompt) {
-            content.push({ type: "text", text: cleanPrompt });
-        }
         if (input.mode === "frames") {
+            const cleanPrompt = prompt.replace(/@\S+/g, "").trim();
+            if (cleanPrompt) {
+                content.push({ type: "text", text: cleanPrompt });
+            }
             if (input.firstFrame) {
                 content.push(buildSeedanceContentItem("image", String(input.firstFrame), "first_frame"));
             }
@@ -184,10 +239,21 @@ const normalizeSeedanceClone = (cloned: TaskRecord) => {
             }
         } else {
             const assets = Array.isArray(input.assets) ? input.assets : [];
-            for (const asset of assets) {
+            const selectedIds = new Set(Array.isArray(input.mentionAssetIds) ? input.mentionAssetIds.map((item: any) => String(item)) : []);
+            const referencedUrls = new Set((Array.isArray(body.content) ? body.content : []).map(seedanceReferenceUrlOf).filter(Boolean));
+            const selectedAssets = assets.filter((asset: any) => {
+                const url = String(asset?.url || "").trim();
+                const id = String(asset?.id || "");
+                return url && ((selectedIds.size > 0 && selectedIds.has(id)) || (selectedIds.size === 0 && referencedUrls.size > 0 && referencedUrls.has(url)));
+            });
+            const cleanPrompt = buildSeedancePromptText(prompt, selectedAssets);
+            if (cleanPrompt) {
+                content.push({ type: "text", text: cleanPrompt });
+            }
+            for (const asset of selectedAssets) {
                 const url = String(asset?.url || "").trim();
                 const type = String(asset?.type || "");
-                if (url && prompt.includes(mentionTokenOfPath(url))) {
+                if (url && type) {
                     content.push(buildSeedanceContentItem(type, url, type === "image" ? "reference_image" : type === "video" ? "reference_video" : "reference_audio"));
                 }
             }

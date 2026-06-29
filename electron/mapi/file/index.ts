@@ -9,6 +9,7 @@ import {AppEnv, waitAppEnvReady} from "../env";
 import {Log} from "../log";
 import electron from "electron";
 import {finished} from "stream/promises";
+import {rememberExternalUninstallDataRoot} from "../uninstallDataRoots";
 
 const nodePath = path;
 
@@ -523,6 +524,7 @@ const hubRoot = async (): Promise<string> => {
     if (!fs.existsSync(hubDir)) {
         fs.mkdirSync(hubDir, {recursive: true});
     }
+    rememberExternalUninstallDataRoot(hubDir);
     return hubDir;
 };
 

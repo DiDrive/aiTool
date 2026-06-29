@@ -13,10 +13,10 @@ export const doCopy = async (text: string | object, successTip: string = ""): Pr
     Dialog.tipSuccess(successTip);
 };
 
-export const doSaveFile = async (filePath: string) => {
+export const doSaveFile = async (filePath: string, defaultName = "") => {
     try {
         const options: any = {
-            defaultPath: window.$mapi.file.pathToName(filePath, true, -1),
+            defaultPath: defaultName || window.$mapi.file.pathToName(filePath, true, -1),
         };
         const savePath = await window.$mapi.file.openSave(options);
         if (savePath) {

@@ -3,6 +3,7 @@ import {AppEnv} from "../env";
 import fs from "node:fs";
 import {ipcMain} from "electron";
 import {Events} from "../event/main";
+import {rememberExternalUninstallDataRoot} from "../uninstallDataRoots";
 
 let data = null;
 let dataEnv = {};
@@ -60,6 +61,9 @@ const set = async (key: string, value: any) => {
     loadIfNeed();
     data[key] = value;
     save();
+    if (key === "hubRoot") {
+        rememberExternalUninstallDataRoot(value);
+    }
 };
 
 const allEnv = async () => {
