@@ -1,4 +1,6 @@
 import { FileUtil } from "../../../lib/file";
+import { ffmpegBurnSrtSubtitle, ffmpegRenderTimelineClips, VideoTimelineClip } from "../../../lib/ffmpeg";
+import { subtitleGenerateSrtContent } from "../../../lib/subtitle";
 import { CloudTemplateTaskService } from "../../../service/CloudTemplateTaskService";
 import { CloudTemplateRecord, CloudTemplateService } from "../../../service/CloudTemplateService";
 import { DirectApiPlatformService } from "../../../service/DirectApiPlatformService";
@@ -9,6 +11,7 @@ import { RunningHubModelConfigType } from "../RunningHubStudio/type";
 
 type MarketingChannel = "direct" | "cloud";
 type VideoReferenceRole = "reference_image" | "first_frame";
+type StoryboardImageMode = "single_frame" | "scene_grid";
 type NarrationMode = "none" | "voiceover" | "character";
 type SubtitleMode = "none" | "caption";
 type MarketingAssetType = "character" | "scene" | "prop";
@@ -68,6 +71,7 @@ type MarketingChainParam = {
         ratio: string;
         videoModel?: string;
         videoReferenceRole?: VideoReferenceRole;
+        storyboardImageMode?: StoryboardImageMode;
     };
     referenceImageUrls?: string[];
     marketingAssets?: MarketingAssetRef[];
@@ -181,6 +185,42 @@ const normalizeSeedanceLocalImage = async (value: string) => {
 
 const isImageOutput = (value: string) => {
     return /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(value) || /^data:image\//i.test(value);
+};
+
+const isZipOutput = (value: string) => {
+    return /\.zip(\?.*)?$/i.test(String(value || "").trim());
+};
+
+const isVideoOutput = (value: string) => {
+    return /\.(mp4|mov|webm|avi|mkv|m4v)(\?.*)?$/i.test(value) || /^data:video\//i.test(value);
+};
+
+const bytesFromBufferLike = (value: any) => {
+    if (!value) {
+        return new Uint8Array();
+    }
+    if (value instanceof Uint8Array) {
+        return value;
+    }
+    if (value instanceof ArrayBuffer) {
+        return new Uint8Array(value);
+    }
+    if (Array.isArray(value)) {
+        return new Uint8Array(value);
+    }
+    if (value?.buffer instanceof ArrayBuffer) {
+        return new Uint8Array(value.buffer, value.byteOffset || 0, value.byteLength || value.buffer.byteLength);
+    }
+    return new Uint8Array();
+};
+
+const fileLooksLikeZip = async (path: string) => {
+    try {
+        const bytes = bytesFromBufferLike(await window.$mapi.file.readBuffer(path));
+        return bytes[0] === 0x50 && bytes[1] === 0x4b;
+    } catch (e) {
+        return false;
+    }
 };
 
 const isLocalImagePath = (value: string) => {
@@ -331,14 +371,20 @@ const valueForCloudField = (
     field: any,
     capability: "image" | "video",
     base: Record<string, any>,
-    assets: MarketingAssetRef[]
+    assets: MarketingAssetRef[],
+    fieldIndex = 0
 ) => {
     const characterAssets = assetUrlsByType(assets, "character");
     const sceneAssets = assetUrlsByType(assets, "scene");
     const propAssets = assetUrlsByType(assets, "prop");
     const allAssets = assets.map(item => item.url).filter(Boolean);
     const wantsArray = ["images", "audios", "videos", "files"].includes(String(field?.type || ""));
-    const choose = (items: string[]) => wantsArray ? items : items[0] || "";
+    const choose = (items: string[]) => {
+        if (wantsArray) {
+            return items;
+        }
+        return items[fieldIndex] || items[0] || "";
+    };
     if (fieldLooksLike(field, ["negative", "反向", "负面"])) return base.negativePrompt || field.defaultValue || "";
     if (fieldLooksLike(field, ["文生/图生", "文生图生", "打开是文生"])) return defaultCloudFieldValue(field, "false");
     if (fieldLooksLike(field, ["count", "number", "数量", "张数", "个数"])) return defaultCloudFieldValue(field, 1);
@@ -399,12 +445,15 @@ const buildCloudMarketingInput = (
         template,
         CloudTemplateTaskService.parseInputSchema(template.content.inputSchemaJson || "[]")
     );
+    let fileFieldIndex = 0;
     schemaFields.forEach(field => {
         const key = String(field.name || "").trim();
         if (!key) {
             return;
         }
-        input[key] = valueForCloudField(field, capability, base, assets);
+        const type = String(field?.type || "");
+        const index = ["image", "file", "video", "audio"].includes(type) ? fileFieldIndex++ : 0;
+        input[key] = valueForCloudField(field, capability, base, assets, index);
     });
     const missingRequiredFiles = schemaFields.filter(field => {
         const key = String(field.name || "").trim();
@@ -480,12 +529,49 @@ const collectStringValues = (value: any, result: string[] = []) => {
     return result;
 };
 
+const looksLikeImageOrZipOutputUrl = (value: string) => {
+    const text = String(value || "").trim();
+    if (!text) {
+        return false;
+    }
+    if (isImageOutput(text) || isZipOutput(text)) {
+        return true;
+    }
+    if (!/^(https?:\/\/|file:\/\/|[a-z]:\\|\/)/i.test(text)) {
+        return false;
+    }
+    return !/\.(mp4|mov|webm|avi|mp3|wav|m4a|aac|json|txt)(\?.*)?$/i.test(text);
+};
+
+const collectImageOutputCandidates = (value: any, path = "", result: Array<{ value: string; score: number }> = []) => {
+    if (!value) {
+        return result;
+    }
+    if (typeof value === "string") {
+        const text = value.trim();
+        if (looksLikeImageOrZipOutputUrl(text)) {
+            const keyScore = /(image|img|fileurl|file_url|url|output|result|remote|local|cover)/i.test(path) ? 3 : 0;
+            result.push({ value: text, score: (isImageOutput(text) ? 10 : isZipOutput(text) ? 8 : 1) + keyScore });
+        }
+        return result;
+    }
+    if (Array.isArray(value)) {
+        value.forEach((item, index) => collectImageOutputCandidates(item, `${path}.${index}`, result));
+        return result;
+    }
+    if (typeof value === "object") {
+        Object.entries(value).forEach(([key, item]) => collectImageOutputCandidates(item, path ? `${path}.${key}` : key, result));
+    }
+    return result;
+};
+
 const extractTaskOutputImage = (task: TaskRecord | null) => {
     if (!task) {
         return "";
     }
     const preferred = [
         ...(Array.isArray(task.result?.localFiles) ? task.result.localFiles : []),
+        ...(Array.isArray(task.jobResult?.End?.localFiles) ? task.jobResult.End.localFiles : []),
         task.result?.image,
         task.result?.url,
         ...(Array.isArray(task.result?.urls) ? task.result.urls : []),
@@ -493,19 +579,139 @@ const extractTaskOutputImage = (task: TaskRecord | null) => {
     ]
         .map(item => String(item || "").trim())
         .filter(Boolean);
-    return preferred.find(isImageOutput) || preferred[0] || collectStringValues(task.result?.remoteResults || task.jobResult?.Query?.results || []).find(isImageOutput) || "";
+    const strictImage = preferred.find(isImageOutput) || collectStringValues(task.result?.remoteResults || task.jobResult?.Query?.results || []).find(isImageOutput) || "";
+    if (strictImage) {
+        return strictImage;
+    }
+    const zipOutput = preferred.find(isZipOutput) || collectStringValues(task.result?.remoteResults || task.jobResult?.Query?.results || []).find(isZipOutput) || "";
+    if (zipOutput) {
+        return zipOutput;
+    }
+    const candidates = collectImageOutputCandidates({
+        result: task.result,
+        jobResult: task.jobResult,
+    }).sort((a, b) => b.score - a.score);
+    return candidates[0]?.value || preferred[0] || "";
+};
+
+const resolveZipImageOutput = async (value: string) => {
+    let zipPath = value;
+    if (/^https?:\/\//i.test(zipPath)) {
+        zipPath = await window.$mapi.file.download(zipPath);
+    }
+    const dest = await window.$mapi.file.tempDir("marketing-chain-image-output");
+    await window.$mapi.misc.unzip(zipPath, dest);
+    const files = await window.$mapi.file.listAll(dest);
+    const imageFile = files
+        .filter(item => !item.isDirectory && isImageOutput(String(item.path || item.name || "")))
+        .sort((a, b) => {
+            const aName = String(a.path || a.name || "");
+            const bName = String(b.path || b.name || "");
+            const score = (name: string) => {
+                if (/(^|\/)(result|output|outputs|save|generated|image|000|001)/i.test(name)) {
+                    return 0;
+                }
+                if (/(^|\/)(input|source|upload|reference|mask|thumb|preview|cover)/i.test(name)) {
+                    return 2;
+                }
+                return 1;
+            };
+            return score(aName) - score(bName) || Number(b.size || 0) - Number(a.size || 0) || aName.localeCompare(bName);
+        })[0];
+    if (!imageFile) {
+        throw new Error("图片任务产物是压缩包，但压缩包里没有找到可用图片");
+    }
+    return `${dest}/${String(imageFile.path || imageFile.name || "").replace(/^\/+/, "")}`;
+};
+
+const resolveTaskOutputImage = async (value: string) => {
+    if (!value) {
+        return "";
+    }
+    if (isZipOutput(value)) {
+        return await resolveZipImageOutput(value);
+    }
+    if (!isImageOutput(value) && /^(https?:\/\/|[a-z]:\\|\/)/i.test(value)) {
+        let localPath = value;
+        if (/^https?:\/\//i.test(localPath)) {
+            localPath = await window.$mapi.file.download(localPath);
+        }
+        if (await fileLooksLikeZip(localPath)) {
+            return await resolveZipImageOutput(localPath);
+        }
+        return localPath;
+    }
+    return value;
+};
+
+const extractTaskOutputVideo = (task: TaskRecord | null) => {
+    if (!task) {
+        return "";
+    }
+    const preferred = [
+        ...(Array.isArray(task.result?.localFiles) ? task.result.localFiles : []),
+        task.result?.video,
+        task.result?.url,
+        ...(Array.isArray(task.result?.urls) ? task.result.urls : []),
+        ...(Array.isArray(task.result?.remoteUrls) ? task.result.remoteUrls : []),
+        ...(Array.isArray(task.jobResult?.End?.localFiles) ? task.jobResult.End.localFiles : []),
+    ]
+        .map(item => String(item || "").trim())
+        .filter(Boolean);
+    return preferred.find(isVideoOutput) || collectStringValues(task.result?.remoteResults || task.jobResult?.Query?.results || []).find(isVideoOutput) || "";
+};
+
+const ensureLocalVideoFile = async (value: string) => {
+    const text = String(value || "").trim();
+    if (!text) {
+        return "";
+    }
+    if (/^https?:\/\//i.test(text)) {
+        return await window.$mapi.file.download(text);
+    }
+    return text;
+};
+
+const sceneGridCount = (scene: MarketingChainScene) => {
+    if (scene.duration >= 10) return 6;
+    if (scene.duration >= 7) return 4;
+    return 3;
+};
+
+const buildSceneImageModeInstruction = (param: MarketingChainParam, scene: MarketingChainScene) => {
+    const sceneIndex = param.draft.scenes.findIndex(item => item.id === scene.id);
+    const position = sceneIndex >= 0 ? `第 ${sceneIndex + 1}/${param.draft.scenes.length} 镜` : "当前镜头";
+    if (param.form.storyboardImageMode === "single_frame") {
+        return [
+            `分镜图模式：单张首帧。只生成${position}的一张竖屏首帧参考图。`,
+            "画面必须是一个完整单图，不要九宫格、不要拼贴、不要漫画分格、不要多个小画面。",
+            "首帧要清晰表达本镜开场动作、主体表情、场景和光线，适合后续作为视频首帧或参考图。",
+        ].join("\n");
+    }
+    const gridCount = sceneGridCount(scene);
+    return [
+        `分镜图模式：镜头动作宫格。只为${position}生成一张 ${gridCount} 宫格动作分镜板，不要包含其它镜头内容。`,
+        `这 ${gridCount} 个宫格必须按时间顺序展示本镜在 ${scene.duration} 秒内的关键动作变化：起始状态、动作推进、情绪/视线变化、结束姿态。`,
+        "所有宫格保持同一人物、同一服装、同一场景空间、同一光线方向和统一画风；每格构图略有变化但连续自然。",
+        "不要在画面中生成字幕、说明文字、编号、水印或 UI；宫格边界干净，竖屏 9:16 总画面可直接作为图生视频参考。",
+    ].join("\n");
 };
 
 const buildConsistentImagePrompt = (
+    param: MarketingChainParam,
     scene: MarketingChainScene,
     continuityReferenceImageUrl?: string,
     previousScene?: MarketingChainScene
 ) => {
+    const basePrompt = [
+        scene.imagePrompt,
+        buildSceneImageModeInstruction(param, scene),
+    ].filter(Boolean).join("\n\n");
     if (!continuityReferenceImageUrl) {
-        return scene.imagePrompt;
+        return basePrompt;
     }
     return [
-        scene.imagePrompt,
+        basePrompt,
         "参考上一分镜输入图保持同一短视频的主角、服装基调、光影质感和竖屏风格连续；当前画面按本镜提示重新构图，不照搬上一镜背景。",
         previousScene
             ? `上一镜仅作连续性参考：${previousScene.title}。`
@@ -603,7 +809,7 @@ const buildVideoPromptWithSpeech = (
     const subtitleInstruction =
         scene.subtitleMode === "none"
             ? "字幕要求：不要生成画面字幕、口播字幕、标题条或贴纸文字。"
-            : `字幕要求：画面字幕应与本镜台词一致；当前字幕：${caption || line || "无"}`;
+            : `字幕后期要求：本镜字幕文本为“${caption || line || "无"}”，但视频模型不要把任何字幕、标题条、贴纸文字或 UI 文本画进画面；字幕会在最终合成阶段由系统叠加。`;
     return [
         buildScenePositionInstruction(scene, sceneIndex, totalScenes),
         appendReferenceAnalysisToPrompt(scene.videoPrompt, analysis),
@@ -625,7 +831,7 @@ const submitDirectImageTask = async (
         throw new Error("请先配置可用的 GPT Image 2 平台");
     }
     const prompt = appendReferenceAnalysisToPrompt(
-        buildConsistentImagePrompt(scene, continuityReferenceImageUrl, previousScene),
+        buildConsistentImagePrompt(param, scene, continuityReferenceImageUrl, previousScene),
         param.draft.referenceAnalysis
     );
     const fullPrompt = [prompt, buildAssetReferenceInstruction(param, scene)].filter(Boolean).join("\n\n");
@@ -691,7 +897,7 @@ const submitCloudImageTask = async (
         throw new Error("云端生图模板不存在");
     }
     const prompt = appendReferenceAnalysisToPrompt(
-        buildConsistentImagePrompt(scene, continuityReferenceImageUrl, previousScene),
+        buildConsistentImagePrompt(param, scene, continuityReferenceImageUrl, previousScene),
         param.draft.referenceAnalysis
     );
     const fullPrompt = [prompt, buildAssetReferenceInstruction(param, scene)].filter(Boolean).join("\n\n");
@@ -914,10 +1120,11 @@ const advanceChain = async (bizId: string, bizParam?: Partial<MarketingChainPara
         if (imageTask?.status !== "success") {
             return "running";
         }
-        const imageUrl = extractTaskOutputImage(imageTask);
-        if (!imageUrl) {
+        const rawImageUrl = extractTaskOutputImage(imageTask);
+        if (!rawImageUrl) {
             throw new Error(`图片任务 #${state.imageTaskId} 已完成，但没有识别到图片产物`);
         }
+        const imageUrl = await resolveTaskOutputImage(rawImageUrl);
         state.referenceImageUrl = imageUrl;
         state.videoTaskId = Number(await submitVideoTask(param, scene, imageUrl));
         state.status = "video-submitted";
@@ -946,6 +1153,194 @@ export const MarketingVideoChainTask: TaskBiz = {
             endTime: Date.now(),
             result: {
                 message: "图生视频链路已完成，视频任务已全部提交",
+            },
+        });
+    },
+    failFunc: async (bizId, msg) => {
+        await TaskService.update(bizId, {
+            status: "fail",
+            statusMsg: msg,
+            endTime: Date.now(),
+        });
+    },
+};
+
+type MarketingFinalizeClip = {
+    sceneId: string;
+    title?: string;
+    videoTaskId?: number;
+    videoUrl?: string;
+    trimStart?: number;
+    trimEnd?: number;
+    speedRatio?: number;
+    targetDuration?: number;
+    subtitle?: string;
+};
+
+type MarketingFinalizeParam = {
+    draft: MarketingChainDraft;
+    clips: MarketingFinalizeClip[];
+    burnSubtitle?: boolean;
+    subtitleStyle?: {
+        fontName?: string;
+        fontSize?: number;
+        marginV?: number;
+    };
+};
+
+type MarketingFinalizeJobResult = {
+    step?: "Collect" | "Render" | "End";
+    clips?: Array<MarketingFinalizeClip & {
+        localVideo?: string;
+        actualStart?: number;
+        actualEnd?: number;
+    }>;
+    output?: string;
+    srt?: string;
+};
+
+const clipDurationSeconds = (clip: MarketingFinalizeClip) => {
+    const start = Math.max(0, Number(clip.trimStart || 0));
+    const end = Number(clip.trimEnd || 0);
+    const rawDuration = end > start ? end - start : Number(clip.targetDuration || 0);
+    const speed = Number(clip.speedRatio || 1) > 0 ? Number(clip.speedRatio || 1) : 1;
+    return Math.max(0.2, rawDuration / speed);
+};
+
+const buildFinalizeJobResult = (): MarketingFinalizeJobResult => ({
+    step: "Collect",
+    clips: [],
+});
+
+const resolveFinalizeParam = (record: TaskRecord, bizParam?: Partial<MarketingFinalizeParam>) => {
+    const param = ((record.param && Object.keys(record.param).length ? record.param : bizParam) || {}) as MarketingFinalizeParam;
+    if (!Array.isArray(param?.clips) || !param.clips.length) {
+        throw new Error("最终合成参数缺失：clips");
+    }
+    return param;
+};
+
+const collectFinalizeClipVideos = async (param: MarketingFinalizeParam) => {
+    const clips: MarketingFinalizeJobResult["clips"] = [];
+    for (const clip of param.clips) {
+        let videoUrl = String(clip.videoUrl || "").trim();
+        if (!videoUrl && clip.videoTaskId) {
+            const task = await TaskService.get(Number(clip.videoTaskId));
+            if (task?.status === "fail") {
+                throw new Error(task.statusMsg || `视频任务 #${clip.videoTaskId} 失败`);
+            }
+            if (task?.status !== "success") {
+                return { ready: false, clips };
+            }
+            videoUrl = extractTaskOutputVideo(task);
+        }
+        if (!videoUrl) {
+            throw new Error(`分镜「${clip.title || clip.sceneId}」没有可用视频产物`);
+        }
+        const localVideo = await ensureLocalVideoFile(videoUrl);
+        clips.push({
+            ...clip,
+            videoUrl,
+            localVideo,
+        });
+    }
+    return { ready: true, clips };
+};
+
+const renderFinalizeVideo = async (param: MarketingFinalizeParam, clips: NonNullable<MarketingFinalizeJobResult["clips"]>) => {
+    let cursor = 0;
+    const timelineClips: VideoTimelineClip[] = [];
+    const subtitleRecords: Array<{ start: number; end: number; text: string }> = [];
+    for (const clip of clips) {
+        const duration = clipDurationSeconds(clip);
+        clip.actualStart = cursor;
+        clip.actualEnd = cursor + duration;
+        timelineClips.push({
+            video: clip.localVideo || "",
+            trimStart: Math.max(0, Number(clip.trimStart || 0)),
+            trimEnd: Number(clip.trimEnd || 0) > 0 ? Number(clip.trimEnd || 0) : undefined,
+            speedRatio: Number(clip.speedRatio || 1),
+        });
+        const subtitle = String(clip.subtitle || "").trim();
+        if (subtitle) {
+            subtitleRecords.push({
+                start: Math.round(clip.actualStart * 1000),
+                end: Math.round(clip.actualEnd * 1000),
+                text: subtitle,
+            });
+        }
+        cursor = clip.actualEnd;
+    }
+    const rendered = await ffmpegRenderTimelineClips(timelineClips);
+    let srt = "";
+    let output = rendered;
+    if (subtitleRecords.length) {
+        srt = await window.$mapi.file.hubSaveContent(subtitleGenerateSrtContent(subtitleRecords), { ext: "srt" });
+        if (param.burnSubtitle !== false) {
+            output = await ffmpegBurnSrtSubtitle(rendered, srt, param.subtitleStyle || {});
+        }
+    }
+    return { output, srt, clips };
+};
+
+const advanceFinalize = async (bizId: string, bizParam?: Partial<MarketingFinalizeParam>) => {
+    const record = await TaskService.get(bizId);
+    if (!record) {
+        throw new Error("最终合成任务不存在");
+    }
+    const param = resolveFinalizeParam(record, bizParam);
+    const jobResult = (record.jobResult && Object.keys(record.jobResult).length ? record.jobResult : buildFinalizeJobResult()) as MarketingFinalizeJobResult;
+    if (jobResult.step === "End" && jobResult.output) {
+        return "success";
+    }
+    if (jobResult.step === "Collect") {
+        const collected = await collectFinalizeClipVideos(param);
+        jobResult.clips = collected.clips;
+        await TaskService.update(bizId, {
+            status: "running",
+            statusMsg: collected.ready ? "视频片段已收集，准备剪辑合成" : "等待视频片段生成完成",
+            jobResult,
+        });
+        if (!collected.ready) {
+            return "running";
+        }
+        jobResult.step = "Render";
+        await TaskService.update(bizId, { jobResult });
+    }
+    if (jobResult.step === "Render") {
+        const rendered = await renderFinalizeVideo(param, jobResult.clips || []);
+        jobResult.output = await window.$mapi.file.hubSave(rendered.output);
+        jobResult.srt = rendered.srt || "";
+        jobResult.clips = rendered.clips;
+        jobResult.step = "End";
+        await TaskService.update(bizId, {
+            status: "running",
+            statusMsg: "最终成片已生成",
+            jobResult,
+        });
+    }
+    return "success";
+};
+
+export const MarketingVideoFinalizeTask: TaskBiz = {
+    runFunc: async (bizId, bizParam: MarketingFinalizeParam) => {
+        const status = await advanceFinalize(bizId, bizParam);
+        return status === "success" ? "success" : "querying";
+    },
+    queryFunc: async (bizId, bizParam: MarketingFinalizeParam) => {
+        const status = await advanceFinalize(bizId, bizParam);
+        return status === "success" ? "success" : "running";
+    },
+    successFunc: async (bizId) => {
+        const record = await TaskService.get(bizId);
+        const jobResult = (record?.jobResult || {}) as MarketingFinalizeJobResult;
+        await TaskService.update(bizId, {
+            status: "success",
+            endTime: Date.now(),
+            result: {
+                url: jobResult.output || "",
+                srt: jobResult.srt || "",
+                localFiles: [jobResult.output].filter(Boolean),
             },
         });
     },

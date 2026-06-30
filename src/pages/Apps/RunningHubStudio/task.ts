@@ -203,6 +203,117 @@ const extractRemoteResultUrls = (remoteResults: any[]) => {
         .filter(Boolean);
 };
 
+const remoteResultUrl = (item: any) => {
+    return String(item?.url || item?.fileUrl || item?.file_url || item?.image_url || item?.imageUrl || item?.video_url || item?.videoUrl || "").trim();
+};
+
+const inferRemoteResultExt = (item: any) => {
+    const url = remoteResultUrl(item);
+    const fromUrl = FileUtil.getExt(url);
+    if (fromUrl) {
+        return fromUrl;
+    }
+    const hint = [
+        item?.outputType,
+        item?.type,
+        item?.mimeType,
+        item?.contentType,
+        item?.fileName,
+        item?.filename,
+        item?.name,
+    ].map(value => String(value || "").toLowerCase()).join(" ");
+    if (/(webp)/i.test(hint)) return "webp";
+    if (/(gif)/i.test(hint)) return "gif";
+    if (/(jpe?g)/i.test(hint)) return "jpg";
+    if (/(image|图片|图像|png)/i.test(hint)) return "png";
+    if (/(webm)/i.test(hint)) return "webm";
+    if (/(mov)/i.test(hint)) return "mov";
+    if (/(video|视频|mp4)/i.test(hint)) return "mp4";
+    if (/(wav)/i.test(hint)) return "wav";
+    if (/(audio|音频|mp3)/i.test(hint)) return "mp3";
+    if (/(zip)/i.test(hint)) return "zip";
+    return "";
+};
+
+const bytesFromBufferLike = (value: any) => {
+    if (!value) {
+        return new Uint8Array();
+    }
+    if (value instanceof Uint8Array) {
+        return value;
+    }
+    if (value instanceof ArrayBuffer) {
+        return new Uint8Array(value);
+    }
+    if (Array.isArray(value)) {
+        return new Uint8Array(value);
+    }
+    if (value?.buffer instanceof ArrayBuffer) {
+        return new Uint8Array(value.buffer, value.byteOffset || 0, value.byteLength || value.buffer.byteLength);
+    }
+    return new Uint8Array();
+};
+
+const isZipFile = async (file: string) => {
+    try {
+        const bytes = bytesFromBufferLike(await window.$mapi.file.readBuffer(file));
+        return bytes[0] === 0x50 && bytes[1] === 0x4b;
+    } catch (e) {
+        return false;
+    }
+};
+
+const isImageFilePath = (value: string) => {
+    return /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(String(value || ""));
+};
+
+const extractImageFromZipFile = async (zipFile: string, source = "runninghub-zip-output") => {
+    const dest = await window.$mapi.file.tempDir(source);
+    await window.$mapi.misc.unzip(zipFile, dest);
+    const files = await window.$mapi.file.listAll(dest);
+    const imageFile = files
+        .filter(item => !item.isDirectory && isImageFilePath(String(item.path || item.name || "")))
+        .sort((a, b) => {
+            const aName = String(a.path || a.name || "");
+            const bName = String(b.path || b.name || "");
+            const score = (name: string) => {
+                if (/(^|\/)(result|output|outputs|save|generated|image|000|001)/i.test(name)) return 0;
+                if (/(^|\/)(input|source|upload|reference|mask|thumb|preview|cover)/i.test(name)) return 2;
+                return 1;
+            };
+            return score(aName) - score(bName) || Number(b.size || 0) - Number(a.size || 0) || aName.localeCompare(bName);
+        })[0];
+    if (!imageFile) {
+        return "";
+    }
+    return `${dest}/${String(imageFile.path || imageFile.name || "").replace(/^\/+/, "")}`;
+};
+
+const materializeRemoteResultFile = async (item: any) => {
+    const fileUrl = remoteResultUrl(item);
+    if (!fileUrl) {
+        return null;
+    }
+    const ext = inferRemoteResultExt(item);
+    const downloadPath = ext ? await window.$mapi.file.temp(ext, "download") : null;
+    const downloaded = await window.$mapi.file.download(fileUrl, downloadPath);
+    const extractedImage = await isZipFile(downloaded) ? await extractImageFromZipFile(downloaded) : "";
+    const localFile = extractedImage || downloaded;
+    const saved = await window.$mapi.file.hubSave(localFile);
+    return {
+        localFile: saved,
+        result: {
+            ...item,
+            fileUrl: saved,
+            url: saved,
+            localFile: saved,
+            outputType: extractedImage ? "image" : item?.outputType,
+            source: extractedImage ? "zip-extracted-image" : item?.source,
+            originalZipUrl: extractedImage ? fileUrl : item?.originalZipUrl,
+        },
+    };
+};
+
 const imageExtFromBase64 = (value: string) => {
     const mime = String(value || "").match(/^data:(image\/[a-z0-9.+-]+);base64,/i)?.[1]?.toLowerCase() || "";
     if (mime.includes("jpeg") || mime.includes("jpg")) {
@@ -711,21 +822,31 @@ export const RunningHubTask: TaskBiz = {
             const materialized = await materializeDirectApiResults(jobResult.Query.results || []);
             jobResult.Query.results = materialized.results;
             localFiles.push(...materialized.localFiles);
+            const normalizedRemoteResults: any[] = [];
             for (const item of jobResult.Query.results || []) {
-                const fileUrl = String(item?.url || item?.fileUrl || "").trim();
+                const fileUrl = remoteResultUrl(item);
                 if (!fileUrl) {
+                    normalizedRemoteResults.push(item);
                     continue;
                 }
                 if (String(item?.localFile || "").trim() && fileUrl === item.localFile) {
+                    normalizedRemoteResults.push(item);
                     continue;
                 }
                 try {
-                    const downloaded = await window.$mapi.file.download(fileUrl);
-                    localFiles.push(await window.$mapi.file.hubSave(downloaded));
+                    const materializedFile = await materializeRemoteResultFile(item);
+                    if (materializedFile?.localFile) {
+                        localFiles.push(materializedFile.localFile);
+                        normalizedRemoteResults.push(materializedFile.result);
+                    } else {
+                        normalizedRemoteResults.push(item);
+                    }
                 } catch (e: any) {
+                    normalizedRemoteResults.push(item);
                     downloadErrors.push(errorMessageOf(e, `结果下载失败: ${fileUrl}`));
                 }
             }
+            jobResult.Query.results = normalizedRemoteResults;
             jobResult.Query.status = "success";
             jobResult.End.status = "success";
             jobResult.End.error = downloadErrors.join("\n");

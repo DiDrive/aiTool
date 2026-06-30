@@ -142,14 +142,19 @@ const onIdentityChange = (value: number | string | boolean) => {
 const pickFile = async (field: CloudTemplateInputSchemaField) => {
     const filterMap = {
         image: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+        images: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
         audio: [{ name: "Audio", extensions: ["wav", "mp3", "m4a", "flac"] }],
+        audios: [{ name: "Audio", extensions: ["wav", "mp3", "m4a", "flac"] }],
         video: [{ name: "Video", extensions: ["mp4", "mov", "avi", "mkv", "webm"] }],
+        videos: [{ name: "Video", extensions: ["mp4", "mov", "avi", "mkv", "webm"] }],
         file: [],
+        files: [],
     };
     const path = await window.$mapi.file.openFile({
         filters: filterMap[field.type] || [],
+        multiple: ["images", "audios", "videos", "files"].includes(field.type),
     });
-    if (!path || Array.isArray(path)) {
+    if (!path) {
         return;
     }
     inputValues.value[field.name] = path;
@@ -159,7 +164,10 @@ const clearFile = (field: CloudTemplateInputSchemaField) => {
     inputValues.value[field.name] = "";
 };
 
-const fileName = (value: string) => {
+const fileName = (value: string | string[]) => {
+    if (Array.isArray(value)) {
+        return value.map(item => fileName(item)).filter(Boolean).join("、");
+    }
     return String(value || "").replace(/\\/g, "/").split("/").pop() || "";
 };
 
@@ -173,7 +181,7 @@ const doSubmit = async () => {
             continue;
         }
         const value = inputValues.value[field.name];
-        if (value === null || typeof value === "undefined" || value === "") {
+        if (value === null || typeof value === "undefined" || value === "" || (Array.isArray(value) && value.length === 0)) {
             Dialog.tipError(`请填写：${field.label}`);
             return;
         }
@@ -314,7 +322,7 @@ const doSubmit = async () => {
                             </a-select>
                         </div>
                         <div
-                            v-else-if="['image', 'audio', 'video', 'file'].includes(field.type)"
+                            v-else-if="['image', 'images', 'audio', 'audios', 'video', 'videos', 'file', 'files'].includes(field.type)"
                             class="flex items-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3"
                         >
                             <a-button @click="pickFile(field)">

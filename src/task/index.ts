@@ -17,7 +17,7 @@ import {
     RunningHubTask,
     RunningHubTaskCleaner,
 } from "../pages/Apps/RunningHubStudio/task";
-import { MarketingVideoChainTask } from "../pages/Apps/MarketingVideoFlow/task";
+import { MarketingVideoChainTask, MarketingVideoFinalizeTask } from "../pages/Apps/MarketingVideoFlow/task";
 import { DigitalHumanClipChainTask } from "../pages/Cloud/DigitalHumanClipChainTask";
 
 const taskStore = useTaskStore();
@@ -39,6 +39,7 @@ export const tasks = {
     RunningHubTask,
     DirectApiTask,
     MarketingVideoChainTask,
+    MarketingVideoFinalizeTask,
     DigitalHumanClipChainTask,
 };
 

@@ -599,3 +599,129 @@ export async function ffmpegConcatVideos(videos: string[]): Promise<string> {
     });
     return output;
 }
+
+export type VideoTimelineClip = {
+    video: string;
+    trimStart?: number;
+    trimEnd?: number;
+    speedRatio?: number;
+};
+
+const normalizeSpeedRatio = (value?: number) => {
+    if (!Number.isFinite(Number(value)) || Number(value) <= 0) {
+        return 1;
+    }
+    return Math.max(0.25, Math.min(4, Number(value)));
+};
+
+const buildVideoAtempoFilter = (ratio: number): string => {
+    const filters: string[] = [];
+    let remain = normalizeSpeedRatio(ratio);
+    while (remain > 2.0) {
+        filters.push("atempo=2.0");
+        remain /= 2.0;
+    }
+    while (remain < 0.5) {
+        filters.push("atempo=0.5");
+        remain /= 0.5;
+    }
+    filters.push(`atempo=${remain.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`);
+    return filters.join(",");
+};
+
+export async function ffmpegRenderTimelineClips(clips: VideoTimelineClip[]): Promise<string> {
+    if (!clips.length) {
+        throw new Error("No timeline clips to render");
+    }
+    const rendered: string[] = [];
+    for (const clip of clips) {
+        if (!clip.video || !(await $mapi.file.exists(clip.video))) {
+            throw new Error(`视频片段不存在: ${clip.video || "-"}`);
+        }
+        const start = Math.max(0, Number(clip.trimStart || 0));
+        const end = Number(clip.trimEnd || 0);
+        const duration = end > start ? end - start : 0;
+        const speedRatio = normalizeSpeedRatio(clip.speedRatio);
+        const output = await $mapi.file.temp("mp4");
+        const args: string[] = ["-i", clip.video];
+        if (start > 0 || duration > 0) {
+            args.push("-ss", start.toFixed(3));
+            if (duration > 0) {
+                args.push("-t", duration.toFixed(3));
+            }
+        }
+        const videoFilter = `setpts=${(1 / speedRatio).toFixed(6)}*PTS`;
+        const audioFilter = buildVideoAtempoFilter(speedRatio);
+        args.push(
+            "-filter_complex",
+            `[0:v]${videoFilter}[v];[0:a]${audioFilter}[a]`,
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-c:a",
+            "aac",
+            "-y",
+            output
+        );
+        await ffmpegOptimized(args, { successFileCheck: output });
+        rendered.push(output);
+    }
+    return ffmpegConcatVideos(rendered);
+}
+
+const escapeSubtitlePath = (path: string) => {
+    return path
+        .replace(/\\/g, "/")
+        .replace(/:/g, "\\:")
+        .replace(/'/g, "\\'");
+};
+
+export async function ffmpegBurnSrtSubtitle(
+    video: string,
+    srtFile: string,
+    option?: {
+        fontName?: string;
+        fontSize?: number;
+        marginV?: number;
+    }
+): Promise<string> {
+    if (!video || !(await $mapi.file.exists(video))) {
+        throw new Error("视频文件不存在，无法烧录字幕");
+    }
+    if (!srtFile || !(await $mapi.file.exists(srtFile))) {
+        return video;
+    }
+    const output = await $mapi.file.temp("mp4");
+    const style = [
+        `FontName=${option?.fontName || "Microsoft YaHei"}`,
+        `FontSize=${Number(option?.fontSize || 18)}`,
+        "PrimaryColour=&H00FFFFFF",
+        "OutlineColour=&H90000000",
+        "BorderStyle=1",
+        "Outline=2",
+        "Shadow=0",
+        "Alignment=2",
+        `MarginV=${Number(option?.marginV || 80)}`,
+    ].join(",");
+    const args = [
+        "-i",
+        video,
+        "-vf",
+        `subtitles='${escapeSubtitlePath(srtFile)}':force_style='${style}'`,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-c:a",
+        "copy",
+        "-y",
+        output,
+    ];
+    await ffmpegOptimized(args, { successFileCheck: output });
+    return output;
+}

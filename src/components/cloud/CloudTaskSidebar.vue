@@ -66,12 +66,13 @@ const resolveDisplayStatus = (record: TaskRecord): DisplayStatus => {
 };
 
 const refresh = async () => {
-    const [runningHubRecords, directApiRecords, marketingChainRecords] = await Promise.all([
+    const [runningHubRecords, directApiRecords, marketingChainRecords, marketingFinalizeRecords] = await Promise.all([
         TaskService.list("RunningHubTask"),
         TaskService.list("DirectApiTask"),
         TaskService.list("MarketingVideoChainTask"),
+        TaskService.list("MarketingVideoFinalizeTask"),
     ]);
-    records.value = [...runningHubRecords, ...directApiRecords, ...marketingChainRecords].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+    records.value = [...runningHubRecords, ...directApiRecords, ...marketingChainRecords, ...marketingFinalizeRecords].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 };
 
 const directApiEditTarget = (record: TaskRecord) => {
@@ -398,6 +399,10 @@ useTaskChangeRefresh("DirectApiTask", () => {
 });
 
 useTaskChangeRefresh("MarketingVideoChainTask", () => {
+    refresh();
+});
+
+useTaskChangeRefresh("MarketingVideoFinalizeTask", () => {
     refresh();
 });
 

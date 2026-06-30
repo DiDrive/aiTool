@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { Dialog } from "../../lib/dialog";
 import {
     DirectApiCapability,
@@ -9,6 +9,9 @@ import {
 } from "../../service/DirectApiPlatformService";
 import { ConfigTransferService } from "../../service/ConfigTransferService";
 import { FileRelayConfigRecord, FileRelayConfigService } from "../../service/FileRelayConfigService";
+import { isLocalConfigAdmin } from "../../utils/configPermission";
+
+const isConfigAdmin = computed(() => isLocalConfigAdmin());
 
 const platformTypeOptions: Array<{ label: string; value: DirectApiPlatformType }> = [
     { label: "ExchangeToken", value: "exchangetoken" },
@@ -295,12 +298,12 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
         </div>
     </div>
 
-    <div v-if="false" class="mb-3 flex justify-end gap-2">
+    <div v-if="isConfigAdmin" class="mb-3 flex justify-end gap-2">
         <a-button @click="importConfigPackage">一键导入配置</a-button>
         <a-button @click="exportConfigPackage">一键导出配置</a-button>
     </div>
 
-    <div v-if="false" class="mb-4 rounded-xl border border-solid border-gray-200 p-4">
+    <div v-if="isConfigAdmin" class="mb-4 rounded-xl border border-solid border-gray-200 p-4">
         <div class="mb-3 flex items-center justify-between">
             <div>
                 <div class="text-base font-bold">全局文件素材中转</div>
@@ -338,7 +341,7 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
         </a-form>
     </div>
 
-    <div v-if="false" class="rounded-xl border border-solid border-gray-200 p-4">
+    <div v-if="isConfigAdmin" class="rounded-xl border border-solid border-gray-200 p-4">
         <div class="flex items-center mb-3">
             <div class="flex-grow">
                 <div class="text-base font-bold">平台接入</div>
@@ -376,7 +379,7 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
         <a-empty v-else description="还没有平台配置" />
     </div>
 
-    <a-modal v-model:visible="visible" width="720px" title="平台接入配置">
+    <a-modal v-if="isConfigAdmin" v-model:visible="visible" width="720px" title="平台接入配置">
         <template #footer>
             <a-button @click="visible = false">取消</a-button>
             <a-button type="primary" @click="save">保存</a-button>

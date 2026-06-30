@@ -15,6 +15,40 @@ import { RunningHubModelConfigType } from "../pages/Apps/RunningHubStudio/type";
 
 export type CloudTemplateInput = Record<string, any>;
 
+const fieldText = (field: Partial<CloudTemplateInputSchemaField>) => {
+    return [field?.name, field?.label, field?.placeholder, field?.help]
+        .map(item => String(item || "").toLowerCase())
+        .join(" ");
+};
+
+const fieldLooksLikeCount = (field: Partial<CloudTemplateInputSchemaField>) => {
+    return /图片数量|图像数量|生成数量|数量|张数|个数|count|number|num\b/.test(fieldText(field));
+};
+
+const fieldLooksLikeMultiFile = (field: Partial<CloudTemplateInputSchemaField>) => {
+    return /多图|多张|多文件|批量|数组|\[\]|images|imageurls|referenceimages|files/.test(fieldText(field));
+};
+
+const normalizeSchemaField = (field: CloudTemplateInputSchemaField): CloudTemplateInputSchemaField => {
+    if (fieldLooksLikeCount(field)) {
+        return {
+            ...field,
+            type: "number",
+            defaultValue:
+                typeof field.defaultValue === "undefined" || field.defaultValue === null || field.defaultValue === ""
+                    ? 1
+                    : field.defaultValue,
+        };
+    }
+    if (field.type === "image" && fieldLooksLikeMultiFile(field)) {
+        return { ...field, type: "images" };
+    }
+    if (field.type === "file" && fieldLooksLikeMultiFile(field)) {
+        return { ...field, type: "files" };
+    }
+    return field;
+};
+
 const escapeForJsonString = (value: any) => {
     return JSON.stringify(String(value ?? "")).slice(1, -1);
 };
@@ -23,9 +57,15 @@ const escapeRegExp = (value: string) => {
     return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
 
-const replacePlaceholders = (content: string, variables: Record<string, string>) => {
+const replacePlaceholders = (content: string, variables: Record<string, any>) => {
     let result = String(content || "");
     for (const [key, value] of Object.entries(variables)) {
+        if (value && typeof value === "object") {
+            result = result.replace(
+                new RegExp(`"\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}"`, "g"),
+                JSON.stringify(value)
+            );
+        }
         const safe = escapeForJsonString(value);
         result = result.replace(new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, "g"), safe);
     }
@@ -53,26 +93,28 @@ export const parseTemplateInputSchema = (raw: string): CloudTemplateInputSchemaF
         if (!Array.isArray(parsed)) {
             return [];
         }
-        return parsed.filter(item => item && item.name && item.label && item.type);
+        return parsed
+            .filter(item => item && item.name && item.label && item.type)
+            .map(item => normalizeSchemaField(item));
     } catch (e) {
         return [];
     }
 };
 
-const appendFlatVariables = (target: Record<string, string>, prefix: string, value: any) => {
+const appendFlatVariables = (target: Record<string, any>, prefix: string, value: any) => {
     if (value === null || typeof value === "undefined") {
         target[prefix] = "";
         return;
     }
     if (Array.isArray(value)) {
-        target[prefix] = JSON.stringify(value);
+        target[prefix] = value;
         value.forEach((item, index) => {
             appendFlatVariables(target, `${prefix}.${index}`, item);
         });
         return;
     }
     if (typeof value === "object") {
-        target[prefix] = JSON.stringify(value);
+        target[prefix] = value;
         for (const [key, child] of Object.entries(value)) {
             appendFlatVariables(target, `${prefix}.${key}`, child);
         }
@@ -82,7 +124,7 @@ const appendFlatVariables = (target: Record<string, string>, prefix: string, val
 };
 
 const buildVariables = (input: CloudTemplateInput) => {
-    const result: Record<string, string> = {};
+    const result: Record<string, any> = {};
     for (const [key, value] of Object.entries(input || {})) {
         if (value === null || typeof value === "undefined") {
             result[key] = "";

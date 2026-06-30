@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Dialog } from "../../../lib/dialog";
 import {
@@ -19,6 +19,7 @@ import { usePageDraft } from "../../../hooks/pageDraft";
 type AngleType = "pain" | "desire" | "contrast" | "scene" | "conversion";
 type GenerationChannel = "direct" | "cloud";
 type VideoReferenceRole = "reference_image" | "first_frame";
+type StoryboardImageMode = "single_frame" | "scene_grid";
 type FrameDensity = "light" | "standard" | "detailed";
 type NarrationMode = "none" | "voiceover" | "character";
 type SubtitleMode = "none" | "caption";
@@ -105,6 +106,10 @@ type SceneDraft = {
     id: string;
     title: string;
     duration: number;
+    rhythmHint?: string;
+    speedRatio?: number;
+    trimStart?: number;
+    trimEnd?: number;
     scriptBeat?: string;
     subtitle: string;
     captionOverride?: string;
@@ -172,6 +177,9 @@ const assetImagePlatformId = ref(0);
 const assetImageTemplateId = ref(0);
 const submitting = ref(false);
 const generatingScripts = ref(false);
+const optimizingTiming = ref(false);
+const finalizingVideo = ref(false);
+const refreshingTemplates = ref(false);
 const selectedDraftId = ref("");
 const modelGenerator = ref<InstanceType<typeof ModelGenerator> | null>(null);
 const referenceVideo = ref<ReferenceVideo | null>(null);
@@ -215,6 +223,7 @@ const form = ref({
     ratio: "9:16",
     narrationMode: "voiceover" as NarrationMode,
     subtitleMode: "caption" as SubtitleMode,
+    storyboardImageMode: "scene_grid" as StoryboardImageMode,
     videoModel: "seedance-2.0-fast",
     videoReferenceRole: "reference_image" as VideoReferenceRole,
     visualStyle: DEFAULT_VISUAL_STYLE,
@@ -264,7 +273,7 @@ const angles: Array<{ value: AngleType; label: string; desc: string }> = [
     { value: "conversion", label: "转化型", desc: "更直接地引导点击、下载或咨询" },
 ];
 const countOptions = [1, 2, 3, 4, 5];
-const sceneCountOptions = [1, 2, 3, 4, 5, 6];
+const sceneCountOptions = [1, 2, 3, 4, 5, 6, 9];
 const durationOptions = Array.from({ length: 12 }, (_, index) => index + 4);
 const DEFAULT_SCENE_DURATION = 8;
 const videoModelOptions = ["seedance-2.0-fast", "seedance-2.0"];
@@ -291,6 +300,13 @@ const videoReferenceRoleOptions: Array<{ label: string; value: VideoReferenceRol
     { label: "全能参考", value: "reference_image", desc: "参考人物、场景、风格，不强制作为第一帧" },
     { label: "首帧控制", value: "first_frame", desc: "视频必须从这张分镜图开始" },
 ];
+const storyboardImageModeOptions: Array<{ label: string; value: StoryboardImageMode; desc: string }> = [
+    { label: "镜头动作宫格", value: "scene_grid", desc: "每个镜头生成一张多宫格动作板，覆盖该镜头内的起承转合，再用于生视频参考" },
+    { label: "单张首帧", value: "single_frame", desc: "每个镜头只生成一张清晰首帧，更适合首帧控制和画面精修" },
+];
+const storyboardImageActionText = computed(() =>
+    form.value.storyboardImageMode === "scene_grid" ? "生成动作宫格" : "生成首帧图"
+);
 const marketingAssetTypeOptions: Array<{ label: string; value: MarketingAssetType }> = [
     { label: "人物资产", value: "character" },
     { label: "场景资产", value: "scene" },
@@ -440,6 +456,24 @@ const loadPlatforms = async () => {
         : imageTemplateId.value;
 };
 
+const refreshCloudTemplates = async () => {
+    if (refreshingTemplates.value) {
+        return;
+    }
+    try {
+        refreshingTemplates.value = true;
+        await loadPlatforms();
+    } finally {
+        refreshingTemplates.value = false;
+    }
+};
+
+const handleWindowFocus = () => {
+    refreshCloudTemplates().then();
+    refreshSceneImageTasks(true).then();
+    refreshMarketingAssetTasks(true).then();
+};
+
 onMounted(async () => {
     await pageDraft.restore();
     form.value.videoModel = normalizeUiVideoModel(form.value.videoModel);
@@ -447,6 +481,12 @@ onMounted(async () => {
     (form.value as any).scriptLockedNotes = formText("scriptLockedNotes");
     await loadPlatforms();
     await refreshMarketingAssetTasks(true);
+    await refreshSceneImageTasks(true);
+    window.addEventListener("focus", handleWindowFocus);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener("focus", handleWindowFocus);
 });
 
 watch(() => form.value.videoModel, value => {
@@ -574,9 +614,35 @@ const appendReferenceAnalysisToPrompt = (prompt: string, analysis?: MarketingDra
     return [prompt, instruction].filter(item => String(item || "").trim()).join("\n\n");
 };
 
+const sceneGridCount = (scene: SceneDraft) => {
+    if (scene.duration >= 10) return 6;
+    if (scene.duration >= 7) return 4;
+    return 3;
+};
+
+const buildSceneImageModeInstruction = (draft: MarketingDraft, scene: SceneDraft) => {
+    const sceneIndex = draft.scenes.findIndex(item => item.id === scene.id);
+    const position = sceneIndex >= 0 ? `第 ${sceneIndex + 1}/${draft.scenes.length} 镜` : "当前镜头";
+    if (form.value.storyboardImageMode === "single_frame") {
+        return [
+            `分镜图模式：单张首帧。只生成${position}的一张竖屏首帧参考图。`,
+            "画面必须是一个完整单图，不要九宫格、不要拼贴、不要漫画分格、不要多个小画面。",
+            "首帧要清晰表达本镜开场动作、主体表情、场景和光线，适合后续作为视频首帧或参考图。",
+        ].join("\n");
+    }
+    const gridCount = sceneGridCount(scene);
+    return [
+        `分镜图模式：镜头动作宫格。只为${position}生成一张 ${gridCount} 宫格动作分镜板，不要包含其它镜头内容。`,
+        `这 ${gridCount} 个宫格必须按时间顺序展示本镜在 ${scene.duration} 秒内的关键动作变化：起始状态、动作推进、情绪/视线变化、结束姿态。`,
+        "所有宫格保持同一人物、同一服装、同一场景空间、同一光线方向和统一画风；每格构图略有变化但连续自然。",
+        "不要在画面中生成字幕、说明文字、编号、水印或 UI；宫格边界干净，竖屏 9:16 总画面可直接作为图生视频参考。",
+    ].join("\n");
+};
+
 const buildImagePromptWithReferenceAnalysis = (draft: MarketingDraft, scene: SceneDraft) => {
     return [
         appendReferenceAnalysisToPrompt(scene.imagePrompt, draft.referenceAnalysis),
+        buildSceneImageModeInstruction(draft, scene),
         buildAssetReferenceInstruction(scene),
     ].filter(Boolean).join("\n\n");
 };
@@ -639,7 +705,7 @@ const buildVideoPromptWithSpeech = (
     const subtitleInstruction =
         scene.subtitleMode === "none"
             ? "字幕要求：不要生成画面字幕、口播字幕、标题条或贴纸文字。"
-            : `字幕要求：画面字幕应与本镜台词一致；当前字幕：${caption || line || "无"}`;
+            : `字幕后期要求：本镜字幕文本为“${caption || line || "无"}”，但视频模型不要把任何字幕、标题条、贴纸文字或 UI 文本画进画面；字幕会在最终合成阶段由系统叠加。`;
     return [
         buildScenePositionInstruction(scene, sceneIndex, totalScenes),
         appendReferenceAnalysisToPrompt(scene.videoPrompt, analysis),
@@ -1139,6 +1205,24 @@ const assetReferenceDisplayUrl = (asset: MarketingAsset) => {
     return asset.referenceDataUrl || asset.referenceUrl || "";
 };
 
+const imageDisplayUrl = (value?: string) => {
+    const text = String(value || "").trim();
+    if (!text) {
+        return "";
+    }
+    if (/^(data:|https?:\/\/|file:\/\/)/i.test(text)) {
+        return text;
+    }
+    if (/^[a-zA-Z]:[\\/]/.test(text) || /^\\\\/.test(text)) {
+        return pathToFileUrl(text);
+    }
+    return text;
+};
+
+const sceneReferenceDisplayUrl = (scene: SceneDraft) => {
+    return imageDisplayUrl(scene.referenceImageUrl);
+};
+
 const normalizeMarketingAssetType = (value: any): MarketingAssetType => {
     const raw = String(value || "").toLowerCase();
     if (raw.includes("scene") || raw.includes("场景") || raw.includes("环境")) {
@@ -1511,7 +1595,8 @@ const valueForCloudField = (
     field: any,
     capability: "image" | "video",
     base: Record<string, any>,
-    assets: MarketingAsset[]
+    assets: MarketingAsset[],
+    fieldIndex = 0
 ) => {
     const baseReferenceImages = Array.isArray(base.assetReferenceImages)
         ? base.assetReferenceImages
@@ -1527,7 +1612,12 @@ const valueForCloudField = (
         base.referenceImageUrl || "",
     ]);
     const wantsArray = ["images", "audios", "videos", "files"].includes(String(field?.type || ""));
-    const chooseFileValue = (items: string[]) => wantsArray ? items : items[0] || "";
+    const chooseFileValue = (items: string[]) => {
+        if (wantsArray) {
+            return items;
+        }
+        return items[fieldIndex] || items[0] || "";
+    };
 
     if (fieldLooksLike(field, ["negative", "反向", "负面"])) {
         return base.negativePrompt || field.defaultValue || "";
@@ -1660,12 +1750,15 @@ const buildCloudMarketingInput = (
         template,
         CloudTemplateTaskService.parseInputSchema(template.content.inputSchemaJson || "[]")
     );
+    let fileFieldIndex = 0;
     schemaFields.forEach(field => {
         const key = String(field.name || "").trim();
         if (!key) {
             return;
         }
-        input[key] = valueForCloudField(field, capability, base, assets);
+        const type = String(field?.type || "");
+        const index = ["image", "file", "video", "audio"].includes(type) ? fileFieldIndex++ : 0;
+        input[key] = valueForCloudField(field, capability, base, assets, index);
     });
     const missingRequiredFiles = schemaFields.filter(field => {
         const key = String(field.name || "").trim();
@@ -2287,6 +2380,7 @@ ${buildHotTrendPromptSection()}
 字幕显示：${form.value.subtitleMode === "none" ? "不显示字幕" : "显示字幕"}
 画幅：${form.value.ratio}
 每条分镜数：${form.value.sceneCount}
+分镜板规则：如果每条分镜数为 9，请按九宫格分镜板组织，每个 scene 对应一个宫格，必须覆盖开场钩子、冲突/需求、资产展示、过程推进、情绪变化、关键信息、反转/强化、收束、行动引导；如果分镜数不是 9，也要保持镜头职责清晰。
 
 创作角度必须按顺序使用：
 ${angleGuide}
@@ -2336,7 +2430,7 @@ ${angleGuide}
         {
           "type": "character|scene|prop",
           "name": "资产名称，例如：年轻女主角 / 明亮卧室 / 手机道具",
-          "prompt": "生成这个资产参考图的提示词，要求主体清晰，可复用于多个分镜保持一致性",
+          "prompt": "生成这个资产参考图的提示词。人物资产必须是三视图角色设定图：正面、侧面、背面同屏，统一发型、服装、体型和识别点；场景资产是空间设定图；道具资产是单体清晰参考图",
           "note": "这个资产会用于哪些分镜或保持什么一致性"
         }
       ],
@@ -2344,6 +2438,10 @@ ${angleGuide}
         {
           "title": "镜头名称",
           "duration": 4,
+          "rhythmHint": "本镜节奏说明，例如：快切钩子/慢速情绪停顿/信息密集/结尾短促",
+          "speedRatio": 1,
+          "trimStart": 0,
+          "trimEnd": 4,
           "scriptBeat": "本分镜对应完整剧本中的剧情段落，写清发生了什么",
           "subtitle": "字幕文本；如果字幕模式为 none 则写空字符串",
           "voiceoverLine": "本分镜实际要说出来的中文台词；如果说话方式为 none 则写空字符串",
@@ -2368,6 +2466,7 @@ ${angleGuide}
 1. drafts 数量必须等于 ${form.value.count}。
 2. 每个 draft 必须有 ${form.value.sceneCount} 个 scenes。
 3. 每个 scene.duration 是一个独立 Seedance 视频任务时长，必须在 4-15 秒之间；请根据分镜内容分别设置，不要所有分镜机械相同。没有特殊节奏要求时可用 ${DEFAULT_SCENE_DURATION} 秒。
+3.1 每个 scene.rhythmHint 必须写清镜头节奏、动作快慢、停顿点或信息密度；scene.speedRatio 是后期默认播放速度，范围 0.6-1.8；scene.trimStart/trimEnd 是建议后期裁切范围，单位秒，必须落在 0-duration 内。
 4. 不要使用“保证、最好、第一、治愈、百分百”等绝对化或夸大表述。
 5. 不要出现第三方真实 UI、真实人物姓名、原视频人物外貌复刻。
 6. 如果提供参考视频/抽帧，每个 draft.referenceAnalysis 必须具体，不允许写“无法判断”“仅供参考”这类空话；看不出的细节可以写“未从参考帧确认”，但必须分析可见的构图、主体、景别、色彩和节奏线索。
@@ -2379,8 +2478,10 @@ ${angleGuide}
 12. scenes 必须按参考视频结构拆成不同叙事步骤，例如“街访开场/痛点反应/解决方案讲解/收束行动”；每个 scene.videoPrompt 必须明显不同，不能两个分镜都写成同一场景、同一动作或同一讲解镜头。
 13. 专有名词、产品名、账号名必须逐字保留，不要同音替换或改写；如果出现“他趣”，必须保持“他趣”两个字，不能写成或读成“其他”。
 14. 每个 draft.suggestedAssets 必须列出保持分镜一致性需要的核心资产：至少包含 1 个人物资产；如果有固定场景或关键道具，也必须分别列为 scene/prop。不要把参考视频/参考图原人物当作资产，只能生成当前主题的新资产。
+14.1 人物资产的 suggestedAssets[].prompt 必须明确“三视图角色设定图，正面/侧面/背面同屏，纯净背景，服装发型体型一致”，不要只写单张半身照。
 15. 如果提供了手动剧本，draft.scriptText 必须是该剧本的结构化/镜头化版本，不能换故事；每个 scene.scriptBeat 必须能对应到剧本中的一段剧情。
 16. 每个 scene.requiredAssets 必须列出本镜实际需要的人物、场景、道具；名称要和 draft.suggestedAssets 尽量一致，方便系统自动关联。
+17. 不要要求视频模型生成画面字幕、标题条、贴纸文字或 UI 文本；字幕文本只作为后期字幕使用。
 `.trim();
 };
 
@@ -2530,6 +2631,10 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
             id: `${angle}-${index}-${sceneIndex}`,
             title: String(scene?.title || `镜头 ${sceneIndex + 1}`),
             duration: Math.max(4, Math.min(15, Number(scene?.duration || DEFAULT_SCENE_DURATION))),
+            rhythmHint: String(scene?.rhythmHint || scene?.rhythm || scene?.tempo || ""),
+            speedRatio: Math.max(0.6, Math.min(1.8, Number(scene?.speedRatio || scene?.speed || 1))),
+            trimStart: Math.max(0, Number(scene?.trimStart || 0)),
+            trimEnd: Math.max(0, Number(scene?.trimEnd || scene?.duration || DEFAULT_SCENE_DURATION)),
             scriptBeat: String(scene?.scriptBeat || scene?.beat || scene?.plot || ""),
             subtitle: String(scene?.subtitle || ""),
             captionOverride: String(scene?.captionOverride || ""),
@@ -2969,7 +3074,7 @@ const buildMarketingAssetPrompt = (asset: MarketingAsset) => {
     const entityDescriptions = assetEntityDescriptions(asset);
     const subjectRequirement =
         asset.type === "character"
-            ? "单人，半身或中近景，自然表情，脸部清晰，发型、穿搭、身形和气质稳定，适合后续保持同一人物。"
+            ? "人物三视图角色设定图，正面、侧面、背面同屏排列，纯净背景，脸部识别点、发型、服装、身形比例和气质完全一致；不是剧情分镜，不要出现复杂动作或环境。"
             : asset.type === "scene"
               ? "完整空间，布局清晰，主要背景元素、材质、光线方向、色温和纵深稳定，画面干净，适合后续保持同一场景。"
               : "单个道具，主体完整清晰，外形、材质、颜色、结构和识别点明确，背景简洁，适合后续复用。";
@@ -2982,7 +3087,9 @@ const buildMarketingAssetPrompt = (asset: MarketingAsset) => {
         entityDescriptions.join("；"),
         asset.prompt,
         `风格：${visualStyle}`,
-        "9:16 竖屏，主体居中，边缘留白，清晰写实，自然光线，高质量商业短视频素材感。",
+        asset.type === "character"
+            ? "角色设定图，三视图横向或纵向清晰排列，禁止文字标注、禁止水印、禁止把说明文字画进图片。"
+            : "9:16 竖屏，主体居中，边缘留白，清晰写实，自然光线，高质量商业短视频素材感。",
         referenceInstruction,
     ];
     return uniqueNonEmptyStrings(visualLines.map(item => String(item || ""))).join("\n");
@@ -3140,6 +3247,69 @@ const refreshMarketingAssetTasks = async (silent = false) => {
     }
 };
 
+const syncSceneImageTask = async (scene: SceneDraft) => {
+    if (!scene.imageTaskId) {
+        return false;
+    }
+    const task = await TaskService.get(scene.imageTaskId);
+    if (!task) {
+        return false;
+    }
+    if (task.status === "success") {
+        const rawImageUrl = extractTaskOutputImage(task);
+        const imageUrl = rawImageUrl ? await resolveTaskOutputImage(rawImageUrl) : "";
+        if (!imageUrl) {
+            return false;
+        }
+        scene.referenceImageUrl = imageUrl;
+        scene.referenceImageName = FileUtil.getBaseName(imageUrl, true);
+        return true;
+    }
+    if (task.status === "fail") {
+        return false;
+    }
+    return false;
+};
+
+const refreshSceneImageTasks = async (silent = false) => {
+    const scenes = drafts.value
+        .flatMap(draft => draft.scenes)
+        .filter(scene => scene.imageTaskId && !scene.referenceImageUrl);
+    if (!scenes.length) {
+        if (!silent) {
+            Dialog.tipError("没有需要同步的分镜图任务");
+        }
+        return;
+    }
+    let updated = 0;
+    for (const scene of scenes) {
+        try {
+            if (await syncSceneImageTask(scene)) {
+                updated += 1;
+            }
+        } catch (e) {
+            // 单个分镜同步失败不影响其他分镜。
+        }
+    }
+    if (!silent) {
+        updated ? Dialog.tipSuccess(`已同步 ${updated} 张分镜图`) : Dialog.tipError("暂未发现可回填的分镜图结果");
+    }
+};
+
+const startSceneImageTaskSync = (scene: SceneDraft, taskId: number | string) => {
+    if (!taskId) {
+        return;
+    }
+    waitForTaskImage(taskId)
+        .then(imageUrl => {
+            scene.referenceImageUrl = imageUrl;
+            scene.referenceImageName = FileUtil.getBaseName(imageUrl, true);
+        })
+        .catch(() => {
+            // 右侧任务列表会展示失败详情，这里保持编辑区不打断。
+        });
+};
+
 const submitImageTask = async (draft: MarketingDraft, scene: SceneDraft) => {
     ensureSceneAssetsReady(scene);
     const id =
@@ -3239,6 +3409,7 @@ const submitDraftChainTask = async (draft: MarketingDraft) => {
                 ratio: form.value.ratio,
                 videoModel: form.value.videoModel,
                 videoReferenceRole: form.value.videoReferenceRole,
+                storyboardImageMode: form.value.storyboardImageMode,
             },
             imageChannel: imageChannel.value,
             videoChannel: videoChannel.value,
@@ -3259,6 +3430,243 @@ const submitDraftChainTask = async (draft: MarketingDraft) => {
         modelConfig: {},
     };
     return await TaskService.submit(record);
+};
+
+const buildTimingOptimizePrompt = (draft: MarketingDraft) => {
+    return `
+请作为短视频剪辑导演，只优化当前方案的“生成前镜头节奏”，不要更换主题、人物资产或剧情主线。
+
+视频标题：${safeJsonString(draft.title)}
+剧情梗概：${safeJsonString(draft.synopsis || "")}
+完整口播：${safeJsonString(draft.voiceover || "")}
+参考节奏分析：${safeJsonString(draft.referenceAnalysis?.rhythm || "")}
+
+当前分镜：
+${draft.scenes.map((scene, index) => [
+        `#${index + 1} id=${scene.id}`,
+        `title=${scene.title}`,
+        `duration=${scene.duration}`,
+        `scriptBeat=${scene.scriptBeat || ""}`,
+        `voiceoverLine=${scene.voiceoverLine || ""}`,
+        `videoPrompt=${scene.videoPrompt || ""}`,
+    ].join("\n")).join("\n\n")}
+
+请返回严格 JSON：
+{
+  "scenes": [
+    {
+      "id": "原 scene id",
+      "title": "可微调镜头名",
+      "duration": 4,
+      "rhythmHint": "本镜节奏说明，写清动作快慢、停顿点、信息密度、情绪变化",
+      "speedRatio": 1.2,
+      "trimStart": 0,
+      "trimEnd": 3.8,
+      "voiceoverLine": "可微调但不能改变核心含义",
+      "subtitle": "后期字幕文本",
+      "videoPrompt": "加入镜头节奏、动作时序、停顿和运镜要求后的完整视频提示词"
+    }
+  ]
+}
+
+要求：
+1. scenes 数量和 id 必须与当前分镜一致。
+2. duration 必须在 4-15 秒之间。
+3. speedRatio 是后期默认播放速度，0.6-1.8；trimStart/trimEnd 是建议后期裁切范围，单位秒，必须在 0-duration 内。
+4. videoPrompt 可以加入“快速推近、停顿半秒、慢慢抬头、结尾短促”等节奏描述，但不要要求模型生成字幕文字。
+5. 第一镜更快更抓人，中间镜承接信息，最后一镜短促收束。
+`.trim();
+};
+
+const optimizeDraftTiming = async (draft: MarketingDraft) => {
+    if (!modelGenerator.value) {
+        Dialog.tipError("请先选择大模型");
+        return;
+    }
+    try {
+        optimizingTiming.value = true;
+        ensureDraftVoiceoverLines(draft);
+        const ret = await modelGenerator.value.chat(
+            buildTimingOptimizePrompt(draft),
+            {
+                systemPrompt: [
+                    "你是短视频剪辑导演和 AI 视频提示词工程师。",
+                    "你只输出严格 JSON，不要输出 Markdown、解释、注释或代码块。",
+                    "你的目标是优化分镜节奏和视频提示词，不改变剧情主线和资产一致性。",
+                ].join("\n"),
+            },
+            {},
+            { format: "json" }
+        );
+        if (ret.code) {
+            Dialog.tipError(ret.msg || "AI 优化节奏失败");
+            return;
+        }
+        const scenes = Array.isArray(ret.data?.json?.scenes) ? ret.data.json.scenes : [];
+        if (!scenes.length) {
+            throw new Error("AI 没有返回可用分镜节奏");
+        }
+        scenes.forEach((item: any, index: number) => {
+            const scene = draft.scenes.find(s => s.id === item.id) || draft.scenes[index];
+            if (!scene) {
+                return;
+            }
+            const duration = Math.max(4, Math.min(15, Number(item.duration || scene.duration || DEFAULT_SCENE_DURATION)));
+            scene.title = String(item.title || scene.title);
+            scene.duration = duration;
+            scene.rhythmHint = String(item.rhythmHint || item.rhythm || scene.rhythmHint || "");
+            scene.speedRatio = Math.max(0.6, Math.min(1.8, Number(item.speedRatio || scene.speedRatio || 1)));
+            scene.trimStart = Math.max(0, Math.min(duration - 0.2, Number(item.trimStart || 0)));
+            scene.trimEnd = Math.max(scene.trimStart + 0.2, Math.min(duration, Number(item.trimEnd || duration)));
+            scene.voiceoverLine = String(item.voiceoverLine || scene.voiceoverLine || "");
+            scene.subtitle = String(item.subtitle || scene.subtitle || effectiveSceneCaption(scene));
+            scene.videoPrompt = String(item.videoPrompt || scene.videoPrompt || "");
+        });
+        ensureDraftVoiceoverLines(draft);
+        Dialog.tipSuccess("已优化分镜节奏，可继续生图/生视频");
+    } catch (e: any) {
+        Dialog.tipError(e?.message || "AI 优化节奏失败");
+    } finally {
+        optimizingTiming.value = false;
+    }
+};
+
+const buildFallbackFinalizeClips = (draft: MarketingDraft) => {
+    return draft.scenes.map(scene => ({
+        sceneId: scene.id,
+        title: scene.title,
+        videoTaskId: Number(scene.videoTaskId || 0),
+        trimStart: Math.max(0, Number(scene.trimStart || 0)),
+        trimEnd: Math.max(0.2, Math.min(Number(scene.duration || DEFAULT_SCENE_DURATION), Number(scene.trimEnd || scene.duration || DEFAULT_SCENE_DURATION))),
+        speedRatio: Math.max(0.6, Math.min(1.8, Number(scene.speedRatio || 1))),
+        targetDuration: Math.max(0.2, Number(scene.duration || DEFAULT_SCENE_DURATION) / Math.max(0.6, Math.min(1.8, Number(scene.speedRatio || 1)))),
+        subtitle: effectiveSceneCaption(scene),
+    }));
+};
+
+const buildFinalizeTimelinePrompt = (draft: MarketingDraft) => {
+    return `
+请作为短视频后期剪辑师，基于已经生成的视频片段，输出最终剪辑时间线。
+你不能新增镜头，只能裁切、变速、微调顺序和字幕时间。不要改变剧情主线。
+
+视频标题：${safeJsonString(draft.title)}
+参考节奏：${safeJsonString(draft.referenceAnalysis?.rhythm || "")}
+分镜片段：
+${draft.scenes.map((scene, index) => [
+        `#${index + 1} sceneId=${scene.id}`,
+        `title=${scene.title}`,
+        `videoTaskId=${scene.videoTaskId || 0}`,
+        `sourceDuration=${scene.duration}`,
+        `rhythmHint=${scene.rhythmHint || ""}`,
+        `suggestedSpeed=${scene.speedRatio || 1}`,
+        `subtitle=${effectiveSceneCaption(scene)}`,
+    ].join("\n")).join("\n\n")}
+
+请返回严格 JSON：
+{
+  "clips": [
+    {
+      "sceneId": "原 scene id",
+      "videoTaskId": 123,
+      "trimStart": 0,
+      "trimEnd": 3.6,
+      "speedRatio": 1.25,
+      "targetDuration": 2.9,
+      "subtitle": "这一段后期字幕"
+    }
+  ]
+}
+
+要求：
+1. clips 默认保持原顺序，除非节奏明显需要重排。
+2. trimStart/trimEnd 单位秒，必须在 0-sourceDuration 内。
+3. speedRatio 范围 0.6-1.8；开头和结尾可以更快，中间信息镜头保持清晰。
+4. 字幕要短、自然，不能包含乱码、标签、markdown 或视觉说明。
+`.trim();
+};
+
+const buildAiFinalizeClips = async (draft: MarketingDraft) => {
+    if (!modelGenerator.value) {
+        return buildFallbackFinalizeClips(draft);
+    }
+    const ret = await modelGenerator.value.chat(
+        buildFinalizeTimelinePrompt(draft),
+        {
+            systemPrompt: [
+                "你是短视频后期剪辑师。",
+                "你只输出严格 JSON，不要输出 Markdown、解释、注释或代码块。",
+                "你的输出会被 ffmpeg 执行，所有数字必须可执行。",
+            ].join("\n"),
+        },
+        {},
+        { format: "json" }
+    );
+    if (ret.code || !Array.isArray(ret.data?.json?.clips)) {
+        return buildFallbackFinalizeClips(draft);
+    }
+    const fallback = buildFallbackFinalizeClips(draft);
+    return ret.data.json.clips
+        .map((item: any, index: number) => {
+            const scene = draft.scenes.find(s => s.id === item.sceneId) || draft.scenes[index];
+            const base = fallback.find(clip => clip.sceneId === scene?.id) || fallback[index];
+            if (!scene || !base) {
+                return null;
+            }
+            const duration = Number(scene.duration || DEFAULT_SCENE_DURATION);
+            const trimStart = Math.max(0, Math.min(duration - 0.2, Number(item.trimStart || base.trimStart || 0)));
+            const trimEnd = Math.max(trimStart + 0.2, Math.min(duration, Number(item.trimEnd || base.trimEnd || duration)));
+            return {
+                ...base,
+                sceneId: scene.id,
+                videoTaskId: Number(scene.videoTaskId || item.videoTaskId || base.videoTaskId || 0),
+                trimStart,
+                trimEnd,
+                speedRatio: Math.max(0.6, Math.min(1.8, Number(item.speedRatio || base.speedRatio || 1))),
+                targetDuration: Math.max(0.2, Number(item.targetDuration || (trimEnd - trimStart) / Math.max(0.6, Math.min(1.8, Number(item.speedRatio || base.speedRatio || 1))))),
+                subtitle: String(item.subtitle || base.subtitle || ""),
+            };
+        })
+        .filter(Boolean);
+};
+
+const submitFinalizeTask = async (draft: MarketingDraft) => {
+    const missing = draft.scenes.filter(scene => !scene.videoTaskId);
+    if (missing.length) {
+        Dialog.tipError(`还有 ${missing.length} 个分镜没有视频任务，请先逐镜生视频或批量生视频`);
+        return;
+    }
+    try {
+        finalizingVideo.value = true;
+        ensureDraftVoiceoverLines(draft);
+        const clips = await buildAiFinalizeClips(draft);
+        const record: TaskRecord = {
+            biz: "MarketingVideoFinalizeTask",
+            title: `${draft.title}_AI剪辑成片`,
+            serverName: "",
+            serverTitle: "",
+            serverVersion: "",
+            param: {
+                draft: JSON.parse(JSON.stringify(draft)),
+                clips,
+                burnSubtitle: true,
+                subtitleStyle: {
+                    fontName: "Microsoft YaHei",
+                    fontSize: 18,
+                    marginV: 80,
+                },
+            },
+            modelConfig: {
+                capability: "video",
+                templateTitle: "短视频最终合成",
+            },
+        };
+        await TaskService.submit(record);
+        Dialog.tipSuccess("AI 剪辑成片任务已提交");
+    } catch (e: any) {
+        Dialog.tipError(e?.message || "AI 剪辑成片失败");
+    } finally {
+        finalizingVideo.value = false;
+    }
 };
 
 const submitCloudVideoTask = async (draft: MarketingDraft, scene: SceneDraft) => {
@@ -3310,7 +3718,8 @@ const submitScene = async (draft: MarketingDraft, scene: SceneDraft, type: "imag
         submitting.value = true;
         ensureDraftVoiceoverLines(draft);
         if (type === "image") {
-            await submitImageTask(draft, scene);
+            const taskId = await submitImageTask(draft, scene);
+            startSceneImageTaskSync(scene, taskId);
         } else {
             await submitVideoTask(draft, scene);
         }
@@ -3333,7 +3742,8 @@ const submitDraft = async (target: MarketingDraft, type: "image" | "video" | "bo
                 break;
             }
             if (type === "image") {
-                await submitImageTask(target, scene);
+                const taskId = await submitImageTask(target, scene);
+                startSceneImageTaskSync(scene, taskId);
             }
             if (type === "video") {
                 await submitVideoTask(target, scene);
@@ -3363,7 +3773,8 @@ const submitAll = async (type: "image" | "video" | "both") => {
                     break;
                 }
                 if (type === "image") {
-                    await submitImageTask(draft, scene);
+                    const taskId = await submitImageTask(draft, scene);
+                    startSceneImageTaskSync(scene, taskId);
                 }
                 if (type === "video") {
                     await submitVideoTask(draft, scene);
@@ -3572,6 +3983,7 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                         <a-button type="primary" @click="pickMarketingAsset">上传资产图片</a-button>
                                         <a-button @click="refreshRequiredAssetsFromCurrentDrafts">检查并创建缺失资产</a-button>
                                         <a-button @click="refreshMarketingAssetTasks(false)">同步生成结果</a-button>
+                                        <a-button @click="refreshSceneImageTasks(false)">同步分镜图</a-button>
                                     </div>
                                     <div class="mt-2 text-xs leading-5 text-gray-500">
                                         这里的资产会作为生图参考输入，用于保持人物、场景、道具在多个分镜间一致；上面的参考视频/参考图片只用于脚本和画面拆解。
@@ -3843,6 +4255,15 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                 <a-select v-else v-model="imageTemplateId" placeholder="选择云端生图模板">
                                     <a-option v-for="item in imageTemplates" :key="item.id" :value="item.id || 0">{{ item.title }}</a-option>
                                 </a-select>
+                                <a-button
+                                    v-if="imageChannel === 'cloud'"
+                                    size="mini"
+                                    class="mt-2"
+                                    :loading="refreshingTemplates"
+                                    @click="refreshCloudTemplates"
+                                >
+                                    刷新模板
+                                </a-button>
                             </div>
                             <div>
                                 <div class="text-xs font-semibold text-gray-500 mb-2">视频通道</div>
@@ -3855,6 +4276,15 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                 <a-select v-else v-model="videoTemplateId" placeholder="选择云端生视频模板">
                                     <a-option v-for="item in videoTemplates" :key="item.id" :value="item.id || 0">{{ item.title }}</a-option>
                                 </a-select>
+                                <a-button
+                                    v-if="videoChannel === 'cloud'"
+                                    size="mini"
+                                    class="mt-2"
+                                    :loading="refreshingTemplates"
+                                    @click="refreshCloudTemplates"
+                                >
+                                    刷新模板
+                                </a-button>
                             </div>
                             <div v-if="videoChannel === 'direct'">
                                 <div class="text-xs font-semibold text-gray-500 mb-2">视频模型</div>
@@ -3862,8 +4292,19 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                     <a-option v-for="item in videoModelOptions" :key="item" :value="item">{{ item }}</a-option>
                                 </a-select>
                             </div>
+                            <div>
+                                <div class="text-xs font-semibold text-gray-500 mb-2">分镜图模式</div>
+                                <a-select v-model="form.storyboardImageMode" class="w-full">
+                                    <a-option v-for="item in storyboardImageModeOptions" :key="item.value" :value="item.value">
+                                        {{ item.label }}
+                                    </a-option>
+                                </a-select>
+                                <div class="mt-1 text-xs leading-5 text-gray-400">
+                                    {{ storyboardImageModeOptions.find(item => item.value === form.storyboardImageMode)?.desc }}
+                                </div>
+                            </div>
                             <div v-if="videoChannel === 'direct'">
-                                <div class="text-xs font-semibold text-gray-500 mb-2">分镜图用途</div>
+                                <div class="text-xs font-semibold text-gray-500 mb-2">视频参考方式</div>
                                 <a-select v-model="form.videoReferenceRole" class="w-full">
                                     <a-option v-for="item in videoReferenceRoleOptions" :key="item.value" :value="item.value">
                                         {{ item.label }}
@@ -3951,7 +4392,9 @@ const submitAll = async (type: "image" | "video" | "both") => {
                             </div>
                             <a-button :loading="submitting" @click="submitDraft(selectedDraft, 'image')">生图</a-button>
                             <a-button :loading="submitting" @click="submitDraft(selectedDraft, 'video')">生视频</a-button>
+                            <a-button :loading="optimizingTiming" @click="optimizeDraftTiming(selectedDraft)">AI 优化节奏</a-button>
                             <a-button @click="exportDraftPrompts(selectedDraft)">导出提示词</a-button>
+                            <a-button :loading="finalizingVideo" @click="submitFinalizeTask(selectedDraft)">AI 剪辑成片</a-button>
                             <a-button type="primary" :loading="submitting" @click="submitDraft(selectedDraft, 'both')">图生视频</a-button>
                         </div>
 
@@ -4067,17 +4510,47 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                         <a-tag v-if="scene.imageTaskId" color="green">图 #{{ scene.imageTaskId }}</a-tag>
                                         <a-tag v-if="scene.videoTaskId" color="purple">视频 #{{ scene.videoTaskId }}</a-tag>
                                         <div class="flex-grow"></div>
-                                        <a-button size="small" :loading="submitting" @click="submitScene(selectedDraft, scene, 'image')">生图</a-button>
+                                        <a-button size="small" :loading="submitting" @click="submitScene(selectedDraft, scene, 'image')">
+                                            {{ scene.referenceImageUrl ? `重新${storyboardImageActionText}` : storyboardImageActionText }}
+                                        </a-button>
                                         <a-button size="small" type="primary" :loading="submitting" @click="submitScene(selectedDraft, scene, 'video')">生视频</a-button>
                                         <a-button size="small" @click="exportScenePrompts(selectedDraft, scene, index)">导出</a-button>
                                     </div>
-                                    <div class="mb-3 flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
-                                        <span class="text-xs font-medium text-gray-500">分镜参考图</span>
-                                        <a-button size="mini" @click="pickSceneReferenceImage(scene)">上传图片</a-button>
-                                        <a-button v-if="scene.referenceImageUrl" size="mini" @click="clearSceneReferenceImage(scene)">移除</a-button>
-                                        <span class="min-w-0 flex-1 truncate text-xs text-gray-500">
-                                            {{ scene.referenceImageName || scene.referenceImageUrl || "可选；图生视频会优先使用这张图，不再先生图。" }}
-                                        </span>
+                                    <div class="mb-3 flex min-w-0 items-center gap-3 rounded-lg bg-gray-50 px-3 py-2">
+                                        <div class="h-20 w-14 shrink-0 overflow-hidden rounded-md border border-gray-100 bg-white">
+                                            <a-popover v-if="sceneReferenceDisplayUrl(scene)" trigger="hover" position="right">
+                                                <div class="h-full w-full">
+                                                    <img :src="sceneReferenceDisplayUrl(scene)" class="h-full w-full object-cover" />
+                                                </div>
+                                                <template #content>
+                                                    <div class="max-w-[380px]">
+                                                        <img :src="sceneReferenceDisplayUrl(scene)" class="max-h-[460px] max-w-[360px] rounded-lg object-contain" />
+                                                        <div class="mt-2 max-w-[360px] truncate text-xs text-gray-500">
+                                                            {{ scene.referenceImageName || scene.referenceImageUrl || `镜头 ${index + 1} 分镜图` }}
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </a-popover>
+                                            <div v-else class="flex h-full w-full items-center justify-center px-1 text-center text-[11px] text-gray-400">
+                                                分镜图
+                                            </div>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="mb-1 text-xs font-medium text-gray-500">分镜参考图</div>
+                                            <div class="truncate text-xs text-gray-500">
+                                                {{ scene.referenceImageName || scene.referenceImageUrl || "可选；图生视频会优先使用这张图，不再先生图。" }}
+                                            </div>
+                                            <div class="mt-2 flex flex-wrap gap-2">
+                                                <a-button size="mini" @click="pickSceneReferenceImage(scene)">上传图片</a-button>
+                                                <a-button size="mini" type="primary" :loading="submitting" @click="submitScene(selectedDraft, scene, 'image')">
+                                                    {{ scene.referenceImageUrl ? `重新${storyboardImageActionText}` : storyboardImageActionText }}
+                                                </a-button>
+                                                <a-button v-if="scene.imageTaskId && !scene.referenceImageUrl" size="mini" @click="syncSceneImageTask(scene)">
+                                                    同步结果
+                                                </a-button>
+                                                <a-button v-if="scene.referenceImageUrl" size="mini" @click="clearSceneReferenceImage(scene)">移除</a-button>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="mb-3 flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-blue-50 px-3 py-2">
                                         <span class="text-xs font-medium text-gray-500">关联资产</span>
@@ -4122,6 +4595,20 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                         </a-form-item>
                                         <a-form-item label="本镜台词/字幕">
                                             <a-textarea v-model="scene.voiceoverLine" :disabled="scene.narrationMode === 'none'" :auto-size="{ minRows: 2, maxRows: 4 }" />
+                                        </a-form-item>
+                                    </div>
+                                    <div class="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_120px_120px_120px]">
+                                        <a-form-item label="节奏说明">
+                                            <a-input v-model="scene.rhythmHint" placeholder="如：快切钩子、慢速停顿、信息密集、短促收束" />
+                                        </a-form-item>
+                                        <a-form-item label="后期速度">
+                                            <a-input-number v-model="scene.speedRatio" :min="0.6" :max="1.8" :step="0.05" />
+                                        </a-form-item>
+                                        <a-form-item label="裁切开始">
+                                            <a-input-number v-model="scene.trimStart" :min="0" :max="scene.duration" :step="0.1" />
+                                        </a-form-item>
+                                        <a-form-item label="裁切结束">
+                                            <a-input-number v-model="scene.trimEnd" :min="0.2" :max="scene.duration" :step="0.1" />
                                         </a-form-item>
                                     </div>
                                     <a-form-item label="剧情段落">

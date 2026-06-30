@@ -15,6 +15,9 @@ import {
     getTemplateCapabilities,
 } from "../../service/CloudTemplateService";
 import { ConfigTransferService } from "../../service/ConfigTransferService";
+import { isLocalConfigAdmin } from "../../utils/configPermission";
+
+const isConfigAdmin = computed(() => isLocalConfigAdmin());
 
 const providerTypeOptions: { value: CloudProviderType; label: string }[] = [
     { value: "runninghub", label: "RunningHub" },
@@ -589,7 +592,7 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
             </div>
         </div>
 
-        <template v-if="false">
+        <template v-if="isConfigAdmin">
         <div class="rounded-xl border border-solid border-gray-200 p-4">
             <div class="flex items-center mb-3">
                 <div class="flex-grow">
@@ -689,7 +692,7 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
         </template>
     </div>
 
-    <a-modal v-model:visible="providerVisible" width="720px" title="供应商配置">
+    <a-modal v-if="isConfigAdmin" v-model:visible="providerVisible" width="720px" title="供应商配置">
         <template #footer>
             <a-button @click="providerVisible = false">取消</a-button>
             <a-button type="primary" @click="saveProvider">保存</a-button>
@@ -731,7 +734,7 @@ const deleteTemplate = async (record: CloudTemplateRecord) => {
         </a-form>
     </a-modal>
 
-    <a-modal v-model:visible="templateVisible" width="960px" title="模板配置">
+    <a-modal v-if="isConfigAdmin" v-model:visible="templateVisible" width="960px" title="模板配置">
         <template #footer>
             <a-button @click="templateVisible = false">取消</a-button>
             <a-button type="primary" @click="saveTemplate">保存</a-button>

@@ -78,7 +78,17 @@ const getOutputExt = (url: string) => {
     }
 };
 
-const getOutputType = (url: string) => {
+const getOutputType = (url: string, hint?: string) => {
+    const hintText = String(hint || "").toLowerCase();
+    if (/(image|图片|图像|gif|png|jpe?g|webp)/i.test(hintText)) {
+        return "image";
+    }
+    if (/(video|视频|mp4|mov|avi|mkv|webm)/i.test(hintText)) {
+        return "video";
+    }
+    if (/(audio|音频|mp3|wav|m4a|flac)/i.test(hintText)) {
+        return "audio";
+    }
     if (/^data:image\//i.test(url)) {
         return "image";
     }
@@ -109,6 +119,26 @@ const extractUrlName = (url: string) => {
     }
 };
 
+const remoteOutputUrl = (item: any) => {
+    return String(item?.url || item?.fileUrl || item?.file_url || item?.image_url || item?.imageUrl || item?.video_url || item?.videoUrl || "").trim();
+};
+
+const remoteOutputHint = (item: any) => {
+    return [
+        item?.source,
+        item?.originalZipUrl,
+        item?.outputType,
+        item?.type,
+        item?.mimeType,
+        item?.contentType,
+        item?.fileName,
+        item?.filename,
+        item?.name,
+        item?.url,
+        item?.fileUrl,
+    ].map(value => String(value || "")).filter(Boolean).join(" ");
+};
+
 const ensureFileExt = (name: string, ext: string) => {
     const cleanExt = ext.replace(/^\./, "");
     const base = String(name || "output").trim() || "output";
@@ -122,7 +152,11 @@ const ensureFileExt = (name: string, ext: string) => {
 const outputItems = computed<OutputItem[]>(() => {
     const localFiles = Array.isArray((props.record as any)?.jobResult?.End?.localFiles)
         ? (props.record as any).jobResult.End.localFiles
-        : [];
+        : Array.isArray((props.record as any)?.result?.localFiles)
+          ? (props.record as any).result.localFiles
+          : (props.record as any)?.result?.url
+            ? [(props.record as any).result.url]
+            : [];
     const remoteResults = Array.isArray((props.record as any)?.jobResult?.Query?.results)
         ? (props.record as any).jobResult.Query.results
         : [];
@@ -133,21 +167,20 @@ const outputItems = computed<OutputItem[]>(() => {
             return;
         }
         const remote = remoteResults[index] || {};
-        const remoteUrl = String(remote?.url || remote?.fileUrl || remote?.video_url || remote?.videoUrl || "").trim();
-        const remoteOutputType = String(remote?.outputType || remote?.type || "").toLowerCase();
-        const useRemoteVideo = /^https?:\/\//i.test(remoteUrl) && (remoteOutputType.includes("video") || getOutputType(remoteUrl) === "video");
+        const remoteUrl = remoteOutputUrl(remote);
+        const outputHint = [file, remoteOutputHint(remote), remoteUrl].filter(Boolean).join(" ");
         items.push({
             key: "local-" + index,
-            name: useRemoteVideo ? extractUrlName(remoteUrl) : window.$mapi.file.pathToName(file, true, 48),
-            url: useRemoteVideo ? remoteUrl : file,
-            isLocal: !useRemoteVideo,
-            type: useRemoteVideo ? "video" : getOutputType(file),
+            name: remoteUrl ? extractUrlName(remoteUrl) : window.$mapi.file.pathToName(file, true, 48),
+            url: file,
+            isLocal: true,
+            type: getOutputType(file, outputHint),
         });
     });
 
     if (localFiles.length < remoteResults.length) {
         remoteResults.slice(localFiles.length).forEach((item: any, index: number) => {
-            const url = String(item?.url || item?.fileUrl || "").trim();
+            const url = remoteOutputUrl(item);
             const b64 = String(item?.text || "").trim();
             const outputType = String(item?.outputType || "").trim();
             const dataUrl = !url && b64 && outputType === "image_base64" ? `data:image/png;base64,${b64}` : "";
@@ -159,7 +192,7 @@ const outputItems = computed<OutputItem[]>(() => {
                 name: url ? extractUrlName(url) : `base64-image-${index + 1}.png`,
                 url: url || dataUrl,
                 isLocal: false,
-                type: getOutputType(url || dataUrl),
+                type: getOutputType(url || dataUrl, remoteOutputHint(item)),
             });
         });
     }
