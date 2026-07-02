@@ -27,18 +27,23 @@
   ; Upgrade/overwrite install runs the old uninstaller with isUpdated=true, so guard it.
   ${ifNot} ${isUpdated}
     SetShellVarContext current
+    !insertmacro cleanExternalDataRoots "$APPDATA\东风奕境AI工作台\uninstall-data-roots.txt" newProductName
     !insertmacro cleanExternalDataRoots "$APPDATA\唯变AI工作台\uninstall-data-roots.txt" productName
     !insertmacro cleanExternalDataRoots "$APPDATA\shuzhi-yinxiang\uninstall-data-roots.txt" packageName
     !insertmacro cleanExternalDataRoots "$APPDATA\ShuzhiYinxiang\uninstall-data-roots.txt" appId
+    RMDir /r "$APPDATA\东风奕境AI工作台"
     RMDir /r "$APPDATA\唯变AI工作台"
     RMDir /r "$APPDATA\shuzhi-yinxiang"
     RMDir /r "$APPDATA\ShuzhiYinxiang"
+    RMDir /r "$APPDATA\东风奕境AI工作台-updater"
     RMDir /r "$APPDATA\唯变AI工作台-updater"
     RMDir /r "$APPDATA\shuzhi-yinxiang-updater"
     RMDir /r "$APPDATA\ShuzhiYinxiang-updater"
+    RMDir /r "$LOCALAPPDATA\东风奕境AI工作台"
     RMDir /r "$LOCALAPPDATA\唯变AI工作台"
     RMDir /r "$LOCALAPPDATA\shuzhi-yinxiang"
     RMDir /r "$LOCALAPPDATA\ShuzhiYinxiang"
+    RMDir /r "$LOCALAPPDATA\东风奕境AI工作台-updater"
     RMDir /r "$LOCALAPPDATA\唯变AI工作台-updater"
     RMDir /r "$LOCALAPPDATA\shuzhi-yinxiang-updater"
     RMDir /r "$LOCALAPPDATA\ShuzhiYinxiang-updater"

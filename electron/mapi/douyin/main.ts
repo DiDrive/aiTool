@@ -34,6 +34,57 @@ const CHROME_UA =
 
 const cleanText = (value: any) => String(value || "").replace(/\s+/g, " ").trim();
 
+const normalizeCookie = (value: any) => {
+    let text = String(value || "").trim();
+    if (!text) {
+        return "";
+    }
+    text = text.replace(/\r/g, "\n");
+    const cookieLine = text
+        .split("\n")
+        .map(line => line.trim())
+        .find(line => /^cookie\s*:/i.test(line));
+    if (cookieLine) {
+        text = cookieLine.replace(/^cookie\s*:/i, "").trim();
+    }
+    return text
+        .split("\n")
+        .map(line => line.trim())
+        .filter(line => line && !/^[\w-]+\s*:/i.test(line))
+        .join("; ")
+        .replace(/^cookie\s*:/i, "")
+        .replace(/\s*;\s*/g, "; ")
+        .trim();
+};
+
+const compactBodyPreview = (value: string, maxLength = 180) => {
+    return cleanText(
+        value
+            .replace(/<script[\s\S]*?<\/script>/gi, " ")
+            .replace(/<style[\s\S]*?<\/style>/gi, " ")
+            .replace(/<[^>]+>/g, " ")
+    ).slice(0, maxLength);
+};
+
+class NonJsonResponseError extends Error {
+    status: number;
+    responseUrl: string;
+    contentType: string;
+    bodyText: string;
+    preview: string;
+
+    constructor(status: number, responseUrl: string, contentType: string, bodyText: string) {
+        const preview = compactBodyPreview(bodyText);
+        super(`抖音接口返回非 JSON：HTTP ${status}${preview ? `，返回内容：${preview}` : ""}`);
+        this.name = "NonJsonResponseError";
+        this.status = status;
+        this.responseUrl = responseUrl;
+        this.contentType = contentType;
+        this.bodyText = bodyText;
+        this.preview = preview;
+    }
+}
+
 const compactHeaders = (headers: Record<string, string | undefined>) => {
     return Object.fromEntries(Object.entries(headers).filter(([, value]) => cleanText(value)));
 };
@@ -68,7 +119,7 @@ const fetchJson = async (url: string, referer: string, cookie?: string) => {
     try {
         json = JSON.parse(text);
     } catch (e) {
-        throw new Error(`抖音接口返回非 JSON：HTTP ${res.status}`);
+        throw new NonJsonResponseError(res.status, res.url || url, res.headers.get("content-type") || "", text);
     }
     if (!res.ok) {
         throw new Error(json?.message || json?.status_msg || `抖音接口请求失败：HTTP ${res.status}`);
@@ -262,6 +313,37 @@ const tryParseRouterData = (html: string, sourceUrl: string, resolvedUrl: string
     return null;
 };
 
+const fetchPageFallback = async (sourceUrl: string, resolvedUrl: string, cookie?: string) => {
+    const page = await fetchText(resolvedUrl, cookie);
+    return {
+        html: page.text,
+        parsed: tryParseRouterData(page.text, sourceUrl, page.url || resolvedUrl),
+    };
+};
+
+const fetchLegacyAwemeDetail = async (awemeId: string, sourceUrl: string, resolvedUrl: string, cookie?: string) => {
+    const urls = [
+        `https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=${encodeURIComponent(awemeId)}`,
+        `https://www.douyin.com/web/api/v2/aweme/iteminfo/?item_ids=${encodeURIComponent(awemeId)}`,
+    ];
+    for (const url of urls) {
+        try {
+            const json = await fetchJson(url, resolvedUrl, cookie);
+            const aweme = json?.item_list?.[0] || json?.aweme_detail || json?.aweme || json?.data?.aweme_detail;
+            if (!aweme) {
+                continue;
+            }
+            const mapped = mapAwemeDetail(aweme, sourceUrl, resolvedUrl);
+            if (mapped.videoUrl || mapped.imageUrls?.length || mapped.desc) {
+                return mapped;
+            }
+        } catch (e) {
+            console.warn("douyin legacy detail failed", e);
+        }
+    }
+    return null;
+};
+
 const callCustomApi = async (options: DouyinImportOptions): Promise<DouyinImportResult | null> => {
     const customApiUrl = cleanText(options.customApiUrl);
     if (!customApiUrl) {
@@ -320,11 +402,44 @@ const fetchDouyinDetail = async (options: DouyinImportOptions): Promise<DouyinIm
     detailUrl.searchParams.set("aweme_id", awemeId);
     detailUrl.searchParams.set("aid", "6383");
     detailUrl.searchParams.set("device_platform", "webapp");
-    const json = await fetchJson(detailUrl.toString(), resolvedUrl, options.cookie);
+    let json: any = null;
+    try {
+        json = await fetchJson(detailUrl.toString(), resolvedUrl, options.cookie);
+    } catch (e: any) {
+        if (e instanceof NonJsonResponseError) {
+            const legacy = await fetchLegacyAwemeDetail(awemeId, sourceUrl, resolvedUrl, options.cookie);
+            if (legacy) {
+                return legacy;
+            }
+            try {
+                const fallback = await fetchPageFallback(sourceUrl, resolvedUrl, options.cookie);
+                html = fallback.html;
+                if (fallback.parsed?.videoUrl || fallback.parsed?.imageUrls?.length) {
+                    return fallback.parsed;
+                }
+            } catch (fallbackError) {
+                console.warn("douyin page fallback failed", fallbackError);
+            }
+            throw new Error(
+                [
+                    "抖音详情接口返回了网页而不是 JSON，通常是 Cookie 失效、未登录、验证码/风控，或抖音接口策略变化。",
+                    e.preview ? `返回片段：${e.preview}` : "",
+                    "可以在高级设置里填写当前浏览器 Cookie 后重试，或改用自定义解析 API。",
+                ]
+                    .filter(Boolean)
+                    .join("\n")
+            );
+        }
+        throw e;
+    }
     const aweme = json?.aweme_detail || json?.aweme || json?.data?.aweme_detail;
     if (!aweme) {
+        const legacy = await fetchLegacyAwemeDetail(awemeId, sourceUrl, resolvedUrl, options.cookie);
+        if (legacy) {
+            return legacy;
+        }
         if (!html) {
-            html = (await fetchText(resolvedUrl, options.cookie)).text;
+            html = (await fetchPageFallback(sourceUrl, resolvedUrl, options.cookie)).html;
         }
         const fromPage = tryParseRouterData(html, sourceUrl, resolvedUrl);
         if (fromPage) {
@@ -371,15 +486,21 @@ const importVideo = async (_: any, options: DouyinImportOptions): Promise<Douyin
     if (!sourceUrl) {
         throw new Error("请先填写抖音视频链接");
     }
-    let result = await callCustomApi(options);
+    const normalizedOptions = {
+        ...options,
+        url: sourceUrl,
+        cookie: normalizeCookie(options?.cookie),
+        customApiUrl: cleanText(options?.customApiUrl),
+    };
+    let result = await callCustomApi(normalizedOptions);
     if (!result) {
-        result = await fetchByDyDownloader(options);
+        result = await fetchByDyDownloader(normalizedOptions);
     }
     if (!result) {
-        result = await fetchDouyinDetail(options);
+        result = await fetchDouyinDetail(normalizedOptions);
     }
-    if (options.download !== false && result.videoUrl && !result.localVideoPath) {
-        result.localVideoPath = await downloadVideo(result, options.cookie);
+    if (normalizedOptions.download !== false && result.videoUrl && !result.localVideoPath) {
+        result.localVideoPath = await downloadVideo(result, normalizedOptions.cookie);
     }
     if (!result.videoUrl && !result.localVideoPath && !result.imageUrls?.length) {
         throw new Error("已解析到视频信息，但没有拿到可用的视频或图集地址");

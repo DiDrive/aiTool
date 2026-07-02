@@ -17,6 +17,7 @@ const records = ref<TaskRecord[]>([]);
 const sidebarWidth = ref(400);
 const isResizing = ref(false);
 const nowMs = ref(Date.now());
+const visibleLimit = ref(80);
 const router = useRouter();
 let resizeStartX = 0;
 let resizeStartWidth = 400;
@@ -25,6 +26,7 @@ let clockTimer = 0;
 const SIDEBAR_MIN_WIDTH = 360;
 const SIDEBAR_MAX_WIDTH = 640;
 const SIDEBAR_DEFAULT_WIDTH = 400;
+const RECORD_BATCH_SIZE = 80;
 
 const capabilityTabs = [
     { label: "全部", value: "all" },
@@ -301,29 +303,42 @@ const deleteTask = async (record: TaskRecord) => {
         Dialog.tipError("只有已完成或已失败的任务可以删除");
         return;
     }
+    const previousRecords = records.value;
+    records.value = records.value.filter(item => item.id !== record.id);
     try {
         await TaskService.delete(record);
         Dialog.tipSuccess("任务记录已删除");
-        await refresh();
+        refresh();
     } catch (e: any) {
+        records.value = previousRecords;
         Dialog.tipError(String(e?.message || e || "删除任务失败"));
     }
 };
 
-const filteredRecords = computed(() => {
-    return records.value.filter(record => {
-        const capability = record.biz === "MarketingVideoChainTask" ? "video" : record.modelConfig?.capability;
+const recordViews = computed(() => records.value.map(record => ({
+    record,
+    capability: record.biz === "MarketingVideoChainTask" ? "video" : record.modelConfig?.capability,
+    status: resolveDisplayStatus(record),
+})));
+
+const filteredRecordViews = computed(() => {
+    return recordViews.value.filter(item => {
+        const { capability, status } = item;
         if (capabilityFilter.value !== "all" && capability !== capabilityFilter.value) {
             return false;
         }
-        if (statusFilter.value !== "all" && resolveDisplayStatus(record) !== statusFilter.value) {
+        if (statusFilter.value !== "all" && status !== statusFilter.value) {
             return false;
         }
         return true;
     });
 });
 
-const displayedRecords = computed(() => filteredRecords.value);
+const filteredRecords = computed(() => filteredRecordViews.value.map(item => item.record));
+
+const displayedRecordViews = computed(() => filteredRecordViews.value.slice(0, visibleLimit.value));
+
+const hasMoreRecords = computed(() => filteredRecordViews.value.length > visibleLimit.value);
 
 const summary = computed(() => {
     const result = {
@@ -332,8 +347,7 @@ const summary = computed(() => {
         fail: 0,
         queue: 0,
     };
-    for (const record of records.value) {
-        const status = resolveDisplayStatus(record);
+    for (const { status } of recordViews.value) {
         if (status === "running") {
             result.running += 1;
         } else if (status === "success") {
@@ -346,6 +360,26 @@ const summary = computed(() => {
     }
     return result;
 });
+
+const setCapabilityFilter = (value: CapabilityFilter) => {
+    if (capabilityFilter.value === value) {
+        return;
+    }
+    capabilityFilter.value = value;
+    visibleLimit.value = RECORD_BATCH_SIZE;
+};
+
+const setStatusFilter = (value: StatusFilter) => {
+    if (statusFilter.value === value) {
+        return;
+    }
+    statusFilter.value = value;
+    visibleLimit.value = RECORD_BATCH_SIZE;
+};
+
+const loadMoreRecords = () => {
+    visibleLimit.value += RECORD_BATCH_SIZE;
+};
 
 const savePrefs = async () => {
     await window.$mapi.storage.set("cloudTaskSidebar", "state", {
@@ -522,7 +556,7 @@ onBeforeUnmount(() => {
                                     ? 'bg-gray-900 text-white'
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             "
-                            @click="capabilityFilter = item.value as CapabilityFilter"
+                            @click="setCapabilityFilter(item.value as CapabilityFilter)"
                         >
                             {{ item.label }}
                         </button>
@@ -541,7 +575,7 @@ onBeforeUnmount(() => {
                                     ? 'bg-blue-600 text-white'
                                     : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                             "
-                            @click="statusFilter = item.value as StatusFilter"
+                            @click="setStatusFilter(item.value as StatusFilter)"
                         >
                             {{ item.label }}
                         </button>
@@ -556,15 +590,20 @@ onBeforeUnmount(() => {
             <div class="flex-grow overflow-auto px-3 py-3">
                 <div class="space-y-3">
                     <CloudTaskSidebarItem
-                        v-for="record in displayedRecords"
-                        :key="record.id"
-                        :record="record"
-                        :display-status="resolveDisplayStatus(record)"
+                        v-for="item in displayedRecordViews"
+                        :key="item.record.id"
+                        :record="item.record"
+                        :display-status="item.status"
                         :now-ms="nowMs"
                         @edit-task="editTask"
                         @regenerate-task="regenerateTask"
                         @delete-task="deleteTask"
                     />
+                </div>
+                <div v-if="hasMoreRecords" class="py-3 text-center">
+                    <a-button size="small" type="outline" @click="loadMoreRecords">
+                        加载更多（{{ filteredRecords.length - displayedRecordViews.length }}）
+                    </a-button>
                 </div>
                 <m-empty v-if="filteredRecords.length === 0" class="mt-10" text="没有符合条件的任务" />
             </div>

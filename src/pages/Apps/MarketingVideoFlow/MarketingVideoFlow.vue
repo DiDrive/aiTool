@@ -277,6 +277,11 @@ const sceneCountOptions = [1, 2, 3, 4, 5, 6, 9];
 const durationOptions = Array.from({ length: 12 }, (_, index) => index + 4);
 const DEFAULT_SCENE_DURATION = 8;
 const videoModelOptions = ["seedance-2.0-fast", "seedance-2.0"];
+const ratioOptions = [
+    { label: "9:16 竖屏", value: "9:16", desc: "抖音/快手/视频号短视频常用" },
+    { label: "16:9 横屏", value: "16:9", desc: "横版视频、B站/长视频切片常用" },
+    { label: "1:1 方屏", value: "1:1", desc: "方形信息流" },
+];
 const normalizeUiVideoModel = (value: string) => {
     const raw = String(value || "").trim();
     if (raw === "kw-video-v2-fast") {
@@ -300,6 +305,11 @@ const videoReferenceRoleOptions: Array<{ label: string; value: VideoReferenceRol
     { label: "全能参考", value: "reference_image", desc: "参考人物、场景、风格，不强制作为第一帧" },
     { label: "首帧控制", value: "first_frame", desc: "视频必须从这张分镜图开始" },
 ];
+const availableVideoReferenceRoleOptions = computed(() =>
+    form.value.storyboardImageMode === "scene_grid"
+        ? videoReferenceRoleOptions.filter(item => item.value === "reference_image")
+        : videoReferenceRoleOptions
+);
 const storyboardImageModeOptions: Array<{ label: string; value: StoryboardImageMode; desc: string }> = [
     { label: "镜头动作宫格", value: "scene_grid", desc: "每个镜头生成一张多宫格动作板，覆盖该镜头内的起承转合，再用于生视频参考" },
     { label: "单张首帧", value: "single_frame", desc: "每个镜头只生成一张清晰首帧，更适合首帧控制和画面精修" },
@@ -352,6 +362,10 @@ const currentImageTemplate = computed(() => {
 
 const currentVideoTemplate = computed(() => {
     return videoTemplates.value.find(item => item.id === videoTemplateId.value) || null;
+});
+
+const currentRatioOption = computed(() => {
+    return ratioOptions.find(item => item.value === form.value.ratio) || ratioOptions[0];
 });
 
 const currentAssetImagePlatform = computed(() => {
@@ -448,6 +462,7 @@ const loadPlatforms = async () => {
     videoTemplateId.value = videoTemplates.value.some(item => item.id === videoTemplateId.value)
         ? videoTemplateId.value
         : videoTemplates.value[0]?.id || 0;
+    syncVideoRatioFromSelectedTemplate();
     assetImagePlatformId.value = imagePlatforms.value.some(item => item.id === assetImagePlatformId.value)
         ? assetImagePlatformId.value
         : imagePlatformId.value;
@@ -494,6 +509,16 @@ watch(() => form.value.videoModel, value => {
     if (normalized !== value) {
         form.value.videoModel = normalized;
     }
+});
+
+watch(() => form.value.storyboardImageMode, value => {
+    if (value === "scene_grid" && form.value.videoReferenceRole !== "reference_image") {
+        form.value.videoReferenceRole = "reference_image";
+    }
+});
+
+watch([videoChannel, videoTemplateId], () => {
+    syncVideoRatioFromSelectedTemplate();
 });
 
 const textOr = (value: string, fallback: string) => {
@@ -590,6 +615,140 @@ const effectiveSceneCaption = (scene: SceneDraft) => {
     return cleanSentence(scene.captionOverride || scene.voiceoverLine || scene.subtitle || "");
 };
 
+const sceneLooksLikeInterview = (scene: Pick<SceneDraft, "title" | "scriptBeat" | "imagePrompt" | "videoPrompt" | "voiceoverLine" | "subtitle">) => {
+    const text = [scene.title, scene.scriptBeat, scene.imagePrompt, scene.videoPrompt, scene.voiceoverLine, scene.subtitle]
+        .map(item => String(item || ""))
+        .join("\n");
+    return /采访|街访|被采访|采访者|受访者|路人|麦克风|提问|回答/.test(text);
+};
+
+const lineLooksLikeQuestion = (value: string) => /[?？]\s*$/.test(cleanSentence(value));
+
+const dialogueSpeakerPattern = "采访者|持麦者|提问者|采访人|主持人|博主|被采访者|被访者|受访者|受访人|访谈对象|路人|女生|男生|回答者";
+
+const stripDialogueSpeaker = (value: string) => cleanSentence(value.replace(new RegExp(`^(${dialogueSpeakerPattern})\\s*[：:]\\s*`, "i"), ""));
+
+const extractSpeakerLine = (source: string, speakers: string[]) => {
+    const text = String(source || "");
+    for (const speaker of speakers) {
+        const pattern = new RegExp(`${speaker}\\s*[：:]\\s*([^\\n。！？!?]+[。！？!?]?)`, "i");
+        const match = text.match(pattern);
+        if (match?.[1]) {
+            return cleanSentence(match[1]);
+        }
+    }
+    return "";
+};
+
+const extractLabeledDialogueLines = (source: string) => {
+    const text = String(source || "").replace(/\r?\n/g, " ");
+    const lines: Array<{ speaker: string; line: string }> = [];
+    const pattern = /([\u4e00-\u9fa5A-Za-z0-9_-]{1,16})\s*[：:]\s*([^：:\n]+?)(?=\s*[\u4e00-\u9fa5A-Za-z0-9_-]{1,16}\s*[：:]|$)/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text))) {
+        const speaker = cleanSentence(match[1] || "");
+        const line = cleanSentence(match[2] || "");
+        if (speaker && line && !/要求|全文|提示|风格|资产|字幕|音频|台词/.test(speaker)) {
+            lines.push({ speaker, line });
+        }
+    }
+    return lines;
+};
+
+const speakerLooksLikeInterviewer = (speaker: string) => /采访者|持麦者|提问者|采访人|主持人|博主/.test(speaker);
+
+const speakerLooksLikeRespondent = (speaker: string) => /被采访者|被访者|受访者|受访人|访谈对象|路人|女生|男生|回答者/.test(speaker);
+
+const spokenOnlyLine = (value: string) => {
+    const labeled = extractLabeledDialogueLines(value);
+    if (labeled.length) {
+        return labeled.map(item => item.line).join(" ");
+    }
+    return cleanSentence(value.replace(new RegExp(`(${dialogueSpeakerPattern})\\s*[：:]\\s*`, "g"), ""));
+};
+
+const extractQuotedAnswerAfterReply = (source: string) => {
+    const text = String(source || "");
+    const match = text.match(/(?:回答|回应|说|表示)[^“”"']*[“"']([^“”"']{2,40})[”"']/);
+    return cleanSentence(match?.[1] || "");
+};
+
+const extractInterviewDialogue = (scene: SceneDraft, line: string, caption: string) => {
+    const sources = [scene.voiceoverLine, caption, scene.subtitle, scene.captionOverride, line, scene.scriptBeat].filter(Boolean).join("\n");
+    const labeledLines = extractLabeledDialogueLines(sources);
+    const labeledInterviewer = labeledLines.find(item => speakerLooksLikeInterviewer(item.speaker));
+    const labeledRespondent =
+        labeledLines.find(item => speakerLooksLikeRespondent(item.speaker))
+        || labeledLines.find(item => !speakerLooksLikeInterviewer(item.speaker) && item.line !== labeledInterviewer?.line);
+    const interviewerLine = labeledInterviewer?.line
+        || extractSpeakerLine(sources, ["采访者", "持麦者", "提问者", "采访人", "主持人", "博主"])
+        || (lineLooksLikeQuestion(line) ? stripDialogueSpeaker(line) : "");
+    let respondentLine =
+        labeledRespondent?.line
+        || extractSpeakerLine(sources, ["被采访者", "被访者", "受访者", "受访人", "访谈对象", "路人", "女生", "男生", "回答者"])
+        || extractQuotedAnswerAfterReply(scene.scriptBeat || "");
+    if (respondentLine && interviewerLine && (respondentLine === interviewerLine || respondentLine.includes(interviewerLine))) {
+        respondentLine = "";
+    }
+    return { interviewerLine, respondentLine };
+};
+
+const buildInterviewSpeechInstruction = (scene: SceneDraft, line: string, caption: string) => {
+    const { interviewerLine, respondentLine } = extractInterviewDialogue(scene, line, caption);
+    const dialogueText = [
+        interviewerLine ? `采访者：${interviewerLine}` : "",
+        respondentLine ? `被采访者：${respondentLine}` : "",
+    ].filter(Boolean).join("\n");
+    return [
+        "音频/台词要求：这是街头采访双人对话，必须明确区分采访者和被采访者。",
+        interviewerLine ? `采访者/持麦者自然开口问：“${interviewerLine}”。` : "",
+        respondentLine
+            ? `被采访者/路人随后自然回答：“${respondentLine}”。这句回答是锁定台词，必须逐字说出，不要自由发挥。`
+            : "当前没有提供被采访者的明确回答台词，因此被采访者不要开口说话，只做思考、点头或表情反应；不要临时编造回答。",
+        dialogueText ? `本镜锁定对白全文：\n${dialogueText}` : "",
+        "镜头中提问者和回答者的口型、眼神和情绪必须分别对应各自台词。",
+        respondentLine ? "不要让采访者代替被采访者回答，也不要让被采访者重复采访问题。" : "",
+    ].filter(Boolean).join("\n");
+};
+
+const speechCharCount = (value: string) => {
+    return spokenOnlyLine(value)
+        .replace(new RegExp(`(${dialogueSpeakerPattern})\\s*[：:]`, "g"), "")
+        .replace(/\s+/g, "")
+        .replace(/[，。！？、,.!?；;：“”"'\-—（）()《》<>【】[\]]/g, "")
+        .length;
+};
+
+const recommendedDurationForSpeech = (value: string) => {
+    const count = speechCharCount(value);
+    if (!count) return DEFAULT_SCENE_DURATION;
+    if (count <= 18) return 4;
+    if (count <= 28) return 6;
+    if (count <= 38) return 8;
+    if (count <= 50) return 10;
+    if (count <= 62) return 12;
+    return 15;
+};
+
+const applySpeechTimingGuard = (scene: SceneDraft) => {
+    const line = cleanSentence(scene.voiceoverLine || "");
+    if (!line || scene.narrationMode === "none") {
+        return;
+    }
+    const minDuration = recommendedDurationForSpeech(line);
+    if (Number(scene.duration || 0) < minDuration) {
+        scene.duration = minDuration;
+    }
+    scene.speedRatio = Math.max(0.85, Math.min(1, Number(scene.speedRatio || 1)));
+    scene.trimStart = Math.max(0, Math.min(Number(scene.trimStart || 0), Math.max(scene.duration - 0.2, 0)));
+    scene.trimEnd = Math.max(scene.trimStart + 0.2, Math.min(scene.duration, Number(scene.trimEnd || scene.duration)));
+    const count = speechCharCount(line);
+    const timingNote = `台词约 ${count} 字，生成视频时长按自然语速设置为 ${scene.duration}s，表演不要抢话。`;
+    if (!String(scene.rhythmHint || "").includes("自然语速")) {
+        scene.rhythmHint = [scene.rhythmHint, timingNote].filter(Boolean).join(" ");
+    }
+};
+
 const buildReferenceAnalysisInstruction = (analysis?: MarketingDraft["referenceAnalysis"]) => {
     if (!analysis) {
         return "";
@@ -635,13 +794,53 @@ const buildSceneImageModeInstruction = (draft: MarketingDraft, scene: SceneDraft
         `分镜图模式：镜头动作宫格。只为${position}生成一张 ${gridCount} 宫格动作分镜板，不要包含其它镜头内容。`,
         `这 ${gridCount} 个宫格必须按时间顺序展示本镜在 ${scene.duration} 秒内的关键动作变化：起始状态、动作推进、情绪/视线变化、结束姿态。`,
         "所有宫格保持同一人物、同一服装、同一场景空间、同一光线方向和统一画风；每格构图略有变化但连续自然。",
-        "不要在画面中生成字幕、说明文字、编号、水印或 UI；宫格边界干净，竖屏 9:16 总画面可直接作为图生视频参考。",
+        "不要在画面中生成字幕、说明文字、编号、水印或 UI；这张图只是后续视频的动作时间轴参考，不代表最终视频构图。",
     ].join("\n");
+};
+
+const replaceCharacterAssetNamesForPrompt = (value: string, scene?: SceneDraft) => {
+    const characterNames = sceneReadyAssets(scene)
+        .filter(asset => asset.type === "character")
+        .map(asset => String(asset.name || "").trim())
+        .filter(Boolean);
+    const roleName = scene && sceneLooksLikeInterview(scene) ? "主角/被采访者" : "主角";
+    return characterNames.reduce((text, name) => text.replace(new RegExp(escapeRegExp(name), "g"), roleName), String(value || ""));
+};
+
+const buildScenePicturePrompt = (scene: SceneDraft) => {
+    const rawImagePrompt = replaceCharacterAssetNamesForPrompt(scene.imagePrompt || "", scene);
+    const text = [scene.title, scene.scriptBeat, scene.imagePrompt, scene.videoPrompt, scene.voiceoverLine, scene.rhythmHint]
+        .map(item => String(item || ""))
+        .join("\n");
+    const isInterview = /采访|街访|持麦|麦克风|提问/.test(text);
+    const isIndoor = /室内|居家|客厅|房间|分享|坐着|家里/.test(text);
+    const isStreet = /街访|采访|户外|街头|街道|城市|路人|商铺|麦克风/.test(text);
+    const hasPhone = /手机/.test(text);
+    const hasMic = /麦克风|话筒|持麦/.test(text);
+    const sceneLine = isStreet
+        ? "场景是城市街角/街头环境，自然日光，背景树木、商铺和路人轻微虚化。"
+        : isIndoor
+          ? "场景是室内居家休闲区，暖色柔光，背景简洁温馨。"
+          : "场景按本镜剧情选择一个明确空间，背景干净自然。";
+    const actionLine = isInterview
+        ? [
+            "画面主体是主角/被采访者，站在画面中心或三分线附近。",
+            hasPhone ? "主角手持黑色手机或低头看手机，表情自然。": "",
+            hasMic ? "画面边缘露出另一人的手持采访麦克风递向主角，采访者本人可以不完整入镜；不要让主角一开始拿着麦克风。": "",
+        ].filter(Boolean).join(" ")
+        : rawImagePrompt;
+    return [
+        "画面提示词：请直接生成这一镜的具体画面。",
+        rawImagePrompt,
+        sceneLine,
+        actionLine,
+        "只画当前镜头的画面，不画其它分镜内容；不要生成字幕、标题条、贴纸文字、UI 或说明文字。",
+    ].filter(Boolean).join("\n");
 };
 
 const buildImagePromptWithReferenceAnalysis = (draft: MarketingDraft, scene: SceneDraft) => {
     return [
-        appendReferenceAnalysisToPrompt(scene.imagePrompt, draft.referenceAnalysis),
+        appendReferenceAnalysisToPrompt(buildScenePicturePrompt(scene), draft.referenceAnalysis),
         buildSceneImageModeInstruction(draft, scene),
         buildAssetReferenceInstruction(scene),
     ].filter(Boolean).join("\n\n");
@@ -676,6 +875,49 @@ const buildProtectedTermInstruction = (terms: string[]) => {
     return `专有名词保护：以下词必须逐字保留并按原字发音，不要同音替换、不要改写成近义词：${terms.join("、")}${extra}。`;
 };
 
+const humanizeVideoPromptTiming = (prompt: string) => {
+    return String(prompt || "")
+        .replace(/\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*秒内?/g, "这一段")
+        .replace(/\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*秒/g, "这一段")
+        .replace(/\d+(?:\.\d+)?\s*秒/g, "短暂停顿")
+        .replace(/停顿\s*\d+(?:\.\d+)?\s*秒/g, "自然停顿一下")
+        .replace(/语速稍快/g, "语气更轻快")
+        .replace(/快速推进/g, "轻微靠近")
+        .replace(/快速收尾/g, "干净收尾")
+        .replace(/加速释放/g, "情绪自然抬起来")
+        .replace(/动作加重强调/g, "手势自然强调")
+        .replace(/；+/g, "；")
+        .trim();
+};
+
+const buildPerformanceFlowInstruction = (line: string, scene: SceneDraft) => {
+    if (!line || scene.narrationMode === "none") {
+        return "";
+    }
+    return [
+        "表演节奏要求：按真实短视频口播的自然语速完成，不要机械卡秒点，不要突然忽快忽慢。",
+        "动作、表情和手势只服务于这句台词的情绪变化：开头自然进入，中段轻微强调，结尾收住表情。",
+        "如果提示词中出现具体秒数，只把它当作大致节奏参考，实际生成时优先保证台词完整、口型稳定和表演自然。",
+    ].join("\n");
+};
+
+const buildSpeechLockInstruction = (line: string, scene: SceneDraft) => {
+    if (!line || scene.narrationMode === "none") {
+        return "";
+    }
+    const spokenLine = spokenOnlyLine(line);
+    return [
+        "台词锁定要求：音频内容优先级最高，必须逐字按指定台词生成。",
+        `本镜唯一允许被说出口的台词内容：${spokenLine}`,
+        "说话人姓名和角色标签只用于分配口型，不要把“采访者：”“林浅：”这类标签读出来。",
+        "没有写在这段台词里的话，一律不要说；不要让任何角色自由发挥回答、追问、补充口头禅或临场加戏。",
+        "不要扩写、改写、同义替换、删减、补充口头禅或添加任何未指定对白/旁白。",
+        "画面动作和口型都必须服务于这段台词；如果画面节奏与台词冲突，优先保证台词完整准确。",
+    ].join("\n");
+};
+
+const spokenSubtitleText = (value: string) => spokenOnlyLine(value).replace(/\s+/g, " ").trim();
+
 const buildScenePositionInstruction = (scene: SceneDraft, sceneIndex?: number, totalScenes?: number) => {
     if (sceneIndex === undefined || totalScenes === undefined) {
         return "";
@@ -683,34 +925,57 @@ const buildScenePositionInstruction = (scene: SceneDraft, sceneIndex?: number, t
     return `只生成第 ${sceneIndex + 1}/${totalScenes} 镜「${scene.title}」，不要混入其它分镜内容。`;
 };
 
+const buildStoryboardVideoReferenceInstruction = (mode: StoryboardImageMode) => {
+    if (mode !== "scene_grid") {
+        return "";
+    }
+    return [
+        "分镜参考图使用方式：输入参考图是多宫格动作分镜板，只用于理解同一镜头内的时间顺序、人物动作和表情变化。",
+        "最终视频必须是单一全屏连续镜头，不要出现宫格、拼贴、分屏、漫画分格、边框、编号或多个小画面。",
+        "即使参考图是三宫格、四宫格、六宫格，也必须拆解为连续动作时间点，绝不能把多个格子同时画进视频画面。",
+        "请把每个宫格理解为前后时间点，让画面在单一场景中自然过渡，不要把参考图版式复制到视频里。",
+    ].join("\n");
+};
+
 const buildVideoPromptWithSpeech = (
     scene: SceneDraft,
     analysis?: MarketingDraft["referenceAnalysis"],
     sceneIndex?: number,
-    totalScenes?: number
+    totalScenes?: number,
+    storyboardImageMode: StoryboardImageMode = form.value.storyboardImageMode
 ) => {
     const line = cleanSentence(scene.voiceoverLine || "");
     const caption = effectiveSceneCaption(scene);
     const protectedTermInstruction = buildProtectedTermInstruction(
         extractProtectedTerms([form.value.brandName, form.value.productSellingPoints, form.value.idea, line, caption])
     );
+    const performanceInstruction = buildPerformanceFlowInstruction(line, scene);
+    const speechLockInstruction = buildSpeechLockInstruction(line, scene);
+    const spokenLine = spokenOnlyLine(line);
+    const spokenCaption = spokenSubtitleText(caption || line);
     const speechInstruction =
         scene.narrationMode === "none"
             ? "音频/台词要求：不要生成对白、旁白或人物开口；只保留自然环境声或轻微氛围音。"
             : line
-              ? scene.narrationMode === "character"
-                  ? `音频/台词要求：让画面中的主要角色自然开口说出这句中文台词：“${line}”。需要口型、情绪和语速匹配台词，不要省略，不要改写。`
-                  : `音频/台词要求：使用自然普通话画外音完整朗读这句台词：“${line}”。画面角色可以不张口，但必须有清晰旁白，不要省略，不要改写。`
-              : "音频/台词要求：如无明确台词，可使用轻微环境声，不要生成无关对白。";
+                  ? scene.narrationMode === "character" && sceneLooksLikeInterview(scene)
+                  ? buildInterviewSpeechInstruction(scene, line, caption)
+                  : scene.narrationMode === "character"
+                  ? `音频/台词要求：让画面中的主要角色自然开口说出这句中文台词：“${spokenLine}”。这是本镜唯一允许出现的人声台词，需要口型、情绪和语速匹配台词，不要省略，不要改写，不要添加其它对白；不要读出人物姓名或“角色名：”标签。`
+                  : `音频/台词要求：使用自然普通话画外音完整朗读这句台词：“${spokenLine}”。这是本镜唯一允许出现的人声旁白，画面角色可以不张口，但必须有清晰旁白，不要省略，不要改写，不要添加其它对白；不要读出人物姓名或“角色名：”标签。`
+              : "音频/台词要求：当前分镜没有明确台词，因此不要生成任何对白、旁白或人物开口；只保留自然环境声或轻微氛围音。需要说话时必须先在分镜台词里填写明确文本。";
     const subtitleInstruction =
         scene.subtitleMode === "none"
             ? "字幕要求：不要生成画面字幕、口播字幕、标题条或贴纸文字。"
-            : `字幕后期要求：本镜字幕文本为“${caption || line || "无"}”，但视频模型不要把任何字幕、标题条、贴纸文字或 UI 文本画进画面；字幕会在最终合成阶段由系统叠加。`;
+            : `字幕后期要求：本镜字幕文本为“${spokenCaption || "无"}”，但视频模型不要把任何字幕、标题条、贴纸文字或 UI 文本画进画面；字幕会在最终合成阶段由系统叠加。`;
     return [
         buildScenePositionInstruction(scene, sceneIndex, totalScenes),
-        appendReferenceAnalysisToPrompt(scene.videoPrompt, analysis),
+        appendReferenceAnalysisToPrompt(humanizeVideoPromptTiming(scene.videoPrompt), analysis),
+        buildSceneAssetBindingInstruction(scene),
+        buildStoryboardVideoReferenceInstruction(storyboardImageMode),
         "",
         speechInstruction,
+        speechLockInstruction,
+        performanceInstruction,
         protectedTermInstruction,
         subtitleInstruction,
     ].filter(Boolean).join("\n");
@@ -1234,6 +1499,243 @@ const normalizeMarketingAssetType = (value: any): MarketingAssetType => {
     return "character";
 };
 
+const escapeRegExp = (value: string) => {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+const splitCompositeAssetName = (name: string, type: MarketingAssetType) => {
+    const raw = String(name || "").trim();
+    if (!raw) {
+        return [];
+    }
+    const normalized = raw
+        .replace(/[＋+]/g, "与")
+        .replace(/\s+(和|与|及)\s+/g, "$1")
+        .replace(/以及/g, "与");
+    if (!/[、,，;；/]|和|与|及/.test(normalized)) {
+        return [raw];
+    }
+    const parts = normalized
+        .split(/(?:、|,|，|;|；|\/|和|与|及)/)
+        .map(item => item.trim())
+        .filter(Boolean);
+    if (parts.length <= 1) {
+        return [raw];
+    }
+    const sensible = parts.every(item => item.length >= 2 && item.length <= 18);
+    if (!sensible) {
+        return [raw];
+    }
+    if (type === "scene" || type === "prop") {
+        return parts;
+    }
+    return parts.length <= 3 ? parts : [raw];
+};
+
+const sentenceFragments = (value: string) => {
+    return String(value || "")
+        .split(/(?<=[。！？!?；;])|[\n\r]+/)
+        .map(item => item.trim())
+        .filter(Boolean);
+};
+
+const ordinalMarkers = (index: number) => {
+    const cn = ["一", "二", "三", "四", "五", "六", "七", "八", "九"][index] || String(index + 1);
+    const num = String(index + 1);
+    return [
+        `场景${cn}`,
+        `场景${num}`,
+        `道具${cn}`,
+        `道具${num}`,
+        `人物${cn}`,
+        `人物${num}`,
+        `第${cn}个`,
+        `第${num}个`,
+    ];
+};
+
+const fragmentOrdinalIndex = (fragment: string, maxCount: number) => {
+    for (let index = 0; index < maxCount; index++) {
+        if (ordinalMarkers(index).some(marker => fragment.includes(marker))) {
+            return index;
+        }
+    }
+    return -1;
+};
+
+const splitAssetDetailFragments = (fragment: string) => {
+    return String(fragment || "")
+        .replace(/^[^：:]{2,40}[：:]/, "")
+        .split(/(?<=[。！？!?；;])|[；;]/)
+        .map(item => item.trim())
+        .filter(Boolean);
+};
+
+const cleanTextForSplitAsset = (
+    value: string,
+    currentName: string,
+    siblingNames: string[],
+    partIndex = -1,
+    allNames: string[] = []
+) => {
+    const text = String(value || "").trim();
+    if (!text || !currentName || siblingNames.length === 0) {
+        return text;
+    }
+    const fragments = sentenceFragments(text);
+    const current = String(currentName || "").trim();
+    const siblings = siblingNames.map(item => String(item || "").trim()).filter(Boolean);
+    const names = allNames.length ? allNames : [current, ...siblings];
+    const kept = fragments.map(fragment => {
+        const ordinalIndex = fragmentOrdinalIndex(fragment, names.length);
+        if (ordinalIndex >= 0 && partIndex >= 0 && ordinalIndex !== partIndex) {
+            return "";
+        }
+        const hasCurrent = fragment.includes(current);
+        const hasSibling = siblings.some(name => fragment.includes(name));
+        if (hasCurrent && !hasSibling) return fragment;
+        if (hasCurrent && hasSibling) {
+            const detailFragments = splitAssetDetailFragments(fragment);
+            const details = detailFragments.filter(detail => {
+                const detailOrdinalIndex = fragmentOrdinalIndex(detail, names.length);
+                if (detailOrdinalIndex >= 0 && partIndex >= 0) {
+                    return detailOrdinalIndex === partIndex;
+                }
+                if (detail.includes(current) && !siblings.some(name => detail.includes(name))) {
+                    return true;
+                }
+                return false;
+            });
+            if (details.length) {
+                return details.join("\n");
+            }
+            return ordinalIndex === partIndex ? fragment.replace(new RegExp(names.map(escapeRegExp).join("|"), "g"), current) : "";
+        }
+        if (!hasCurrent && hasSibling) return "";
+        return fragment;
+    }).filter(Boolean);
+    const cleaned = kept.join("\n").trim();
+    return cleaned || `${current}，${text.replace(new RegExp(siblings.map(escapeRegExp).join("|"), "g"), "").replace(/[与和及、,，;；：:]+/g, " ").trim()}`;
+};
+
+const inferCompositeNamesFromText = (text: string, currentName: string, type: MarketingAssetType) => {
+    const current = String(currentName || "").trim();
+    if (!current) {
+        return [];
+    }
+    const candidates: string[] = [];
+    const escapedCurrent = escapeRegExp(current);
+    const patterns = [
+        new RegExp(`(${escapedCurrent}(?:\\s*(?:与|和|及|、|,|，|/|；|;)\\s*[\\u4e00-\\u9fa5A-Za-z0-9_-]{2,18})+)\\s*[：:]`, "g"),
+        new RegExp(`([\\u4e00-\\u9fa5A-Za-z0-9_-]{2,18}(?:\\s*(?:与|和|及|、|,|，|/)\\s*)${escapedCurrent})\\s*[：:]`, "g"),
+    ];
+    patterns.forEach(pattern => {
+        let match: RegExpExecArray | null;
+        while ((match = pattern.exec(text))) {
+            candidates.push(match[1] || "");
+        }
+    });
+    for (const candidate of candidates) {
+        const parts = splitCompositeAssetName(candidate, type);
+        if (parts.includes(current) && parts.length > 1) {
+            return parts;
+        }
+    }
+    return [];
+};
+
+const cleanAssetPromptByType = (value: string, assetName: string, type: MarketingAssetType) => {
+    const text = String(value || "").trim();
+    if (!text) {
+        return "";
+    }
+    if (type === "character") {
+        return text;
+    }
+    const forbidden = type === "scene"
+        ? /人物|采访者|被采访者|路人主体|手持|握持|麦克风|手机|道具|剧情动作|开场提问/
+        : /与|和|及|、|采访麦克风|麦克风|场景[一二三四五六七八九0-9]|人物|林浅|手持|握持|街访场景|采访场景|开场提问/;
+    const removeOtherEntityNames = (fragment: string) => {
+        if (type === "scene") {
+            return fragment
+                .replace(/与[^，。；;\n]{2,18}(?=：|:)/g, "")
+                .replace(/[，。；;]?两场景[^。；;\n]*[。；;]?/g, "")
+                .replace(/[，。；;]?两个场景[^。；;\n]*[。；;]?/g, "");
+        }
+        return fragment
+            .replace(/与[^，。；;\n]{2,18}(?=：|:)/g, "")
+            .replace(/[，。；;]?其它道具[^。；;\n]*[。；;]?/g, "")
+            .replace(/[，。；;]?其他道具[^。；;\n]*[。；;]?/g, "");
+    };
+    return sentenceFragments(text)
+        .filter(fragment => !forbidden.test(fragment) || fragment.includes(assetName))
+        .map(fragment => {
+            if (type === "prop") {
+                return fragment
+                    .replace(/全程由[^，。；;]*?(?:握持|手持)[，。；;]?/g, "")
+                    .replace(/明确街访语境[，,]?/g, "")
+                    .replace(/开场道具[，,]?/g, "");
+            }
+            return fragment;
+        })
+        .map(removeOtherEntityNames)
+        .map(fragment => fragment.trim())
+        .filter(Boolean)
+        .join("\n");
+};
+
+const expandCompositeAssetItems = <T extends { type?: any; name?: any; title?: any; prompt?: any; description?: any; visualPrompt?: any; note?: any; usage?: any; role?: any; reason?: any }>(
+    items: T[]
+) => {
+    return items.flatMap(item => {
+        const type = normalizeMarketingAssetType(item?.type || (item as any)?.assetType || (item as any)?.category);
+        const name = String(item?.name || item?.title || "").trim();
+        const parts = splitCompositeAssetName(name, type);
+        if (parts.length <= 1) {
+            return [item];
+        }
+        return parts.map((part, partIndex) => ({
+            ...item,
+            type,
+            name: part,
+            title: part,
+            prompt: cleanTextForSplitAsset(
+                String(item?.prompt || item?.description || item?.visualPrompt || item?.reason || ""),
+                part,
+                parts.filter(other => other !== part),
+                partIndex,
+                parts
+            ).replace(new RegExp(escapeRegExp(name), "g"), part),
+            note: cleanTextForSplitAsset(
+                String(item?.note || item?.usage || item?.role || item?.reason || ""),
+                part,
+                parts.filter(other => other !== part),
+                partIndex,
+                parts
+            ),
+        }));
+    });
+};
+
+const sanitizeAssetPrompt = (asset: Partial<MarketingAsset>) => {
+    const type = normalizeMarketingAssetType(asset.type);
+    const name = String(asset.name || "").trim();
+    const prompt = String(asset.prompt || "").trim();
+    if (!name || !prompt) {
+        return prompt;
+    }
+    const compositeNames = splitCompositeAssetName(name, type);
+    const inferredNames = inferCompositeNamesFromText(prompt, name, type);
+    const names = compositeNames.length > 1 ? compositeNames : inferredNames;
+    const siblingNames = names.length > 1 ? names.filter(item => item !== name) : [];
+    const partIndex = names.indexOf(name);
+    return cleanAssetPromptByType(
+        cleanTextForSplitAsset(prompt, name, siblingNames, partIndex, names),
+        name,
+        type
+    );
+};
+
 const pickMarketingAsset = async () => {
     const filePath = await pickImageFiles();
     if (!filePath) {
@@ -1315,6 +1817,18 @@ const addSuggestedMarketingAsset = (asset: Partial<MarketingAsset>) => {
         return;
     }
     const type = normalizeMarketingAssetType(asset.type);
+    const splitNames = splitCompositeAssetName(name, type);
+    if (splitNames.length > 1) {
+        splitNames.forEach((part, partIndex) => addSuggestedMarketingAsset({
+            ...asset,
+            type,
+            name: part,
+            prompt: cleanTextForSplitAsset(prompt, part, splitNames.filter(other => other !== part), partIndex, splitNames)
+                .replace(new RegExp(escapeRegExp(name), "g"), part),
+            note: cleanTextForSplitAsset(String(asset.note || ""), part, splitNames.filter(other => other !== part), partIndex, splitNames) || "AI 建议资产已自动拆分",
+        }));
+        return;
+    }
     const exists = marketingAssets.value.some(item => item.type === type && item.name === (name || marketingAssetTypeLabel(type)));
     if (exists) {
         return;
@@ -1324,7 +1838,7 @@ const addSuggestedMarketingAsset = (asset: Partial<MarketingAsset>) => {
         type,
         name: name || marketingAssetTypeLabel(type),
         url: "",
-        prompt,
+        prompt: sanitizeAssetPrompt({ ...asset, type, name, prompt }),
         note: String(asset.note || "AI 根据脚本建议生成"),
         status: "suggested",
     });
@@ -1358,7 +1872,12 @@ const syncSceneAssetBindings = (items: MarketingDraft[] = drafts.value) => {
 const ensureRequiredAssetsFromScenes = (items: MarketingDraft[]) => {
     items.forEach(draft => {
         draft.scenes.forEach(scene => {
-            (scene.requiredAssets || []).forEach(required => {
+            scene.requiredAssets = expandCompositeAssetItems(scene.requiredAssets || []).map(item => ({
+                type: normalizeMarketingAssetType(item.type),
+                name: String(item.name || item.title || ""),
+                reason: String(item.reason || item.note || item.usage || ""),
+            })).filter(item => item.name);
+            scene.requiredAssets.forEach(required => {
                 if (findMarketingAssetByRequirement(required)) {
                     return;
                 }
@@ -1379,9 +1898,14 @@ const ensureSuggestedAssetsFromDrafts = (items: MarketingDraft[], json?: any) =>
         ...(Array.isArray(json?.referenceAssets) ? json.referenceAssets : []),
         ...items.flatMap(item => (Array.isArray(item.suggestedAssets) ? item.suggestedAssets : [])),
     ];
-    rawAssets.forEach(item => addSuggestedMarketingAsset(item));
+    expandCompositeAssetItems(rawAssets).forEach(item => addSuggestedMarketingAsset(item));
     ensureRequiredAssetsFromScenes(items);
     syncSceneAssetBindings(items);
+};
+
+const resetMarketingAssetsForNewDrafts = () => {
+    marketingAssets.value = [];
+    assetUploadName.value = "";
 };
 
 const refreshRequiredAssetsFromCurrentDrafts = () => {
@@ -1490,8 +2014,82 @@ const buildAssetReferenceInstruction = (scene?: SceneDraft) => {
     if (!assets.length) {
         return "";
     }
-    const types = Array.from(new Set(assets.map(asset => marketingAssetTypeLabel(asset.type)))).join("、");
-    return `参考输入图：已提供${types || "一致性资产"}，生成时保持对应人物、场景或道具的核心外观一致；允许改变姿态、表情、机位和动作。不要把参考图文件名、说明文字或水印画进画面。`;
+    const sceneNames = assets.filter(asset => asset.type === "scene").map(asset => String(asset.name || "").trim()).filter(Boolean);
+    const propNames = assets.filter(asset => asset.type === "prop").map(asset => String(asset.name || "").trim()).filter(Boolean);
+    return [
+        "参考图只用于一致性：人物参考图保持主角外貌、发型、服装和气质；不要把参考图版式、文件名或文字画进画面。",
+        sceneEnvironmentUseInstruction(scene, sceneNames),
+        propUseInstruction(scene, propNames),
+        "最终画面以“画面提示词”为准，只画当前镜头自然会出现的内容。",
+    ].filter(Boolean).join("\n");
+};
+
+const sceneTextForAssetUse = (scene?: SceneDraft) => {
+    if (!scene) {
+        return "";
+    }
+    return [scene.title, scene.scriptBeat, scene.imagePrompt, scene.videoPrompt, scene.voiceoverLine, scene.subtitle, scene.rhythmHint]
+        .map(item => String(item || ""))
+        .join("\n");
+};
+
+const sceneEnvironmentUseInstruction = (scene: SceneDraft | undefined, sceneNames: string[]) => {
+    if (sceneNames.length <= 1) {
+        return sceneNames.length ? `场景资产：${sceneNames.join("、")}。只作为环境空间参考，不要把背景行人或环境元素当成新的主角。` : "";
+    }
+    const text = sceneTextForAssetUse(scene);
+    if (/街访|采访|户外|街头|街道|城市|路人|麦克风/.test(text)) {
+        return `场景资产：本镜是街访/户外语境，只使用城市街角、街道、户外类场景作为背景；居家、室内、休闲区类场景不要混入本镜。场景只约束环境空间，不要把背景行人或环境元素当成新的主角。`;
+    }
+    if (/室内|居家|客厅|房间|分享|坐着|家里/.test(text)) {
+        return `场景资产：本镜是室内/居家语境，只使用居家休闲区、客厅、室内类场景作为背景；城市街角、街道、户外类场景不要混入本镜。场景只约束环境空间，不要把背景元素当成新的主角。`;
+    }
+    return `场景资产：${sceneNames.join("、")}。按本镜剧情只选择一个匹配环境使用，不要把多个场景混合到同一镜头里；场景只约束环境空间。`;
+};
+
+const propUseInstruction = (scene: SceneDraft | undefined, propNames: string[]) => {
+    if (!propNames.length) {
+        return "";
+    }
+    const text = sceneTextForAssetUse(scene);
+    const rows = propNames.map(name => {
+        if (/麦克风|话筒/.test(name)) {
+            if (/递出|递过|递入|入画|手臂入画|持麦|采访/.test(text)) {
+                return `${name}：由采访者/持麦者从画面边缘递入或持有，用于提问；不要让被采访者/主角一开始就拿着麦克风。`;
+            }
+            return `${name}：作为采访者/持麦者的提问道具，不要错误交给被采访者/主角。`;
+        }
+        if (/手机/.test(name)) {
+            return `${name}：作为被采访者/主角正在查看或握持的个人道具；不要和麦克风合并，也不要变成采访者道具。`;
+        }
+        return `${name}：只作为本镜对应道具使用，保持外观、位置和归属关系稳定，不要变成其它道具。`;
+    });
+    return `道具资产用途：${rows.join(" ")}`;
+};
+
+const buildSceneAssetBindingInstruction = (scene?: SceneDraft) => {
+    const assets = sceneReadyAssets(scene);
+    if (!assets.length) {
+        return "";
+    }
+    const characterNames = assets
+        .filter(asset => asset.type === "character")
+        .map(asset => String(asset.name || "").trim())
+        .filter(Boolean);
+    const sceneNames = assets
+        .filter(asset => asset.type === "scene")
+        .map(asset => String(asset.name || "").trim())
+        .filter(Boolean);
+    const propNames = assets
+        .filter(asset => asset.type === "prop")
+        .map(asset => String(asset.name || "").trim())
+        .filter(Boolean);
+    return [
+        "资产一致性要求：本镜只能使用已关联资产作为主要人物、场景和道具。",
+        characterNames.length ? `主要人物资产：已提供 ${characterNames.length} 个主要人物参考图。视频里按剧情身份称为主角/被采访者/分享者，不要把具体人物资产名读出来或画成文字；保持脸型、发型、年龄感、体型、服装款式和服装主色一致，多人同框时不要交换身份、服装或台词归属。` : "",
+        sceneEnvironmentUseInstruction(scene, sceneNames),
+        propUseInstruction(scene, propNames),
+    ].filter(Boolean).join("\n");
 };
 
 const assetsByTypeUrls = (assets: MarketingAsset[], type: MarketingAssetType) => {
@@ -1499,7 +2097,7 @@ const assetsByTypeUrls = (assets: MarketingAsset[], type: MarketingAssetType) =>
 };
 
 const fieldText = (field: any) => {
-    return [field?.name, field?.label, field?.placeholder]
+    return [field?.name, field?.label, field?.placeholder, field?.help]
         .map(item => String(item || "").toLowerCase())
         .join(" ");
 };
@@ -1507,6 +2105,53 @@ const fieldText = (field: any) => {
 const fieldLooksLike = (field: any, patterns: Array<string | RegExp>) => {
     const text = fieldText(field);
     return patterns.some(pattern => typeof pattern === "string" ? text.includes(pattern.toLowerCase()) : pattern.test(text));
+};
+
+const fieldLooksLikeRatio = (field: any) => {
+    return fieldLooksLike(field, ["ratio", "aspect", "size", "画幅", "比例", "尺寸", "竖版", "横版", "竖屏", "横屏", "portrait", "landscape"]);
+};
+
+const ratioFromCloudFieldValue = (field: any, value: any) => {
+    const raw = String(value ?? "").trim();
+    const option = Array.isArray(field?.options)
+        ? field.options.find((item: any) => String(item?.value ?? "") === raw)
+        : null;
+    const text = `${raw} ${option?.label || ""} ${option?.value || ""}`.toLowerCase();
+    if (/16\s*:\s*9|横屏|横版|landscape/.test(text) || raw === "2") {
+        return "16:9";
+    }
+    if (/1\s*:\s*1|方屏|square/.test(text)) {
+        return "1:1";
+    }
+    if (/9\s*:\s*16|竖屏|竖版|portrait/.test(text) || raw === "1") {
+        return "9:16";
+    }
+    return "";
+};
+
+const inferDefaultRatioFromCloudTemplate = (template?: CloudTemplateRecord | null) => {
+    if (!template) {
+        return "";
+    }
+    const fields = enrichCloudSchemaFields(
+        template,
+        CloudTemplateTaskService.parseInputSchema(template.content.inputSchemaJson || "[]")
+    );
+    const ratioField = fields.find(fieldLooksLikeRatio);
+    if (!ratioField) {
+        return "";
+    }
+    return ratioFromCloudFieldValue(ratioField, ratioField.defaultValue || ratioField.options?.[0]?.value);
+};
+
+const syncVideoRatioFromSelectedTemplate = () => {
+    if (videoChannel.value !== "cloud") {
+        return;
+    }
+    const inferred = inferDefaultRatioFromCloudTemplate(currentVideoTemplate.value);
+    if (inferred && inferred !== form.value.ratio) {
+        form.value.ratio = inferred;
+    }
 };
 
 const defaultCloudFieldValue = (field: any, fallback: any = "") => {
@@ -1524,6 +2169,22 @@ const ratioValueForCloudField = (field: any, ratio: string) => {
     });
     if (matchedOption) {
         return matchedOption.value;
+    }
+    const orientationMatchedOption = options.find((item: any) => {
+        const text = `${item?.label || ""} ${item?.value || ""}`.toLowerCase();
+        if (/9\s*:\s*16|竖屏|竖版|portrait/.test(normalizedRatio.toLowerCase())) {
+            return /9\s*:\s*16|竖屏|竖版|portrait/.test(text) || String(item?.value) === "1";
+        }
+        if (/16\s*:\s*9|横屏|横版|landscape/.test(normalizedRatio.toLowerCase())) {
+            return /16\s*:\s*9|横屏|横版|landscape/.test(text) || String(item?.value) === "2";
+        }
+        if (/1\s*:\s*1|方屏|square/.test(normalizedRatio.toLowerCase())) {
+            return /1\s*:\s*1|方屏|square/.test(text);
+        }
+        return false;
+    });
+    if (orientationMatchedOption) {
+        return orientationMatchedOption.value;
     }
     if (/9\s*:\s*16/.test(normalizedRatio) && String(field?.name || "").includes("image_3")) {
         return "9:16 portrait 768x1344";
@@ -1622,6 +2283,9 @@ const valueForCloudField = (
     if (fieldLooksLike(field, ["negative", "反向", "负面"])) {
         return base.negativePrompt || field.defaultValue || "";
     }
+    if (String(field?.type || "") === "switch") {
+        return defaultCloudFieldValue(field, false);
+    }
     if (fieldLooksLike(field, ["文生/图生", "文生图生", "打开是文生"])) {
         return defaultCloudFieldValue(field, "false");
     }
@@ -1631,7 +2295,7 @@ const valueForCloudField = (
     if (fieldLooksLike(field, ["duration", "time", "seconds", "时长", "秒"])) {
         return base.duration;
     }
-    if (fieldLooksLike(field, ["ratio", "aspect", "size", "画幅", "比例", "尺寸"])) {
+    if (fieldLooksLike(field, ["ratio", "aspect", "size", "画幅", "比例", "尺寸", "竖版", "横版", "竖屏", "横屏", "portrait", "landscape"])) {
         return ratioValueForCloudField(field, base.ratio);
     }
     if (String(field?.type || "") === "select") {
@@ -1932,10 +2596,17 @@ const normalizeVideoReferenceRole = (value?: string): VideoReferenceRole => {
     return value === "first_frame" ? "first_frame" : "reference_image";
 };
 
-const buildVideoImageReferenceContent = (url: string, role?: string) => ({
+const effectiveVideoReferenceRole = (role?: string, storyboardImageMode: StoryboardImageMode = form.value.storyboardImageMode): VideoReferenceRole => {
+    if (storyboardImageMode === "scene_grid") {
+        return "reference_image";
+    }
+    return normalizeVideoReferenceRole(role);
+};
+
+const buildVideoImageReferenceContent = (url: string, role?: string, storyboardImageMode: StoryboardImageMode = form.value.storyboardImageMode) => ({
     type: "image_url",
     image_url: { url },
-    role: normalizeVideoReferenceRole(role),
+    role: effectiveVideoReferenceRole(role, storyboardImageMode),
 });
 
 const collectStringValues = (value: any, result: string[] = []) => {
@@ -2330,6 +3001,8 @@ const buildScriptSystemPrompt = () => {
         "任务是基于视频主题、生成要求和参考视频/参考图，生成可编辑的原创短视频方案；可以模仿参考视频的结构、节奏、镜头语言、风格和表达方法，但不能照搬人物身份、原画面、音乐、动作细节或原台词。",
         "如果提供参考视频或抽帧，必须先拆解它的剧情、分镜、景别、镜头运动、主体动作、画面风格、节奏、字幕/台词规律，并把可迁移要点写入 JSON 的 referenceAnalysis。",
         "每条视频必须适合竖屏短视频，前2秒有钩子，语言口语化，避免夸大承诺、低俗擦边和侵犯第三方权益。",
+        "台词必须像真实用户或真实采访会说的话：短、具体、有一点个人感受；不要写广告腔、堆叠形容词、口号或自夸式表达。",
+        "视频提示词要像导演给演员和摄影师的简洁指令，不要写机械秒表脚本；用开头/中段/结尾描述节奏，不要频繁写精确秒点。",
         "所有图片提示词和视频提示词必须能直接用于AI生图/生视频，并明确继承 referenceAnalysis 中可迁移的构图、节奏、转场和风格规则。",
         "同一条视频内必须保持主角、服装基调、视觉风格、色彩、光影和镜头语言一致；如果多个分镜属于同一地点，还必须保持场景空间、道具、背景元素和光线方向一致。",
     ].join("\n");
@@ -2430,7 +3103,7 @@ ${angleGuide}
         {
           "type": "character|scene|prop",
           "name": "资产名称，例如：年轻女主角 / 明亮卧室 / 手机道具",
-          "prompt": "生成这个资产参考图的提示词。人物资产必须是三视图角色设定图：正面、侧面、背面同屏，统一发型、服装、体型和识别点；场景资产是空间设定图；道具资产是单体清晰参考图",
+          "prompt": "生成这个资产参考图的提示词。人物资产必须是三视图角色设定图：正面、侧面、背面同屏，统一发型、服装、体型和识别点；场景资产是空间设定图；道具资产是单体清晰参考图；必须根据剧情区分不同说话人/行动主体，不要把场景中的背景人群当成人物资产",
           "note": "这个资产会用于哪些分镜或保持什么一致性"
         }
       ],
@@ -2438,17 +3111,17 @@ ${angleGuide}
         {
           "title": "镜头名称",
           "duration": 4,
-          "rhythmHint": "本镜节奏说明，例如：快切钩子/慢速情绪停顿/信息密集/结尾短促",
+          "rhythmHint": "本镜自然节奏说明，例如：开头抛问题/中段轻停顿/结尾给反应；不要写机械秒表",
           "speedRatio": 1,
           "trimStart": 0,
           "trimEnd": 4,
           "scriptBeat": "本分镜对应完整剧本中的剧情段落，写清发生了什么",
           "subtitle": "字幕文本；如果字幕模式为 none 则写空字符串",
-          "voiceoverLine": "本分镜实际要说出来的中文台词；如果说话方式为 none 则写空字符串",
+          "voiceoverLine": "本分镜实际要说出来的中文台词；必须口语、短句、能被真人自然说出口；如果说话方式为 none 则写空字符串",
           "narrationMode": "none|voiceover|character",
           "subtitleMode": "none|caption",
           "imagePrompt": "中文生图提示词，包含主体、统一主角设定、场景连续性、环境、构图、光线、参考视频风格迁移点、竖屏安全区；必须原创",
-          "videoPrompt": "中文生视频提示词，必须写清本镜独有的叙事职责、场景、动作、镜头运动和节奏；字幕必须跟随 voiceoverLine，不复刻参考视频",
+          "videoPrompt": "中文生视频提示词，像导演提示：写清主体、场景、动作、镜头、情绪弧线和自然节奏；少写精确秒点，不要写字幕，不复刻参考视频",
           "requiredAssets": [
             {
               "type": "character|scene|prop",
@@ -2465,13 +3138,17 @@ ${angleGuide}
 硬性要求：
 1. drafts 数量必须等于 ${form.value.count}。
 2. 每个 draft 必须有 ${form.value.sceneCount} 个 scenes。
-3. 每个 scene.duration 是一个独立 Seedance 视频任务时长，必须在 4-15 秒之间；请根据分镜内容分别设置，不要所有分镜机械相同。没有特殊节奏要求时可用 ${DEFAULT_SCENE_DURATION} 秒。
-3.1 每个 scene.rhythmHint 必须写清镜头节奏、动作快慢、停顿点或信息密度；scene.speedRatio 是后期默认播放速度，范围 0.6-1.8；scene.trimStart/trimEnd 是建议后期裁切范围，单位秒，必须落在 0-duration 内。
+3. 每个 scene.duration 是一个独立 Seedance 视频任务时长，必须在 4-15 秒之间；必须先分析本镜剧情动作和 voiceoverLine 台词长度，再设置足够时长，不要所有分镜机械相同。没有特殊节奏要求时可用 ${DEFAULT_SCENE_DURATION} 秒。
+3.1 每个 scene.rhythmHint 必须写清自然节奏、动作轻重、情绪变化或信息密度；不要把 videoPrompt 写成机械秒表。scene.speedRatio 是后期默认播放速度，范围 0.85-1.1，除非剧情确实需要，不要忽快忽慢；scene.trimStart/trimEnd 是建议后期裁切范围，单位秒，必须落在 0-duration 内。
+3.2 台词时长必须按自然普通话口播估算：18字以内至少4秒，19-28字至少6秒，29-38字至少8秒，39-50字至少10秒，51-62字至少12秒，更长必须拆分到多个分镜或使用15秒；不要为了塞长台词把语速写得很快。
 4. 不要使用“保证、最好、第一、治愈、百分百”等绝对化或夸大表述。
 5. 不要出现第三方真实 UI、真实人物姓名、原视频人物外貌复刻。
 6. 如果提供参考视频/抽帧，每个 draft.referenceAnalysis 必须具体，不允许写“无法判断”“仅供参考”这类空话；看不出的细节可以写“未从参考帧确认”，但必须分析可见的构图、主体、景别、色彩和节奏线索。
 7. 每条视频的所有 imagePrompt 必须复用同一个主角设定和视觉风格；同一场景的分镜必须明确写出一致的场景空间、道具、光线方向和色调；不同场景也必须保持统一质感。
 8. 如果当前说话方式不是 none，hook、voiceover、cta 不是备注，必须被分配到 scenes[].voiceoverLine 中：第一镜说 hook，中间镜说口播主体，最后一镜说 cta；如果说话方式为 none，scenes[].voiceoverLine 必须为空。
+8.1 如果分镜是街访/采访结构，必须区分说话人：采访者只负责提问，被采访者/路人负责回答。voiceoverLine 和 subtitle 必须写成明确的双方对白，例如“采访者：你平时最常使用的社交软件是什么？\n被采访者：我一般用他趣认识新朋友。”；不能只写采访者问题，不能写“随后回答/自然回答/自由回答”这种未指定台词，不要让视频模型临时发挥。
+8.2 台词长度必须匹配镜头时长：4秒镜头不超过18个汉字，6秒镜头不超过28个汉字，8秒镜头不超过38个汉字，10秒镜头不超过50个汉字，12秒镜头不超过62个汉字；宁可拆分成多个镜头，也不要把话塞满。避免“真实有趣、好有意思、体验很好”这类空泛堆词，必须给出具体情境或具体感受。
+8.3 只要 scene.narrationMode 不是 none，voiceoverLine 必须是最终实际发声文本，不要写表演说明、动作说明、剧情概述或“自由回答/随后回应”；角色说就是画面人物逐字说出 voiceoverLine，画外音就是旁白逐字朗读 voiceoverLine，不能让视频模型临时新增任何台词。
 9. scenes[].narrationMode 默认使用 ${form.value.narrationMode}，scenes[].subtitleMode 默认使用 ${form.value.subtitleMode}；字幕模式为 none 时 scenes[].subtitle 必须为空。
 10. 如果提供了已选热点灵感，必须把它转化为自然的短视频切入角度，优先融入 hook、场景冲突或口播语气；不要把热点当作孤立标签堆在文案里。
 11. draft.visualStyle 和 referenceAnalysis.visualStyle 必须简短，40-80字，只描述视觉风格：画幅、色彩、光线、构图、镜头质感和场景氛围；不要写剧情、节奏、转场、人物动作、台词或可复用规则。
@@ -2479,6 +3156,9 @@ ${angleGuide}
 13. 专有名词、产品名、账号名必须逐字保留，不要同音替换或改写；如果出现“他趣”，必须保持“他趣”两个字，不能写成或读成“其他”。
 14. 每个 draft.suggestedAssets 必须列出保持分镜一致性需要的核心资产：至少包含 1 个人物资产；如果有固定场景或关键道具，也必须分别列为 scene/prop。不要把参考视频/参考图原人物当作资产，只能生成当前主题的新资产。
 14.1 人物资产的 suggestedAssets[].prompt 必须明确“三视图角色设定图，正面/侧面/背面同屏，纯净背景，服装发型体型一致”，不要只写单张半身照。
+14.2 必须根据剧情和台词识别资产边界：每个有明确台词、动作职责、镜头主体身份的人物都要作为独立 character 资产；不同说话人不能合并成同一个人物资产；场景/街景/房间/背景人群只能作为 scene 资产或画面环境，不能冒充主要人物；道具、商品、麦克风、手机等必须作为 prop 或写入相关人物/场景提示。
+14.3 一个 suggestedAssets 对象只能表示一个可独立生成的实体，name 里禁止使用“和/与/及/、”合并多个资产。例如“城市街角”和“居家休闲区”必须拆成两个 scene 资产；“黑色智能手机”和“采访麦克风”必须拆成两个 prop 资产。
+14.4 每个 scene.requiredAssets 必须引用本镜真正需要的资产名称，而且名称必须和 suggestedAssets 对齐；如果本镜有两个说话人，就必须同时引用两个 character 资产；如果本镜只有背景路人，不要把背景路人列为主角资产。
 15. 如果提供了手动剧本，draft.scriptText 必须是该剧本的结构化/镜头化版本，不能换故事；每个 scene.scriptBeat 必须能对应到剧本中的一段剧情。
 16. 每个 scene.requiredAssets 必须列出本镜实际需要的人物、场景、道具；名称要和 draft.suggestedAssets 尽量一致，方便系统自动关联。
 17. 不要要求视频模型生成画面字幕、标题条、贴纸文字或 UI 文本；字幕文本只作为后期字幕使用。
@@ -2495,10 +3175,10 @@ const isVisionInputUnsupportedError = (msg?: string) => {
     );
 };
 
-const showVisionModelRequiredDialog = async () => {
+const showVisionModelRequiredDialog = () => {
     const info = modelGenerator.value?.getSelectedModelInfo?.();
     const selected = info?.modelName || info?.modelId || "当前模型";
-    await Dialog.alertError(
+    Dialog.alertError(
         [
             `当前选择的脚本大模型「${selected}」不支持或未标记支持图片/视频输入，无法分析抖音视频抽帧或参考图片。`,
             "",
@@ -2521,12 +3201,32 @@ const selectedScriptModelSupportsVision = () => {
     if (!text.trim()) {
         return false;
     }
+    const textOnlyPatterns = [
+        "text-only",
+        "text only",
+        "embedding",
+        "rerank",
+        "deepseek-r1",
+        "deepseek-v3",
+        "qwen3-coder",
+        "coder",
+    ];
+    if (textOnlyPatterns.some(pattern => text.includes(pattern))) {
+        return false;
+    }
     const visionPatterns = [
         "vision",
         "vlm",
+        "vl",
+        "qwenvl",
         "qwen-vl",
         "qwen2-vl",
         "qwen2.5-vl",
+        "qwen3-vl",
+        "qwen3.6",
+        "qwen3-omni",
+        "qwen-omni",
+        "owen",
         "internvl",
         "llava",
         "yi-vision",
@@ -2542,8 +3242,13 @@ const selectedScriptModelSupportsVision = () => {
         /\bglm[-\s]*4(?:\.\d+)?v\b/i,
         /\bglm[-\s]*4v\b/i,
         /\bglm[-\s]*\d+(?:\.\d+)?[-\s]*vision\b/i,
+        /\bqwen[-\s]*\d+(?:\.\d+)?[-\s]*(?:vl|omni)\b/i,
+        /\bqwen\d+(?:\.\d+)?[-\s]*\d+b[-\s]*a\d+b\b/i,
     ];
-    return visionPatterns.some(pattern => text.includes(pattern)) || visionRegexPatterns.some(pattern => pattern.test(text));
+    if (visionPatterns.some(pattern => text.includes(pattern)) || visionRegexPatterns.some(pattern => pattern.test(text))) {
+        return true;
+    }
+    return true;
 };
 
 const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
@@ -2581,7 +3286,7 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
           })).filter((item: any) => item.name || item.description)
         : [];
     const normalizeRequiredAssets = (value: any) => Array.isArray(value)
-        ? value.map((item: any) => ({
+        ? expandCompositeAssetItems(value).map((item: any) => ({
               type: normalizeMarketingAssetType(item?.type || item?.assetType || item?.category),
               name: String(item?.name || item?.title || ""),
               reason: String(item?.reason || item?.note || item?.usage || ""),
@@ -2619,7 +3324,7 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
             : rawVisualStyle
               ? { visualStyle: String(rawVisualStyle) }
             : undefined,
-        suggestedAssets: rawAssets
+        suggestedAssets: expandCompositeAssetItems(rawAssets)
             .map((item: any) => ({
                 type: normalizeMarketingAssetType(item?.type || item?.assetType || item?.category),
                 name: String(item?.name || item?.title || ""),
@@ -2627,28 +3332,33 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
                 note: String(item?.note || item?.usage || item?.role || ""),
             }))
             .filter((item: any) => item.name || item.prompt),
-        scenes: scenes.map((scene: any, sceneIndex: number) => ({
-            id: `${angle}-${index}-${sceneIndex}`,
-            title: String(scene?.title || `镜头 ${sceneIndex + 1}`),
-            duration: Math.max(4, Math.min(15, Number(scene?.duration || DEFAULT_SCENE_DURATION))),
-            rhythmHint: String(scene?.rhythmHint || scene?.rhythm || scene?.tempo || ""),
-            speedRatio: Math.max(0.6, Math.min(1.8, Number(scene?.speedRatio || scene?.speed || 1))),
-            trimStart: Math.max(0, Number(scene?.trimStart || 0)),
-            trimEnd: Math.max(0, Number(scene?.trimEnd || scene?.duration || DEFAULT_SCENE_DURATION)),
-            scriptBeat: String(scene?.scriptBeat || scene?.beat || scene?.plot || ""),
-            subtitle: String(scene?.subtitle || ""),
-            captionOverride: String(scene?.captionOverride || ""),
-            voiceoverLine: String(scene?.voiceoverLine || ""),
-            narrationMode: scene?.narrationMode === "none" ? "none" : scene?.narrationMode === "character" ? "character" : "voiceover",
-            subtitleMode: scene?.subtitleMode === "none" ? "none" : "caption",
-            imagePrompt: String(scene?.imagePrompt || ""),
-            videoPrompt: String(scene?.videoPrompt || ""),
-            assetIds: Array.isArray(scene?.assetIds) ? scene.assetIds.map((item: any) => String(item || "")).filter(Boolean) : [],
-            requiredAssets: normalizeRequiredAssets(scene?.requiredAssets || scene?.assets || scene?.neededAssets),
-            referenceImageUrl: String(scene?.referenceImageUrl || ""),
-        })),
+        scenes: scenes.map((scene: any, sceneIndex: number) => {
+            const normalizedScene: SceneDraft = {
+                id: `${angle}-${index}-${sceneIndex}`,
+                title: String(scene?.title || `镜头 ${sceneIndex + 1}`),
+                duration: Math.max(4, Math.min(15, Number(scene?.duration || DEFAULT_SCENE_DURATION))),
+                rhythmHint: String(scene?.rhythmHint || scene?.rhythm || scene?.tempo || ""),
+                speedRatio: Math.max(0.6, Math.min(1.8, Number(scene?.speedRatio || scene?.speed || 1))),
+                trimStart: Math.max(0, Number(scene?.trimStart || 0)),
+                trimEnd: Math.max(0, Number(scene?.trimEnd || scene?.duration || DEFAULT_SCENE_DURATION)),
+                scriptBeat: String(scene?.scriptBeat || scene?.beat || scene?.plot || ""),
+                subtitle: String(scene?.subtitle || ""),
+                captionOverride: String(scene?.captionOverride || ""),
+                voiceoverLine: String(scene?.voiceoverLine || ""),
+                narrationMode: scene?.narrationMode === "none" ? "none" : scene?.narrationMode === "character" ? "character" : "voiceover",
+                subtitleMode: scene?.subtitleMode === "none" ? "none" : "caption",
+                imagePrompt: String(scene?.imagePrompt || ""),
+                videoPrompt: String(scene?.videoPrompt || ""),
+                assetIds: Array.isArray(scene?.assetIds) ? scene.assetIds.map((item: any) => String(item || "")).filter(Boolean) : [],
+                requiredAssets: normalizeRequiredAssets(scene?.requiredAssets || scene?.assets || scene?.neededAssets),
+                referenceImageUrl: String(scene?.referenceImageUrl || ""),
+            };
+            applySpeechTimingGuard(normalizedScene);
+            return normalizedScene;
+        }),
     };
     ensureDraftVoiceoverLines(draft);
+    draft.scenes.forEach(scene => applySpeechTimingGuard(scene));
     return draft;
 };
 
@@ -2735,6 +3445,7 @@ const applyAiDrafts = (json: any) => {
     if (inferredVisualStyle && shouldAutoFillVisualStyle()) {
         form.value.visualStyle = inferredVisualStyle;
     }
+    resetMarketingAssetsForNewDrafts();
     ensureSuggestedAssetsFromDrafts(normalized, json);
     selectedDraftId.value = normalized[0]?.id || "";
 };
@@ -2884,6 +3595,7 @@ const generateRuleDrafts = () => {
         Dialog.tipError("请先输入视频主题 / 对象 / IP");
         return;
     }
+    resetMarketingAssetsForNewDrafts();
     const selectedAngles = angles.slice(0, Number(form.value.count || 3));
     drafts.value = selectedAngles.map((item, draftIndex) => ({
         id: `${item.value}-${Date.now()}-${draftIndex}`,
@@ -2948,7 +3660,7 @@ const generateDrafts = async () => {
         generatingScripts.value = true;
         const contentParts = await buildReferenceContentParts();
         if (contentParts.length && !selectedScriptModelSupportsVision()) {
-            await showVisionModelRequiredDialog();
+            showVisionModelRequiredDialog();
             return;
         }
         const ret = await modelGenerator.value.chat(
@@ -2963,7 +3675,7 @@ const generateDrafts = async () => {
             }
         );
         if (ret.code && contentParts.length && isVisionInputUnsupportedError(ret.msg)) {
-            await showVisionModelRequiredDialog();
+            showVisionModelRequiredDialog();
             return;
         }
         if (ret.code) {
@@ -3071,13 +3783,15 @@ const assetEntityDescriptions = (asset: MarketingAsset) => {
 
 const buildMarketingAssetPrompt = (asset: MarketingAsset) => {
     const typeText = marketingAssetTypeLabel(asset.type);
-    const entityDescriptions = assetEntityDescriptions(asset);
+    const entityDescriptions = assetEntityDescriptions(asset)
+        .map(item => sanitizeAssetPrompt({ ...asset, prompt: item }))
+        .filter(Boolean);
     const subjectRequirement =
         asset.type === "character"
             ? "人物三视图角色设定图，正面、侧面、背面同屏排列，纯净背景，脸部识别点、发型、服装、身形比例和气质完全一致；不是剧情分镜，不要出现复杂动作或环境。"
             : asset.type === "scene"
-              ? "完整空间，布局清晰，主要背景元素、材质、光线方向、色温和纵深稳定，画面干净，适合后续保持同一场景。"
-              : "单个道具，主体完整清晰，外形、材质、颜色、结构和识别点明确，背景简洁，适合后续复用。";
+              ? "纯场景空镜设定图，完整空间，布局清晰，主要背景元素、材质、光线方向、色温和纵深稳定，画面干净；不要出现人物、采访者、被采访者、路人主体、手持道具或剧情动作，只生成可复用的背景空间。"
+              : "单个道具设定图，主体完整清晰，外形、材质、颜色、结构和识别点明确，背景简洁；不要出现人物、手、手持动作、采访场景或其它道具，适合后续复用。";
     const referenceInstruction = assetReferenceUrlValue(asset)
         ? "参考上传图片的核心身份、轮廓、材质、颜色和风格，重新优化构图、光线和画质。"
         : "";
@@ -3085,11 +3799,13 @@ const buildMarketingAssetPrompt = (asset: MarketingAsset) => {
     const visualLines = [
         `${asset.name || typeText}，${typeText}，${subjectRequirement}`,
         entityDescriptions.join("；"),
-        asset.prompt,
+        sanitizeAssetPrompt(asset),
         `风格：${visualStyle}`,
         asset.type === "character"
             ? "角色设定图，三视图横向或纵向清晰排列，禁止文字标注、禁止水印、禁止把说明文字画进图片。"
-            : "9:16 竖屏，主体居中，边缘留白，清晰写实，自然光线，高质量商业短视频素材感。",
+            : asset.type === "scene"
+              ? "9:16 竖屏空镜，空间主体居中，边缘留白，清晰写实，自然光线，高质量商业短视频背景素材感，画面中不得出现任何人物。"
+              : "9:16 竖屏单体道具图，主体居中，边缘留白，清晰写实，自然光线，高质量商业短视频素材感，画面中不得出现人物或手。",
         referenceInstruction,
     ];
     return uniqueNonEmptyStrings(visualLines.map(item => String(item || ""))).join("\n");
@@ -3337,7 +4053,8 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
         scene,
         draft.referenceAnalysis,
         sceneIndex >= 0 ? sceneIndex : undefined,
-        draft.scenes.length
+        draft.scenes.length,
+        form.value.storyboardImageMode
     );
     const isKwjmPlatform = platform.content.platformType === "kwjm";
     const normalizedVideoModel = isKwjmPlatform
@@ -3349,7 +4066,7 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
         model: normalizedVideoModel,
         content: [
             { type: "text", text: videoPrompt },
-            ...(referenceImageUrl ? [buildVideoImageReferenceContent(referenceImageUrl, form.value.videoReferenceRole)] : []),
+            ...(referenceImageUrl ? [buildVideoImageReferenceContent(referenceImageUrl, form.value.videoReferenceRole, form.value.storyboardImageMode)] : []),
         ],
         ratio: form.value.ratio,
         duration: scene.duration,
@@ -3434,7 +4151,7 @@ const submitDraftChainTask = async (draft: MarketingDraft) => {
 
 const buildTimingOptimizePrompt = (draft: MarketingDraft) => {
     return `
-请作为短视频剪辑导演，只优化当前方案的“生成前镜头节奏”，不要更换主题、人物资产或剧情主线。
+请作为短视频导演和口播教练，只优化当前方案的“生成前表演节奏”和“台词自然度”，不要更换主题、人物资产或剧情主线。
 
 视频标题：${safeJsonString(draft.title)}
 剧情梗概：${safeJsonString(draft.synopsis || "")}
@@ -3446,8 +4163,11 @@ ${draft.scenes.map((scene, index) => [
         `#${index + 1} id=${scene.id}`,
         `title=${scene.title}`,
         `duration=${scene.duration}`,
+        `narrationMode=${scene.narrationMode || form.value.narrationMode}`,
         `scriptBeat=${scene.scriptBeat || ""}`,
         `voiceoverLine=${scene.voiceoverLine || ""}`,
+        `voiceoverCharCount=${speechCharCount(scene.voiceoverLine || "")}`,
+        `recommendedMinDuration=${recommendedDurationForSpeech(scene.voiceoverLine || "")}`,
         `videoPrompt=${scene.videoPrompt || ""}`,
     ].join("\n")).join("\n\n")}
 
@@ -3458,23 +4178,27 @@ ${draft.scenes.map((scene, index) => [
       "id": "原 scene id",
       "title": "可微调镜头名",
       "duration": 4,
-      "rhythmHint": "本镜节奏说明，写清动作快慢、停顿点、信息密度、情绪变化",
-      "speedRatio": 1.2,
+      "rhythmHint": "本镜自然表演节奏，写开头/中段/结尾的情绪和动作轻重，不写机械秒表",
+      "speedRatio": 1,
       "trimStart": 0,
       "trimEnd": 3.8,
-      "voiceoverLine": "可微调但不能改变核心含义",
+      "voiceoverLine": "更自然、更像真人会说的话；可删冗词但不能改变核心含义",
       "subtitle": "后期字幕文本",
-      "videoPrompt": "加入镜头节奏、动作时序、停顿和运镜要求后的完整视频提示词"
+      "videoPrompt": "导演式视频提示词：主体、场景、动作、表情、镜头和自然情绪弧线；不要机械秒点"
     }
   ]
 }
 
 要求：
 1. scenes 数量和 id 必须与当前分镜一致。
-2. duration 必须在 4-15 秒之间。
-3. speedRatio 是后期默认播放速度，0.6-1.8；trimStart/trimEnd 是建议后期裁切范围，单位秒，必须在 0-duration 内。
-4. videoPrompt 可以加入“快速推近、停顿半秒、慢慢抬头、结尾短促”等节奏描述，但不要要求模型生成字幕文字。
-5. 第一镜更快更抓人，中间镜承接信息，最后一镜短促收束。
+2. duration 必须在 4-15 秒之间，并且必须根据 voiceoverLine 字数、说话方式和剧情动作重算；如果原时长不够，必须加长，不要让角色用超快语速硬塞台词。
+2.1 自然普通话口播最低时长：18字以内至少4秒，19-28字至少6秒，29-38字至少8秒，39-50字至少10秒，51-62字至少12秒，更长必须建议拆分或使用15秒。
+3. speedRatio 默认保持 1；只有确实拖沓时才在 0.85-1.1 内微调，不要忽快忽慢，不要用加速来弥补台词过长。
+4. trimStart/trimEnd 是建议后期裁切范围，单位秒，必须在 0-duration 内。
+5. videoPrompt 不要写“0-2秒、2.7-4秒、停顿1.2秒”这类机械秒点；改成“开头自然抛出问题 / 中段轻轻停一下 / 结尾情绪收住”。
+6. voiceoverLine 必须口语、短、具体，像真实用户会说的话；可以在不改变含义的情况下删冗词，但不能删掉关键问答关系或品牌/产品名；避免“好有意思、真实有趣、体验很好”这类空泛堆词。
+7. 如果是街访/采访，voiceoverLine 必须保留“采访者：...\n被采访者：...”两句明确对白；不要只保留问题，不要写“随后自然回答”，不要让同一个人把问题和答案都说完。
+8. rhythmHint 和 videoPrompt 必须解释为什么这样设置时长：例如“先提问、留出对方思考、再回答收住”，而不是只写快/慢。
 `.trim();
 };
 
@@ -3511,18 +4235,21 @@ const optimizeDraftTiming = async (draft: MarketingDraft) => {
             if (!scene) {
                 return;
             }
-            const duration = Math.max(4, Math.min(15, Number(item.duration || scene.duration || DEFAULT_SCENE_DURATION)));
+            const requestedDuration = Math.max(4, Math.min(15, Number(item.duration || scene.duration || DEFAULT_SCENE_DURATION)));
             scene.title = String(item.title || scene.title);
-            scene.duration = duration;
+            scene.duration = requestedDuration;
             scene.rhythmHint = String(item.rhythmHint || item.rhythm || scene.rhythmHint || "");
-            scene.speedRatio = Math.max(0.6, Math.min(1.8, Number(item.speedRatio || scene.speedRatio || 1)));
+            scene.speedRatio = Math.max(0.85, Math.min(1.25, Number(item.speedRatio || scene.speedRatio || 1)));
+            scene.voiceoverLine = String(item.voiceoverLine || scene.voiceoverLine || "");
+            applySpeechTimingGuard(scene);
+            const duration = scene.duration;
             scene.trimStart = Math.max(0, Math.min(duration - 0.2, Number(item.trimStart || 0)));
             scene.trimEnd = Math.max(scene.trimStart + 0.2, Math.min(duration, Number(item.trimEnd || duration)));
-            scene.voiceoverLine = String(item.voiceoverLine || scene.voiceoverLine || "");
             scene.subtitle = String(item.subtitle || scene.subtitle || effectiveSceneCaption(scene));
             scene.videoPrompt = String(item.videoPrompt || scene.videoPrompt || "");
         });
         ensureDraftVoiceoverLines(draft);
+        draft.scenes.forEach(scene => applySpeechTimingGuard(scene));
         Dialog.tipSuccess("已优化分镜节奏，可继续生图/生视频");
     } catch (e: any) {
         Dialog.tipError(e?.message || "AI 优化节奏失败");
@@ -3538,8 +4265,8 @@ const buildFallbackFinalizeClips = (draft: MarketingDraft) => {
         videoTaskId: Number(scene.videoTaskId || 0),
         trimStart: Math.max(0, Number(scene.trimStart || 0)),
         trimEnd: Math.max(0.2, Math.min(Number(scene.duration || DEFAULT_SCENE_DURATION), Number(scene.trimEnd || scene.duration || DEFAULT_SCENE_DURATION))),
-        speedRatio: Math.max(0.6, Math.min(1.8, Number(scene.speedRatio || 1))),
-        targetDuration: Math.max(0.2, Number(scene.duration || DEFAULT_SCENE_DURATION) / Math.max(0.6, Math.min(1.8, Number(scene.speedRatio || 1)))),
+        speedRatio: Math.max(0.85, Math.min(1.25, Number(scene.speedRatio || 1))),
+        targetDuration: Math.max(0.2, Number(scene.duration || DEFAULT_SCENE_DURATION) / Math.max(0.85, Math.min(1.25, Number(scene.speedRatio || 1)))),
         subtitle: effectiveSceneCaption(scene),
     }));
 };
@@ -3571,8 +4298,7 @@ ${draft.scenes.map((scene, index) => [
       "trimStart": 0,
       "trimEnd": 3.6,
       "speedRatio": 1.25,
-      "targetDuration": 2.9,
-      "subtitle": "这一段后期字幕"
+      "targetDuration": 2.9
     }
   ]
 }
@@ -3580,8 +4306,8 @@ ${draft.scenes.map((scene, index) => [
 要求：
 1. clips 默认保持原顺序，除非节奏明显需要重排。
 2. trimStart/trimEnd 单位秒，必须在 0-sourceDuration 内。
-3. speedRatio 范围 0.6-1.8；开头和结尾可以更快，中间信息镜头保持清晰。
-4. 字幕要短、自然，不能包含乱码、标签、markdown 或视觉说明。
+3. speedRatio 默认 1，范围 0.85-1.25；只做轻微节奏修正，不要让人物语速忽快忽慢。
+4. 不要改写字幕、台词或文案；字幕文本由系统按分镜原始字幕固定使用，你只决定裁切、变速和顺序。
 `.trim();
 };
 
@@ -3621,9 +4347,9 @@ const buildAiFinalizeClips = async (draft: MarketingDraft) => {
                 videoTaskId: Number(scene.videoTaskId || item.videoTaskId || base.videoTaskId || 0),
                 trimStart,
                 trimEnd,
-                speedRatio: Math.max(0.6, Math.min(1.8, Number(item.speedRatio || base.speedRatio || 1))),
-                targetDuration: Math.max(0.2, Number(item.targetDuration || (trimEnd - trimStart) / Math.max(0.6, Math.min(1.8, Number(item.speedRatio || base.speedRatio || 1))))),
-                subtitle: String(item.subtitle || base.subtitle || ""),
+                speedRatio: Math.max(0.85, Math.min(1.25, Number(item.speedRatio || base.speedRatio || 1))),
+                targetDuration: Math.max(0.2, Number(item.targetDuration || (trimEnd - trimStart) / Math.max(0.85, Math.min(1.25, Number(item.speedRatio || base.speedRatio || 1))))),
+                subtitle: base.subtitle || "",
             };
         })
         .filter(Boolean);
@@ -3651,8 +4377,10 @@ const submitFinalizeTask = async (draft: MarketingDraft) => {
                 burnSubtitle: true,
                 subtitleStyle: {
                     fontName: "Microsoft YaHei",
-                    fontSize: 18,
-                    marginV: 80,
+                    fontSize: 15,
+                    marginV: 96,
+                    marginL: 48,
+                    marginR: 48,
                 },
             },
             modelConfig: {
@@ -4293,6 +5021,16 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                 </a-select>
                             </div>
                             <div>
+                                <div class="text-xs font-semibold text-gray-500 mb-2">视频比例</div>
+                                <a-radio-group v-model="form.ratio" type="button" class="w-full">
+                                    <a-radio v-for="item in ratioOptions" :key="item.value" :value="item.value">{{ item.label }}</a-radio>
+                                </a-radio-group>
+                                <div class="mt-1 text-xs leading-5 text-gray-400">
+                                    {{ currentRatioOption?.desc }}
+                                    <span v-if="videoChannel === 'cloud'">；云端模板的比例字段会自动映射成对应选项。</span>
+                                </div>
+                            </div>
+                            <div>
                                 <div class="text-xs font-semibold text-gray-500 mb-2">分镜图模式</div>
                                 <a-select v-model="form.storyboardImageMode" class="w-full">
                                     <a-option v-for="item in storyboardImageModeOptions" :key="item.value" :value="item.value">
@@ -4306,12 +5044,17 @@ const submitAll = async (type: "image" | "video" | "both") => {
                             <div v-if="videoChannel === 'direct'">
                                 <div class="text-xs font-semibold text-gray-500 mb-2">视频参考方式</div>
                                 <a-select v-model="form.videoReferenceRole" class="w-full">
-                                    <a-option v-for="item in videoReferenceRoleOptions" :key="item.value" :value="item.value">
+                                    <a-option v-for="item in availableVideoReferenceRoleOptions" :key="item.value" :value="item.value">
                                         {{ item.label }}
                                     </a-option>
                                 </a-select>
                                 <div class="mt-1 text-xs leading-5 text-gray-400">
-                                    {{ videoReferenceRoleOptions.find(item => item.value === form.videoReferenceRole)?.desc }}
+                                    <template v-if="form.storyboardImageMode === 'scene_grid'">
+                                        动作宫格只能作为时间轴参考，不能作为首帧，否则视频会保留宫格布局。
+                                    </template>
+                                    <template v-else>
+                                        {{ videoReferenceRoleOptions.find(item => item.value === form.videoReferenceRole)?.desc }}
+                                    </template>
                                 </div>
                             </div>
                             <div class="grid grid-cols-2 gap-3">

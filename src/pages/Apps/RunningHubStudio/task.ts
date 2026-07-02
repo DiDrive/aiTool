@@ -197,6 +197,35 @@ const responseMessageOf = (res: any, fallback: string) => {
     );
 };
 
+const parseNodeInfoMismatch = (res: any) => {
+    const text = [
+        res?.errorMessage,
+        res?.msg,
+        res?.message,
+        res?.failedReason?.errorMessage,
+    ].map(item => String(item || "")).join("\n");
+    const match = /NODE_INFO_MISMATCH\(nodeId=([^,\s)]+),\s*fieldName=([^,\s)]+),\s*reason=([^)]+)\)/i.exec(text);
+    if (!match) {
+        return null;
+    }
+    return {
+        nodeId: String(match[1] || "").trim(),
+        fieldName: String(match[2] || "").trim(),
+        reason: String(match[3] || "").trim(),
+    };
+};
+
+const removeMismatchedNodeInfo = (nodeInfoList: Array<Record<string, any>>, mismatch: ReturnType<typeof parseNodeInfoMismatch>) => {
+    if (!mismatch?.nodeId) {
+        return nodeInfoList;
+    }
+    return nodeInfoList.filter(item => {
+        const sameNode = String(item?.nodeId || "").trim() === mismatch.nodeId;
+        const sameField = !mismatch.fieldName || String(item?.fieldName || "").trim() === mismatch.fieldName;
+        return !(sameNode && sameField);
+    });
+};
+
 const extractRemoteResultUrls = (remoteResults: any[]) => {
     return (Array.isArray(remoteResults) ? remoteResults : [])
         .map(item => String(item?.url || item?.fileUrl || "").trim())
@@ -437,19 +466,89 @@ const pickDeepValue = (value: any, paths: string[]) => {
     return "";
 };
 
+const pickRecursiveTaskId = (value: any, depth = 0): string => {
+    if (!value || depth > 5) {
+        return "";
+    }
+    if (typeof value === "string" || typeof value === "number") {
+        const text = String(value).trim();
+        return /^[A-Za-z0-9_-]{6,}$/.test(text) ? text : "";
+    }
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const found = pickRecursiveTaskId(item, depth + 1);
+            if (found) {
+                return found;
+            }
+        }
+        return "";
+    }
+    if (typeof value !== "object") {
+        return "";
+    }
+    const taskKeyPattern = /^(task[\s_-]*id|taskid|task[\s_-]*no|taskno|job[\s_-]*id|jobid|run[\s_-]*id|runid|request[\s_-]*id|requestid)$/i;
+    for (const [key, child] of Object.entries(value)) {
+        if (taskKeyPattern.test(key)) {
+            const text = String(child || "").trim();
+            if (text) {
+                return text;
+            }
+        }
+    }
+    for (const key of ["data", "result", "task", "job", "run", "payload"]) {
+        const found = pickRecursiveTaskId((value as any)[key], depth + 1);
+        if (found) {
+            return found;
+        }
+    }
+    return "";
+};
+
 const extractDirectApiTaskId = (res: any) => {
     return String(
         pickDeepValue(res, [
             "data.taskId",
+            "data.taskID",
             "data.task_id",
+            "data.taskNo",
+            "data.task_no",
+            "data.jobId",
+            "data.job_id",
+            "data.runId",
+            "data.run_id",
+            "data.requestId",
+            "data.request_id",
             "data.id",
             "data.task.id",
             "data.task.taskId",
+            "data.task.taskID",
             "data.task.task_id",
+            "data.task.taskNo",
+            "data.task.task_no",
+            "data.record.taskId",
+            "data.record.task_id",
+            "data.result.taskId",
+            "data.result.task_id",
+            "result.taskId",
+            "result.task_id",
+            "result.id",
             "taskId",
+            "taskID",
             "task_id",
+            "taskNo",
+            "task_no",
+            "jobId",
+            "job_id",
+            "runId",
+            "run_id",
+            "requestId",
+            "request_id",
             "id",
-        ]) || ""
+        ]) ||
+            pickRecursiveTaskId(res?.data) ||
+            pickRecursiveTaskId(res?.result) ||
+            pickRecursiveTaskId(res) ||
+            ""
     );
 };
 
@@ -558,7 +657,10 @@ export const RunningHubRunModelConfigUntilDone = async (
     }
     const taskId = extractDirectApiTaskId(submitRes);
     if (!taskId) {
-        throw new Error("RunningHub 未返回 taskId");
+        throw new Error([
+            responseMessageOf(submitRes, "RunningHub 未返回 taskId"),
+            `返回摘要：${safeJsonPreview(submitRes, 600)}`,
+        ].filter(Boolean).join("\n"));
     }
     while (Date.now() - startedAt < timeoutMs) {
         option.onStatus?.("等待 RunningHub 任务完成");
@@ -718,6 +820,35 @@ export const RunningHubTask: TaskBiz = {
                     workflow: modelConfig.workflowJson,
                     proxyUrl: modelConfig.proxyUrl || "",
                 });
+                const mismatch = parseNodeInfoMismatch(res);
+                if (mismatch) {
+                    const cleanedNodeInfoList = removeMismatchedNodeInfo(jobResult.Submit.submittedNodeInfoList || [], mismatch);
+                    if (cleanedNodeInfoList.length < (jobResult.Submit.submittedNodeInfoList || []).length) {
+                        jobResult.Submit.submittedNodeInfoList = cleanedNodeInfoList;
+                        jobResult.Submit.error = `已跳过 RunningHub 已不存在的节点 nodeId=${mismatch.nodeId}, fieldName=${mismatch.fieldName} 并自动重试`;
+                        await TaskService.update(bizId, { jobResult });
+                        res = await callRunningHubHandle("runninghub:runTask", {
+                            apiBaseUrl: normalizeBaseUrl(modelConfig.baseUrl || DEFAULT_BASE_URL),
+                            apiKey: modelConfig.apiKey,
+                            connectorType: modelConfig.connectorType,
+                            submitPath: modelConfig.submitPath,
+                            webappId: modelConfig.webappId,
+                            workflowId: modelConfig.workflowId,
+                            nodeInfoList: cleanedNodeInfoList,
+                            requestBody: jobResult.Submit.submittedBody || {},
+                            requestFormat: modelConfig.requestFormat || "json",
+                            directFileRelay: modelConfig.directFileRelay,
+                            webhookUrl: modelConfig.webhookUrl,
+                            instanceType: modelConfig.instanceType,
+                            accessPassword: modelConfig.accessPassword,
+                            addMetadata: modelConfig.addMetadata,
+                            retainSeconds: modelConfig.retainSeconds,
+                            usePersonalQueue: modelConfig.usePersonalQueue,
+                            workflow: modelConfig.workflowJson,
+                            proxyUrl: modelConfig.proxyUrl || "",
+                        });
+                    }
+                }
                 jobResult.Submit.requestUrl = String(res?._diagnostics?.requestUrl || "");
                 jobResult.Submit.responseDiagnostics = res?._diagnostics || {};
                 jobResult.Submit.responsePreview = safeJsonPreview(res);
@@ -752,7 +883,10 @@ export const RunningHubTask: TaskBiz = {
                     throw new Error(msg);
                 }
                 if (!taskId) {
-                    throw new Error("RunningHub 未返回 taskId");
+                    throw new Error([
+                        responseMessageOf(res, "RunningHub 未返回 taskId"),
+                        `返回摘要：${safeJsonPreview(res, 600)}`,
+                    ].filter(Boolean).join("\n"));
                 }
                 jobResult.Submit.status = "success";
                 jobResult.Submit.taskId = taskId;

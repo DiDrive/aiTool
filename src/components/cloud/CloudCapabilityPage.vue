@@ -77,7 +77,8 @@ const normalizeFieldDefaultValue = (field: CloudTemplateInputSchemaField) => {
         return Number.isFinite(num) ? num : "";
     }
     if (field.type === "switch") {
-        return value === true || String(value) === "true";
+        const text = String(value ?? "").trim().toLowerCase();
+        return value === true || ["true", "1", "yes", "on", "enable", "enabled", "开启", "启用", "是"].includes(text);
     }
     return value;
 };
@@ -161,7 +162,7 @@ const pickFile = async (field: CloudTemplateInputSchemaField) => {
 };
 
 const clearFile = (field: CloudTemplateInputSchemaField) => {
-    inputValues.value[field.name] = "";
+    inputValues.value[field.name] = ["images", "audios", "videos", "files"].includes(field.type) ? [] : "";
 };
 
 const fileName = (value: string | string[]) => {

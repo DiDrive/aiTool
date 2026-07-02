@@ -306,25 +306,26 @@ export const TaskService = {
     },
     async delete(record: TaskRecord) {
         const filesForClean: string[] = [];
-        if (record.result) {
-            // collection files from result
-            for (const k in record.result) {
-                if (record.result[k] && typeof record.result[k] === "string") {
-                    if (await window.$mapi.file.isHubFile(record.result[k])) {
-                        filesForClean.push(record.result[k]);
+        try {
+            if (record.result) {
+                // collection files from result
+                for (const k in record.result) {
+                    if (record.result[k] && typeof record.result[k] === "string") {
+                        if (await window.$mapi.file.isHubFile(record.result[k])) {
+                            filesForClean.push(record.result[k]);
+                        }
                     }
                 }
             }
-        }
-        const cleaner = cleanersMap.get(record.biz);
-        if (cleaner) {
-            const {files} = await cleaner(record);
-            if (files && files.length > 0) {
-                filesForClean.push(...files);
+            const cleaner = cleanersMap.get(record.biz);
+            if (cleaner) {
+                const {files} = await cleaner(record);
+                if (files && files.length > 0) {
+                    filesForClean.push(...files);
+                }
             }
-        }
-        for (const file of filesForClean) {
-            await window.$mapi.file.deletes(file);
+        } catch (e) {
+            console.warn("TaskService.delete collect clean files failed", e);
         }
         await window.$mapi.db.delete(
             `DELETE
@@ -332,6 +333,13 @@ export const TaskService = {
              WHERE id = ?`,
             [record.id]
         );
+        for (const file of filesForClean) {
+            try {
+                await window.$mapi.file.deletes(file);
+            } catch (e) {
+                console.warn("TaskService.delete clean file failed", file, e);
+            }
+        }
     },
     async count(
         biz: TaskBiz | null,

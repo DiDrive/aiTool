@@ -1,5 +1,37 @@
 import {AudioRecord} from "./ffmpeg";
 
+const wrapSubtitleText = (text: string, lineLimit = 16, maxLines = 2) => {
+    const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+    if (!source) {
+        return "";
+    }
+    const rows: string[] = [];
+    for (const rawLine of source.split("\n")) {
+        let current = "";
+        let width = 0;
+        for (const char of rawLine.trim()) {
+            const charWidth = /[\x00-\xff]/.test(char) ? 0.55 : 1;
+            if (current && width + charWidth > lineLimit) {
+                rows.push(current);
+                current = "";
+                width = 0;
+            }
+            current += char;
+            width += charWidth;
+        }
+        if (current) {
+            rows.push(current);
+        }
+    }
+    if (rows.length <= maxLines) {
+        return rows.join("\n");
+    }
+    const kept = rows.slice(0, maxLines);
+    const tail = kept[maxLines - 1] || "";
+    kept[maxLines - 1] = tail.length > 1 ? `${tail.slice(0, -1)}…` : "…";
+    return kept.join("\n");
+};
+
 export function subtitleGenerateSrtContent(records: { start: number, end: number, text: string }[]): string {
     let subtitleText = '';
     let index = 1;
@@ -14,7 +46,7 @@ export function subtitleGenerateSrtContent(records: { start: number, end: number
     for (const record of records) {
         const start = formatMs(record.start);
         const end = formatMs(record.end);
-        subtitleText += `${index}\n${start} --> ${end}\n${record.text}\n\n`;
+        subtitleText += `${index}\n${start} --> ${end}\n${wrapSubtitleText(record.text)}\n\n`;
         index++;
     }
     return subtitleText;

@@ -114,7 +114,7 @@ export const ffmpegOptimized = async (
     let optimizedArgs = args;
     if (option!.codesOptimized) {
         const encoders = await detectHardwareEncoders();
-        const optimizedArgs = optimizeArgs(args, encoders);
+        optimizedArgs = optimizeArgs(args, encoders);
         if (optimizedArgs.join(' ') !== args.join(' ')) {
             $mapi.log.info('FfmpegCommandOptimized', {
                 original: 'ffmpeg ' + args.join(' '),
@@ -419,11 +419,16 @@ export const ffmpegCombineVideoAudio = async (video: string, audio: string) => {
         "-i",
         audio,
         "-c:v", "libx264",
+        "-profile:v", "main",
+        "-level:v", "4.1",
         "-preset", "ultrafast",
-        "-crf", "0",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        "-tag:v", "avc1",
         "-c:a", "aac",
         "-map", "0:v:0",
         "-map", "1:a:0",
+        "-movflags", "+faststart",
         "-y",
         output,
     ]);
@@ -559,9 +564,14 @@ export async function ffmpegCutVideo(input: string, startMs: number, endMs: numb
         '-ss', startSeconds.toString(),
         '-t', durationSeconds.toString(),
         '-c:v', 'libx264',
+        '-profile:v', 'main',
+        '-level:v', '4.1',
         '-preset', 'ultrafast',
-        '-crf', '0',
+        '-crf', '18',
+        '-pix_fmt', 'yuv420p',
+        '-tag:v', 'avc1',
         '-c:a', 'aac',
+        '-movflags', '+faststart',
         '-avoid_negative_ts', 'make_zero',
         '-y', output
     ];
@@ -589,9 +599,14 @@ export async function ffmpegConcatVideos(videos: string[]): Promise<string> {
         '-safe', '0',
         '-i', txtFile,
         '-c:v', 'libx264',
+        '-profile:v', 'main',
+        '-level:v', '4.1',
         '-preset', 'ultrafast',
-        '-crf', '0',
+        '-crf', '18',
+        '-pix_fmt', 'yuv420p',
+        '-tag:v', 'avc1',
         '-c:a', 'aac',
+        '-movflags', '+faststart',
         '-y', output
     ];
     await ffmpegOptimized(args, {
@@ -650,7 +665,7 @@ export async function ffmpegRenderTimelineClips(clips: VideoTimelineClip[]): Pro
                 args.push("-t", duration.toFixed(3));
             }
         }
-        const videoFilter = `setpts=${(1 / speedRatio).toFixed(6)}*PTS`;
+        const videoFilter = `setpts=${(1 / speedRatio).toFixed(6)}*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p`;
         const audioFilter = buildVideoAtempoFilter(speedRatio);
         args.push(
             "-filter_complex",
@@ -661,10 +676,22 @@ export async function ffmpegRenderTimelineClips(clips: VideoTimelineClip[]): Pro
             "[a]",
             "-c:v",
             "libx264",
+            "-profile:v",
+            "main",
+            "-level:v",
+            "4.1",
             "-preset",
             "ultrafast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-tag:v",
+            "avc1",
             "-c:a",
             "aac",
+            "-movflags",
+            "+faststart",
             "-y",
             output
         );
@@ -688,6 +715,8 @@ export async function ffmpegBurnSrtSubtitle(
         fontName?: string;
         fontSize?: number;
         marginV?: number;
+        marginL?: number;
+        marginR?: number;
     }
 ): Promise<string> {
     if (!video || !(await $mapi.file.exists(video))) {
@@ -699,26 +728,41 @@ export async function ffmpegBurnSrtSubtitle(
     const output = await $mapi.file.temp("mp4");
     const style = [
         `FontName=${option?.fontName || "Microsoft YaHei"}`,
-        `FontSize=${Number(option?.fontSize || 18)}`,
+        `FontSize=${Number(option?.fontSize || 15)}`,
         "PrimaryColour=&H00FFFFFF",
-        "OutlineColour=&H90000000",
-        "BorderStyle=1",
-        "Outline=2",
+        "OutlineColour=&HCC000000",
+        "BackColour=&H99000000",
+        "BorderStyle=3",
+        "Outline=1",
         "Shadow=0",
         "Alignment=2",
-        `MarginV=${Number(option?.marginV || 80)}`,
+        `MarginL=${Number(option?.marginL || 48)}`,
+        `MarginR=${Number(option?.marginR || 48)}`,
+        `MarginV=${Number(option?.marginV || 96)}`,
     ].join(",");
     const args = [
         "-i",
         video,
         "-vf",
-        `subtitles='${escapeSubtitlePath(srtFile)}':force_style='${style}'`,
+        `subtitles='${escapeSubtitlePath(srtFile)}':force_style='${style}',format=yuv420p`,
         "-c:v",
         "libx264",
+        "-profile:v",
+        "main",
+        "-level:v",
+        "4.1",
         "-preset",
         "ultrafast",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv420p",
+        "-tag:v",
+        "avc1",
         "-c:a",
         "copy",
+        "-movflags",
+        "+faststart",
         "-y",
         output,
     ];

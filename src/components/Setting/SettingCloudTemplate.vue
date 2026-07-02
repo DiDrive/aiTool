@@ -133,7 +133,7 @@ const configPackageFilename = () => {
 const exportConfigPackage = async () => {
     const filePath = await window.$mapi.file.openSave({
         defaultPath: configPackageFilename(),
-        filters: [{ name: "AIGCPanel Config", extensions: ["json"] }],
+        filters: [{ name: "东风奕境AI工作台配置", extensions: ["json"] }],
     });
     if (!filePath) {
         return;
@@ -152,7 +152,7 @@ const exportConfigPackage = async () => {
 
 const importConfigPackage = async () => {
     const filePath = await window.$mapi.file.openFile({
-        filters: [{ name: "AIGCPanel Config", extensions: ["json"] }],
+        filters: [{ name: "东风奕境AI工作台配置", extensions: ["json"] }],
     });
     if (!filePath) {
         return;
@@ -270,13 +270,37 @@ const duplicateSchemaFieldNames = (fields: CloudTemplateInputSchemaField[]) => {
 const schemaPlaceholderExample = "{{字段名}}";
 const identityAvatarPlaceholderExample = "{{identity.bindings.runninghub.avatarId}}";
 const identityReferenceVideoPlaceholderExample = "{{identity.referenceVideo}}";
+const booleanNodePattern = /提示词优化|优化提示词|prompt[_\s-]?optimi[sz]e|优化开关|开启优化|是否优化|是否开启|开启|启用|禁用|开关|switch|toggle|bool|boolean|true|false|快速\/品质|快速品质|品质切换|质量切换|模式开关|zip|压缩包|输出zip|返回zip|是否zip|是否压缩/i;
+
+const nodeLooksLikeSwitch = (item: any) => {
+    const fieldName = String(item?.fieldName || "").trim().toLowerCase();
+    const desc = String(item?.description || "").trim().toLowerCase();
+    const value = item?.fieldValue;
+    return typeof value === "boolean" || booleanNodePattern.test(`${fieldName} ${desc}`);
+};
+
+const booleanFieldBaseName = (item: any, index: number) => {
+    const text = `${item?.fieldName || ""} ${item?.description || ""}`.toLowerCase();
+    if (/提示词优化|优化提示词|prompt[_\s-]?optimi[sz]e/.test(text)) return "promptOptimize";
+    if (/快速\/品质|快速品质|品质切换|质量切换|quality|fast/.test(text)) return "qualityMode";
+    if (/zip|压缩包|输出zip|返回zip|是否压缩/.test(text)) return "zipOutput";
+    return `switch_${item?.nodeId || index}`;
+};
+
+const nodeLooksLikeRatio = (item: any) => {
+    const fieldName = String(item?.fieldName || "").trim().toLowerCase();
+    const desc = String(item?.description || "").trim().toLowerCase();
+    return /aspect[_-]?ratio/.test(fieldName)
+        || /图像比例|图片比例|画面比例|设置比例|宽:高|aspect|ratio|画幅/.test(desc)
+        || /(竖版|横版|竖屏|横屏|portrait|landscape)/i.test(desc);
+};
 
 const inferFieldName = (item: any, index: number) => {
     const desc = normalizeTemplateVariableName(item?.description || "");
     const fieldName = String(item?.fieldName || "").trim().toLowerCase();
+    if (nodeLooksLikeSwitch(item)) return booleanFieldBaseName(item, index);
     if (/图片数量|图像数量|生成数量|数量|张数|count|number/.test(desc)) return `count_${item?.nodeId || index}`;
-    if (/aspect[_-]?ratio/.test(fieldName)) return `ratio_${item?.nodeId || index}`;
-    if (/图像比例|图片比例|画面比例|设置比例|宽:高|aspect|ratio/.test(desc)) return `ratio_${item?.nodeId || index}`;
+    if (nodeLooksLikeRatio(item)) return `ratio_${item?.nodeId || index}`;
     if (fieldName === "image" || /图像|图片|照片|image/.test(desc)) return "image";
     if (fieldName === "audio" || /音频|声音|audio/.test(desc)) return "audio";
     if (fieldName === "video" || /视频|video/.test(desc)) return "video";
@@ -295,14 +319,13 @@ const inferFieldType = (item: any) => {
     const fieldName = String(item?.fieldName || "").trim().toLowerCase();
     const desc = String(item?.description || "").trim().toLowerCase();
     const value = item?.fieldValue;
+    if (nodeLooksLikeSwitch(item)) return "switch";
     if (/图片数量|图像数量|生成数量|数量|张数|count|number/.test(desc)) return "number";
-    if (/aspect[_-]?ratio/.test(fieldName)) return "select";
-    if (/图像比例|图片比例|画面比例|设置比例|宽:高|aspect|ratio/.test(desc)) return "select";
+    if (nodeLooksLikeRatio(item)) return "select";
     if (fieldName === "image" || /image|图像|图片/.test(desc)) return "image";
     if (fieldName === "audio" || /audio|音频|声音/.test(desc)) return "audio";
     if (fieldName === "video" || /video|视频/.test(desc)) return "video";
     if (fieldName === "select" || /选择|模式|切换|agent/.test(desc)) return "select";
-    if (typeof value === "boolean" || /switch|开关|是否/.test(desc)) return "switch";
     if (/^-?\d+(\.\d+)?$/.test(String(value ?? "").trim())) return "number";
     if (fieldName === "text" || /提示词|prompt|文案|text/.test(desc)) return "textarea";
     return "input";
@@ -313,7 +336,8 @@ const normalizeDefaultValueByType = (fieldType: string, value: any) => {
         return "";
     }
     if (fieldType === "switch") {
-        return value === true || String(value) === "true";
+        const text = String(value ?? "").trim().toLowerCase();
+        return value === true || ["true", "1", "yes", "on", "enable", "enabled", "开启", "启用", "是"].includes(text);
     }
     if (fieldType === "number") {
         const num = Number(value);
@@ -323,6 +347,29 @@ const normalizeDefaultValueByType = (fieldType: string, value: any) => {
         return "";
     }
     return value;
+};
+
+const extractInlineSelectOptions = (description: string, defaultValue: any) => {
+    const text = String(description || "");
+    const options: Array<{ label: string; value: string }> = [];
+    const pairPattern = /([A-Za-z0-9_.-]+)\s*[-=：:]\s*([^,，、;；)）\s]+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = pairPattern.exec(text))) {
+        options.push({
+            value: String(match[1] || "").trim(),
+            label: `${String(match[1] || "").trim()} - ${String(match[2] || "").trim()}`,
+        });
+    }
+    if (!options.length && /(竖版|竖屏|portrait)/i.test(text)) {
+        options.push({ label: "1 - 竖版", value: "1" });
+    }
+    if (!options.some(item => item.value === "2") && /(横版|横屏|landscape)/i.test(text)) {
+        options.push({ label: "2 - 横版", value: "2" });
+    }
+    if (!options.length && String(defaultValue ?? "").trim()) {
+        options.push({ label: String(defaultValue), value: String(defaultValue) });
+    }
+    return options;
 };
 
 const extractRequestJsonText = (raw: string) => {
@@ -388,13 +435,10 @@ const autoGenerateFromAiAppExample = () => {
             help: `nodeId=${item?.nodeId || ""}, fieldName=${item?.fieldName || ""}`,
         };
         if (fieldType === "select") {
-            schemaItem.options = [
-                {
-                    label: String(item?.fieldValue ?? ""),
-                    value: String(item?.fieldValue ?? ""),
-                },
-            ];
-            schemaItem.placeholder = "当前只从 cURL 识别到默认值，后续可补完整选项";
+            schemaItem.options = extractInlineSelectOptions(item?.description || "", item?.fieldValue);
+            schemaItem.placeholder = schemaItem.options.length > 1
+                ? "请选择"
+                : "当前只从 cURL 识别到默认值，后续可补完整选项";
         }
         if (fieldType === "number") {
             schemaItem.placeholder = "请输入数值";

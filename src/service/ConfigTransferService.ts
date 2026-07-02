@@ -66,7 +66,7 @@ const legacyRelayConfigFromPlatforms = (records?: DirectApiPlatformRecord[]): Fi
 
 const normalizePackage = (raw: any): ConfigPackage => {
     if (!raw || typeof raw !== "object" || raw.schema !== "aigcpanel.config-package") {
-        throw new Error("不是有效的唯变AI工作台配置包");
+        throw new Error("不是有效的东风奕境AI工作台配置包");
     }
     return {
         schema: "aigcpanel.config-package",
