@@ -700,14 +700,9 @@ const buildInterviewSpeechInstruction = (scene: SceneDraft, line: string, captio
         respondentLine ? `被采访者：${respondentLine}` : "",
     ].filter(Boolean).join("\n");
     return [
-        "音频/台词要求：这是街头采访双人对话，必须明确区分采访者和被采访者。",
-        interviewerLine ? `采访者/持麦者自然开口问：“${interviewerLine}”。` : "",
-        respondentLine
-            ? `被采访者/路人随后自然回答：“${respondentLine}”。这句回答是锁定台词，必须逐字说出，不要自由发挥。`
-            : "当前没有提供被采访者的明确回答台词，因此被采访者不要开口说话，只做思考、点头或表情反应；不要临时编造回答。",
-        dialogueText ? `本镜锁定对白全文：\n${dialogueText}` : "",
-        "镜头中提问者和回答者的口型、眼神和情绪必须分别对应各自台词。",
-        respondentLine ? "不要让采访者代替被采访者回答，也不要让被采访者重复采访问题。" : "",
+        "音频：街头采访双人对话，按下面对白逐字说，不加词。",
+        dialogueText,
+        respondentLine ? "采访者只提问，被采访者只回答；口型和视线分别对应各自台词。" : "被采访者不开口，只用表情和动作回应。",
     ].filter(Boolean).join("\n");
 };
 
@@ -771,6 +766,30 @@ const buildReferenceAnalysisInstruction = (analysis?: MarketingDraft["referenceA
 const appendReferenceAnalysisToPrompt = (prompt: string, analysis?: MarketingDraft["referenceAnalysis"]) => {
     const instruction = buildReferenceAnalysisInstruction(analysis);
     return [prompt, instruction].filter(item => String(item || "").trim()).join("\n\n");
+};
+
+const buildVideoReferenceStyleLine = (analysis?: MarketingDraft["referenceAnalysis"]) => {
+    if (!analysis) {
+        return "";
+    }
+    const compact = (value?: string, max = 46) => {
+        const text = cleanSentence(value || "");
+        return text.length > max ? `${text.slice(0, max)}...` : text;
+    };
+    const rows = [compact(analysis.visualStyle), compact(analysis.shotLanguage), compact(analysis.rhythm)].filter(Boolean);
+    return rows.length ? `风格参考：${rows.join("；")}。只借鉴光线、构图和节奏。` : "";
+};
+
+const buildVideoCorePrompt = (scene: SceneDraft) => {
+    const prompt = humanizeVideoPromptTiming(scene.videoPrompt || scene.scriptBeat || scene.imagePrompt || "");
+    const beat = cleanSentence(scene.scriptBeat || "");
+    const rhythm = cleanSentence(scene.rhythmHint || "");
+    return [
+        "镜头画面：",
+        prompt,
+        beat && !prompt.includes(beat) ? `剧情重点：${beat}` : "",
+        rhythm ? `节奏：${rhythm}` : "",
+    ].filter(Boolean).join("\n");
 };
 
 const sceneGridCount = (scene: SceneDraft) => {
@@ -894,11 +913,7 @@ const buildPerformanceFlowInstruction = (line: string, scene: SceneDraft) => {
     if (!line || scene.narrationMode === "none") {
         return "";
     }
-    return [
-        "表演节奏要求：按真实短视频口播的自然语速完成，不要机械卡秒点，不要突然忽快忽慢。",
-        "动作、表情和手势只服务于这句台词的情绪变化：开头自然进入，中段轻微强调，结尾收住表情。",
-        "如果提示词中出现具体秒数，只把它当作大致节奏参考，实际生成时优先保证台词完整、口型稳定和表演自然。",
-    ].join("\n");
+    return "表演：自然语速，动作跟随台词情绪推进，不要抢话、忽快忽慢或机械卡秒。";
 };
 
 const buildSpeechLockInstruction = (line: string, scene: SceneDraft) => {
@@ -929,12 +944,7 @@ const buildStoryboardVideoReferenceInstruction = (mode: StoryboardImageMode) => 
     if (mode !== "scene_grid") {
         return "";
     }
-    return [
-        "分镜参考图使用方式：输入参考图是多宫格动作分镜板，只用于理解同一镜头内的时间顺序、人物动作和表情变化。",
-        "最终视频必须是单一全屏连续镜头，不要出现宫格、拼贴、分屏、漫画分格、边框、编号或多个小画面。",
-        "即使参考图是三宫格、四宫格、六宫格，也必须拆解为连续动作时间点，绝不能把多个格子同时画进视频画面。",
-        "请把每个宫格理解为前后时间点，让画面在单一场景中自然过渡，不要把参考图版式复制到视频里。",
-    ].join("\n");
+    return "参考图：多宫格只表示同一镜头的时间顺序；最终视频必须是单一全屏连续画面，不要分屏、宫格、拼贴或编号。";
 };
 
 const buildVideoPromptWithSpeech = (
@@ -950,31 +960,29 @@ const buildVideoPromptWithSpeech = (
         extractProtectedTerms([form.value.brandName, form.value.productSellingPoints, form.value.idea, line, caption])
     );
     const performanceInstruction = buildPerformanceFlowInstruction(line, scene);
-    const speechLockInstruction = buildSpeechLockInstruction(line, scene);
     const spokenLine = spokenOnlyLine(line);
     const spokenCaption = spokenSubtitleText(caption || line);
     const speechInstruction =
         scene.narrationMode === "none"
-            ? "音频/台词要求：不要生成对白、旁白或人物开口；只保留自然环境声或轻微氛围音。"
+            ? "音频：不要对白、旁白或人物开口，只保留环境声。"
             : line
                   ? scene.narrationMode === "character" && sceneLooksLikeInterview(scene)
                   ? buildInterviewSpeechInstruction(scene, line, caption)
                   : scene.narrationMode === "character"
-                  ? `音频/台词要求：让画面中的主要角色自然开口说出这句中文台词：“${spokenLine}”。这是本镜唯一允许出现的人声台词，需要口型、情绪和语速匹配台词，不要省略，不要改写，不要添加其它对白；不要读出人物姓名或“角色名：”标签。`
-                  : `音频/台词要求：使用自然普通话画外音完整朗读这句台词：“${spokenLine}”。这是本镜唯一允许出现的人声旁白，画面角色可以不张口，但必须有清晰旁白，不要省略，不要改写，不要添加其它对白；不要读出人物姓名或“角色名：”标签。`
-              : "音频/台词要求：当前分镜没有明确台词，因此不要生成任何对白、旁白或人物开口；只保留自然环境声或轻微氛围音。需要说话时必须先在分镜台词里填写明确文本。";
+                  ? `音频：主要角色自然说：“${spokenLine}”。只允许这句台词，逐字说，不加词，不读角色名。`
+                  : `音频：自然普通话画外音朗读：“${spokenLine}”。只允许这句旁白，逐字读，不加词，不读角色名。`
+              : "音频：没有明确台词，不要生成对白、旁白或人物开口。";
     const subtitleInstruction =
         scene.subtitleMode === "none"
-            ? "字幕要求：不要生成画面字幕、口播字幕、标题条或贴纸文字。"
-            : `字幕后期要求：本镜字幕文本为“${spokenCaption || "无"}”，但视频模型不要把任何字幕、标题条、贴纸文字或 UI 文本画进画面；字幕会在最终合成阶段由系统叠加。`;
+            ? "画面禁用：不要生成字幕、标题条、贴纸文字、UI、分镜说明。"
+            : `字幕后期：字幕文本为“${spokenCaption || "无"}”，但视频画面里不要生成任何字幕、标题条、贴纸文字或 UI。`;
     return [
         buildScenePositionInstruction(scene, sceneIndex, totalScenes),
-        appendReferenceAnalysisToPrompt(humanizeVideoPromptTiming(scene.videoPrompt), analysis),
+        buildVideoCorePrompt(scene),
+        buildVideoReferenceStyleLine(analysis),
         buildSceneAssetBindingInstruction(scene),
         buildStoryboardVideoReferenceInstruction(storyboardImageMode),
-        "",
         speechInstruction,
-        speechLockInstruction,
         performanceInstruction,
         protectedTermInstruction,
         subtitleInstruction,
@@ -2085,8 +2093,8 @@ const buildSceneAssetBindingInstruction = (scene?: SceneDraft) => {
         .map(asset => String(asset.name || "").trim())
         .filter(Boolean);
     return [
-        "资产一致性要求：本镜只能使用已关联资产作为主要人物、场景和道具。",
-        characterNames.length ? `主要人物资产：已提供 ${characterNames.length} 个主要人物参考图。视频里按剧情身份称为主角/被采访者/分享者，不要把具体人物资产名读出来或画成文字；保持脸型、发型、年龄感、体型、服装款式和服装主色一致，多人同框时不要交换身份、服装或台词归属。` : "",
+        "资产：只使用本镜关联参考图。",
+        characterNames.length ? `人物保持参考图外貌、发型、服装和身份；不要读出或画出人物资产名。` : "",
         sceneEnvironmentUseInstruction(scene, sceneNames),
         propUseInstruction(scene, propNames),
     ].filter(Boolean).join("\n");
