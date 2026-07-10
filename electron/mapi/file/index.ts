@@ -50,6 +50,17 @@ const toWebReadableStream = (stream: any) => {
     });
 }
 
+const safeDownloadExt = (url: string) => {
+    let source = String(url || "");
+    try {
+        source = new URL(source).pathname;
+    } catch (e) {
+        source = source.split(/[?#]/)[0] || source;
+    }
+    const ext = FileIndex.ext(source).replace(/[^a-z0-9]/gi, "").toLowerCase();
+    return ext.slice(0, 16);
+};
+
 const root = () => {
     return AppEnv.dataRoot;
 };
@@ -988,7 +999,7 @@ const download = async (
         option
     );
     if (!path) {
-        const ext = FileIndex.ext(url);
+        const ext = safeDownloadExt(url);
         path = await temp(ext || "bin", "download");
         option.isDataPath = false;
     }
@@ -1010,7 +1021,22 @@ const download = async (
         ...(Object.keys(headers).length > 0 ? {headers} : {}),
     });
     if (!res.ok) {
-        throw new Error(`DownloadError:${url}`);
+        let detail = "";
+        try {
+            detail = await res.text();
+        } catch (e) {
+            detail = "";
+        }
+        throw new Error(
+            [
+                `DownloadError: HTTP ${res.status}`,
+                `URL: ${url}`,
+                res.url && res.url !== url ? `Final URL: ${res.url}` : "",
+                detail ? `Detail: ${detail.slice(0, 300)}` : "",
+            ]
+                .filter(Boolean)
+                .join("\n")
+        );
     }
 
     const contentLength = res.headers.get("content-length");
@@ -1020,6 +1046,15 @@ const download = async (
     let readableStream = toNodeReadableStream(res.body);
     const fileStream = fs.createWriteStream(fp);
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const fail = (err: any) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            fileStream.close();
+            reject(err);
+        };
         readableStream
             .on("data", chunk => {
                 // console.log('download.data', chunk.length)
@@ -1032,12 +1067,21 @@ const download = async (
             .on("end", () => {
                 // console.log('download.end')
                 fileStream.end();
-                resolve(fp);
             })
             .on("error", err => {
                 // console.log('download.error', err)
-                fileStream.close();
-                reject(err);
+                fail(err);
+            });
+        fileStream
+            .on("finish", () => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                resolve(fp);
+            })
+            .on("error", err => {
+                fail(err);
             });
     });
 };

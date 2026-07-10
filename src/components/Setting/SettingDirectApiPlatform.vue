@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { Dialog } from "../../lib/dialog";
 import {
@@ -82,7 +82,7 @@ const configPackageFilename = () => {
 const exportConfigPackage = async () => {
     const filePath = await window.$mapi.file.openSave({
         defaultPath: configPackageFilename(),
-        filters: [{ name: "东风奕境AI工作台配置", extensions: ["json"] }],
+        filters: [{ name: "唯变AI工作台配置", extensions: ["json"] }],
     });
     if (!filePath) {
         return;
@@ -101,7 +101,7 @@ const exportConfigPackage = async () => {
 
 const importConfigPackage = async () => {
     const filePath = await window.$mapi.file.openFile({
-        filters: [{ name: "东风奕境AI工作台配置", extensions: ["json"] }],
+        filters: [{ name: "唯变AI工作台配置", extensions: ["json"] }],
     });
     if (!filePath) {
         return;

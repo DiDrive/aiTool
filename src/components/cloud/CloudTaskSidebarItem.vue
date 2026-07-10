@@ -149,6 +149,16 @@ const ensureFileExt = (name: string, ext: string) => {
     return base.replace(/\.[^.]*$/, "") + suffix;
 };
 
+const defaultOutputName = (item: OutputItem) => {
+    const input = (props.record as any)?.param?.input || {};
+    if (input?.source === "ToolSeedanceBatch") {
+        const base = String(input.batchSegmentTitle || props.record.title || "").trim();
+        const ext = item.type === "video" ? "mp4" : getOutputExt(item.url) || getOutputExt(item.name) || "bin";
+        return ensureFileExt(window.$mapi.file.textToName(base || "片段_未命名_01", "", 80), ext);
+    }
+    return item.type === "video" ? ensureFileExt(item.name || "video", "mp4") : item.name;
+};
+
 const outputItems = computed<OutputItem[]>(() => {
     const localFiles = Array.isArray((props.record as any)?.jobResult?.End?.localFiles)
         ? (props.record as any).jobResult.End.localFiles
@@ -363,6 +373,7 @@ const failDetail = computed(() => {
         String((props.record as any)?.jobResult?.Submit?.error || "").trim(),
         String((props.record as any)?.jobResult?.Prepare?.error || "").trim(),
         String((props.record as any)?.jobResult?.Query?.error || "").trim(),
+        String((props.record as any)?.jobResult?.End?.error || "").trim(),
     ].filter(Boolean);
     return Array.from(new Set(parts)).join("\n");
 });
@@ -373,7 +384,7 @@ const downloadOutput = async (item: OutputItem) => {
     }
     try {
         downloadingKey.value = item.key;
-        const defaultName = item.type === "video" ? ensureFileExt(item.name || "video", "mp4") : item.name;
+        const defaultName = defaultOutputName(item);
         if (/^data:/i.test(item.url)) {
             const link = document.createElement("a");
             link.href = item.url;

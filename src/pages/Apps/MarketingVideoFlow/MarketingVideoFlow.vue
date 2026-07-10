@@ -19,7 +19,7 @@ import { usePageDraft } from "../../../hooks/pageDraft";
 type AngleType = "pain" | "desire" | "contrast" | "scene" | "conversion";
 type GenerationChannel = "direct" | "cloud";
 type VideoReferenceRole = "reference_image" | "first_frame";
-type StoryboardImageMode = "single_frame" | "scene_grid";
+type StoryboardImageMode = "single_frame" | "scene_grid" | "first_last_frame";
 type FrameDensity = "light" | "standard" | "detailed";
 type NarrationMode = "none" | "voiceover" | "character";
 type SubtitleMode = "none" | "caption";
@@ -54,6 +54,7 @@ type MarketingAsset = {
     referenceName?: string;
     prompt?: string;
     note?: string;
+    source?: "manual" | "ai";
     status: MarketingAssetStatus;
     imageTaskId?: number;
 };
@@ -126,7 +127,10 @@ type SceneDraft = {
     }>;
     referenceImageUrl?: string;
     referenceImageName?: string;
+    lastFrameUrl?: string;
+    lastFrameName?: string;
     imageTaskId?: number;
+    lastFrameTaskId?: number;
     videoTaskId?: number;
 };
 
@@ -166,10 +170,14 @@ const imagePlatforms = ref<DirectApiPlatformRecord[]>([]);
 const videoPlatforms = ref<DirectApiPlatformRecord[]>([]);
 const imageTemplates = ref<CloudTemplateRecord[]>([]);
 const videoTemplates = ref<CloudTemplateRecord[]>([]);
+const audioTemplates = ref<CloudTemplateRecord[]>([]);
+const lipsyncTemplates = ref<CloudTemplateRecord[]>([]);
 const imagePlatformId = ref(0);
 const videoPlatformId = ref(0);
 const imageTemplateId = ref(0);
 const videoTemplateId = ref(0);
+const audioTemplateId = ref(0);
+const lipsyncTemplateId = ref(0);
 const imageChannel = ref<GenerationChannel>("direct");
 const videoChannel = ref<GenerationChannel>("direct");
 const assetImageChannel = ref<GenerationChannel>("direct");
@@ -195,6 +203,7 @@ const douyinUrl = ref("");
 const douyinCookie = ref("");
 const douyinCustomApiUrl = ref("");
 const douyinImportResult = ref<DouyinImportResult | null>(null);
+const enableDouyinImport = false;
 const collectingHotTrends = ref(false);
 const hotTrendLoadingText = ref("");
 const hotTrendKeyword = ref("");
@@ -306,16 +315,23 @@ const videoReferenceRoleOptions: Array<{ label: string; value: VideoReferenceRol
     { label: "首帧控制", value: "first_frame", desc: "视频必须从这张分镜图开始" },
 ];
 const availableVideoReferenceRoleOptions = computed(() =>
-    form.value.storyboardImageMode === "scene_grid"
+    form.value.storyboardImageMode === "scene_grid" || form.value.storyboardImageMode === "first_last_frame"
         ? videoReferenceRoleOptions.filter(item => item.value === "reference_image")
         : videoReferenceRoleOptions
 );
+
+watch(() => form.value.storyboardImageMode, mode => {
+    if (mode === "scene_grid" || mode === "first_last_frame") {
+        form.value.videoReferenceRole = "reference_image";
+    }
+});
 const storyboardImageModeOptions: Array<{ label: string; value: StoryboardImageMode; desc: string }> = [
     { label: "镜头动作宫格", value: "scene_grid", desc: "每个镜头生成一张多宫格动作板，覆盖该镜头内的起承转合，再用于生视频参考" },
     { label: "单张首帧", value: "single_frame", desc: "每个镜头只生成一张清晰首帧，更适合首帧控制和画面精修" },
+    { label: "首尾帧", value: "first_last_frame", desc: "每个镜头生成首帧和尾帧两张图，适合首尾帧视频模板；音频后续单独生成/合成" },
 ];
 const storyboardImageActionText = computed(() =>
-    form.value.storyboardImageMode === "scene_grid" ? "生成动作宫格" : "生成首帧图"
+    form.value.storyboardImageMode === "scene_grid" ? "生成动作宫格" : form.value.storyboardImageMode === "first_last_frame" ? "生成首尾帧" : "生成首帧图"
 );
 const marketingAssetTypeOptions: Array<{ label: string; value: MarketingAssetType }> = [
     { label: "人物资产", value: "character" },
@@ -433,7 +449,7 @@ const referenceSummary = computed(() => {
 });
 
 const readyMarketingAssets = computed(() => {
-    return marketingAssets.value.filter(item => item.status === "ready" && (item.url || item.dataUrl));
+    return marketingAssets.value.filter(item => item.status === "ready" && assetUrlValue(item));
 });
 
 const assetSelectOptions = computed(() => {
@@ -448,6 +464,8 @@ const loadPlatforms = async () => {
     videoPlatforms.value = await DirectApiPlatformService.listByCapability("seedance");
     imageTemplates.value = await CloudTemplateTaskService.listTemplates("image");
     videoTemplates.value = await CloudTemplateTaskService.listTemplates("video");
+    audioTemplates.value = await CloudTemplateTaskService.listTemplates("audio");
+    lipsyncTemplates.value = await CloudTemplateTaskService.listTemplates("lipsync");
     const defaultImage = await DirectApiPlatformService.getDefault("gpt-image-2");
     const defaultVideo = await DirectApiPlatformService.getDefault("seedance");
     imagePlatformId.value = imagePlatforms.value.some(item => item.id === imagePlatformId.value)
@@ -462,6 +480,12 @@ const loadPlatforms = async () => {
     videoTemplateId.value = videoTemplates.value.some(item => item.id === videoTemplateId.value)
         ? videoTemplateId.value
         : videoTemplates.value[0]?.id || 0;
+    audioTemplateId.value = audioTemplates.value.some(item => item.id === audioTemplateId.value)
+        ? audioTemplateId.value
+        : audioTemplates.value[0]?.id || 0;
+    lipsyncTemplateId.value = lipsyncTemplates.value.some(item => item.id === lipsyncTemplateId.value)
+        ? lipsyncTemplateId.value
+        : lipsyncTemplates.value[0]?.id || 0;
     syncVideoRatioFromSelectedTemplate();
     assetImagePlatformId.value = imagePlatforms.value.some(item => item.id === assetImagePlatformId.value)
         ? assetImagePlatformId.value
@@ -772,24 +796,36 @@ const buildVideoReferenceStyleLine = (analysis?: MarketingDraft["referenceAnalys
     if (!analysis) {
         return "";
     }
-    const compact = (value?: string, max = 46) => {
+    const compact = (value?: string, max = 38) => {
         const text = cleanSentence(value || "");
         return text.length > max ? `${text.slice(0, max)}...` : text;
     };
-    const rows = [compact(analysis.visualStyle), compact(analysis.shotLanguage), compact(analysis.rhythm)].filter(Boolean);
-    return rows.length ? `风格参考：${rows.join("；")}。只借鉴光线、构图和节奏。` : "";
+    const style = compact(analysis.visualStyle);
+    return style ? `风格参考：${style}。只借鉴画面质感，不覆盖本镜剧情。` : "";
 };
 
 const buildVideoCorePrompt = (scene: SceneDraft) => {
     const prompt = humanizeVideoPromptTiming(scene.videoPrompt || scene.scriptBeat || scene.imagePrompt || "");
     const beat = cleanSentence(scene.scriptBeat || "");
-    const rhythm = cleanSentence(scene.rhythmHint || "");
     return [
-        "镜头画面：",
-        prompt,
-        beat && !prompt.includes(beat) ? `剧情重点：${beat}` : "",
-        rhythm ? `节奏：${rhythm}` : "",
+        `镜头画面：${prompt}`,
+        beat && prompt && !prompt.includes(beat) ? `剧情目标：${beat}` : "",
     ].filter(Boolean).join("\n");
+};
+
+const buildVideoSubjectContinuityInstruction = (scene: SceneDraft) => {
+    const text = [scene.title, scene.scriptBeat, scene.imagePrompt, scene.videoPrompt, scene.voiceoverLine, scene.rhythmHint]
+        .map(item => String(item || ""))
+        .join("\n");
+    const isEnvironmentShowcase = /庇护所|海上|海面|漂浮|资源|建造|搭建|房子|基地|玩法|收集|升级|装备|游戏/.test(text);
+    const isInterview = sceneLooksLikeInterview(scene);
+    if (isInterview) {
+        return "主体连续：采访者和被采访者身份保持稳定；提问者不要变成回答者，回答者不要消失或换人。";
+    }
+    if (isEnvironmentShowcase) {
+        return "主体连续：主角必须全程作为动作执行者出现，参与搭建、收集或展示；拉远展示场景时也要保留主角位置和动作，不要只剩空场景或建筑。";
+    }
+    return "主体连续：主角/核心主体全程保持可见，身份、服装、位置关系稳定；不要中途消失、换人或变成背景元素。";
 };
 
 const sceneGridCount = (scene: SceneDraft) => {
@@ -801,6 +837,13 @@ const sceneGridCount = (scene: SceneDraft) => {
 const buildSceneImageModeInstruction = (draft: MarketingDraft, scene: SceneDraft) => {
     const sceneIndex = draft.scenes.findIndex(item => item.id === scene.id);
     const position = sceneIndex >= 0 ? `第 ${sceneIndex + 1}/${draft.scenes.length} 镜` : "当前镜头";
+    if (form.value.storyboardImageMode === "first_last_frame") {
+        return [
+            `分镜图模式：首尾帧。当前任务只生成${position}的一张首帧或尾帧参考图，不要生成宫格或拼贴。`,
+            "首帧表达本镜开场状态，尾帧表达本镜结束状态；两张图必须保持同一人物、场景、服装、光线方向和道具关系。",
+            "画面必须是完整单图，不要字幕、编号、说明文字、水印或 UI。",
+        ].join("\n");
+    }
     if (form.value.storyboardImageMode === "single_frame") {
         return [
             `分镜图模式：单张首帧。只生成${position}的一张竖屏首帧参考图。`,
@@ -847,12 +890,13 @@ const buildScenePicturePrompt = (scene: SceneDraft) => {
             hasPhone ? "主角手持黑色手机或低头看手机，表情自然。": "",
             hasMic ? "画面边缘露出另一人的手持采访麦克风递向主角，采访者本人可以不完整入镜；不要让主角一开始拿着麦克风。": "",
         ].filter(Boolean).join(" ")
-        : rawImagePrompt;
+        : "";
     return [
         "画面提示词：请直接生成这一镜的具体画面。",
         rawImagePrompt,
         sceneLine,
         actionLine,
+        buildShotScaleInstruction(scene),
         "只画当前镜头的画面，不画其它分镜内容；不要生成字幕、标题条、贴纸文字、UI 或说明文字。",
     ].filter(Boolean).join("\n");
 };
@@ -863,6 +907,25 @@ const buildImagePromptWithReferenceAnalysis = (draft: MarketingDraft, scene: Sce
         buildSceneImageModeInstruction(draft, scene),
         buildAssetReferenceInstruction(scene),
     ].filter(Boolean).join("\n\n");
+};
+
+const buildSceneFramePrompt = (draft: MarketingDraft, scene: SceneDraft, frameType: "first" | "last") => {
+    const base = buildImagePromptWithReferenceAnalysis(draft, scene);
+    if (form.value.storyboardImageMode !== "first_last_frame") {
+        return base;
+    }
+    const frameInstruction =
+        frameType === "first"
+            ? [
+                "本次只生成首帧图：表现本镜刚开始的画面。",
+                "画面要包含开场主体、场景、道具和动作起点，为后续视频起始状态服务。",
+            ]
+            : [
+                "本次只生成尾帧图：表现本镜结束时的画面。",
+                "画面要体现本镜动作完成后的结果、情绪落点或剧情成果，为后续视频结束状态服务。",
+                "尾帧不要重复首帧，要能看出动作/剧情已经推进完成。",
+            ];
+    return [base, frameInstruction.join("\n")].join("\n\n");
 };
 
 const extractProtectedTerms = (values: string[]) => {
@@ -913,7 +976,7 @@ const buildPerformanceFlowInstruction = (line: string, scene: SceneDraft) => {
     if (!line || scene.narrationMode === "none") {
         return "";
     }
-    return "表演：自然语速，动作跟随台词情绪推进，不要抢话、忽快忽慢或机械卡秒。";
+    return "节奏：自然语速，动作服务台词，不要抢话或机械卡秒。";
 };
 
 const buildSpeechLockInstruction = (line: string, scene: SceneDraft) => {
@@ -979,9 +1042,10 @@ const buildVideoPromptWithSpeech = (
     return [
         buildScenePositionInstruction(scene, sceneIndex, totalScenes),
         buildVideoCorePrompt(scene),
-        buildVideoReferenceStyleLine(analysis),
+        buildVideoSubjectContinuityInstruction(scene),
         buildSceneAssetBindingInstruction(scene),
         buildStoryboardVideoReferenceInstruction(storyboardImageMode),
+        buildVideoReferenceStyleLine(analysis),
         speechInstruction,
         performanceInstruction,
         protectedTermInstruction,
@@ -1496,6 +1560,10 @@ const sceneReferenceDisplayUrl = (scene: SceneDraft) => {
     return imageDisplayUrl(scene.referenceImageUrl);
 };
 
+const sceneLastFrameDisplayUrl = (scene: SceneDraft) => {
+    return imageDisplayUrl(scene.lastFrameUrl);
+};
+
 const normalizeMarketingAssetType = (value: any): MarketingAssetType => {
     const raw = String(value || "").toLowerCase();
     if (raw.includes("scene") || raw.includes("场景") || raw.includes("环境")) {
@@ -1757,6 +1825,7 @@ const pickMarketingAsset = async () => {
             name,
             url: filePath,
             dataUrl: await pathToDataUrl(filePath),
+            source: "manual",
             status: "ready",
             note: "手动上传",
         });
@@ -1775,6 +1844,7 @@ const uploadImageForMarketingAsset = async (asset: MarketingAsset) => {
     try {
         asset.url = filePath;
         asset.dataUrl = await pathToDataUrl(filePath);
+        asset.source = "manual";
         asset.status = "ready";
         asset.note = asset.note || "手动上传";
         syncSceneAssetBindings();
@@ -1848,18 +1918,29 @@ const addSuggestedMarketingAsset = (asset: Partial<MarketingAsset>) => {
         url: "",
         prompt: sanitizeAssetPrompt({ ...asset, type, name, prompt }),
         note: String(asset.note || "AI 根据脚本建议生成"),
+        source: "ai",
         status: "suggested",
     });
 };
 
-const assetMatchKey = (value: string) => String(value || "").trim().toLowerCase();
+const assetMatchKey = (value: string) => String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^(人物|角色|场景|环境|道具|产品|物件|商品|参考)?资产[：:\s·-]*/g, "")
+    .replace(/[「」【】[\]()（）《》<>#\s·:：,，、;；_-]+/g, "");
 
 const findMarketingAssetByRequirement = (required: { type: MarketingAssetType; name: string }) => {
     const key = assetMatchKey(required.name);
     if (!key) {
         return null;
     }
-    return marketingAssets.value.find(item => item.type === required.type && assetMatchKey(item.name) === key) || null;
+    const candidates = marketingAssets.value.filter(item => item.type === required.type);
+    return candidates.find(item => assetMatchKey(item.name) === key)
+        || candidates.find(item => {
+            const itemKey = assetMatchKey(item.name);
+            return itemKey.length >= 2 && key.length >= 2 && (itemKey.includes(key) || key.includes(itemKey));
+        })
+        || null;
 };
 
 const syncSceneAssetBindings = (items: MarketingDraft[] = drafts.value) => {
@@ -1880,7 +1961,7 @@ const syncSceneAssetBindings = (items: MarketingDraft[] = drafts.value) => {
 const ensureRequiredAssetsFromScenes = (items: MarketingDraft[]) => {
     items.forEach(draft => {
         draft.scenes.forEach(scene => {
-            scene.requiredAssets = expandCompositeAssetItems(scene.requiredAssets || []).map(item => ({
+            scene.requiredAssets = expandCompositeAssetItems(scene.requiredAssets || []).map((item: any) => ({
                 type: normalizeMarketingAssetType(item.type),
                 name: String(item.name || item.title || ""),
                 reason: String(item.reason || item.note || item.usage || ""),
@@ -1912,7 +1993,7 @@ const ensureSuggestedAssetsFromDrafts = (items: MarketingDraft[], json?: any) =>
 };
 
 const resetMarketingAssetsForNewDrafts = () => {
-    marketingAssets.value = [];
+    marketingAssets.value = marketingAssets.value.filter(item => item.source === "manual" || item.note === "手动上传");
     assetUploadName.value = "";
 };
 
@@ -1926,16 +2007,26 @@ const refreshRequiredAssetsFromCurrentDrafts = () => {
     Dialog.tipSuccess("已检查分镜所需资产，并补齐缺失资产项");
 };
 
-const pickSceneReferenceImage = async (scene: SceneDraft) => {
+const pickSceneReferenceImage = async (scene: SceneDraft, frameType: "first" | "last" = "first") => {
     const filePath = await pickImageFiles();
     if (!filePath) {
         return;
     }
-    scene.referenceImageUrl = filePath;
-    scene.referenceImageName = FileUtil.getBaseName(filePath, true);
+    if (frameType === "last") {
+        scene.lastFrameUrl = filePath;
+        scene.lastFrameName = FileUtil.getBaseName(filePath, true);
+    } else {
+        scene.referenceImageUrl = filePath;
+        scene.referenceImageName = FileUtil.getBaseName(filePath, true);
+    }
 };
 
-const clearSceneReferenceImage = (scene: SceneDraft) => {
+const clearSceneReferenceImage = (scene: SceneDraft, frameType: "first" | "last" = "first") => {
+    if (frameType === "last") {
+        scene.lastFrameUrl = "";
+        scene.lastFrameName = "";
+        return;
+    }
     scene.referenceImageUrl = "";
     scene.referenceImageName = "";
 };
@@ -2073,6 +2164,27 @@ const propUseInstruction = (scene: SceneDraft | undefined, propNames: string[]) 
         return `${name}：只作为本镜对应道具使用，保持外观、位置和归属关系稳定，不要变成其它道具。`;
     });
     return `道具资产用途：${rows.join(" ")}`;
+};
+
+const buildShotScaleInstruction = (scene?: SceneDraft) => {
+    const text = sceneTextForAssetUse(scene);
+    const wantsEnvironment = /庇护所|海上|海面|漂浮|资源|建造|搭建|房子|基地|场景展示|玩法展示|全景|远景|中景|空间|开阔|周围|环境/.test(text);
+    const wantsFullBody = wantsEnvironment || /全身|三视图|站立|走路|行走|奔跑|动作全貌|完整人物/.test(text);
+    const wantsClose = !wantsEnvironment && /特写|近景|中近景|面部|表情|口型|采访|对话|分享|讲述|说话/.test(text);
+    const shotScale = wantsEnvironment
+        ? "这是环境/玩法展示镜头，优先表现人物所在空间、庇护所结构、海面纵深和周围资源；人物保持全身或大半身，人物高度约占画面 28%-48%，不要画成贴脸半身照。"
+        : wantsFullBody
+          ? "人物保持完整身体或膝盖以上构图，头顶和脚边留出安全边距；人物高度约占画面 40%-65%。"
+          : wantsClose
+            ? "人物保持自然中近景或半身构图，头部、肩膀、手部道具不要被裁切；人物高度约占画面 55%-75%。"
+            : "人物按剧情保持自然中景比例，不要占满画面；人物高度约占画面 40%-65%。";
+    return [
+        "画面尺度硬要求：人物、道具和场景必须符合真实透视比例。",
+        shotScale,
+        "背景场景要有真实纵深和可辨识空间结构，不要把人物放大到遮住主要环境，也不要把场景压缩成贴纸背景。",
+        "9:16 竖屏安全框内主体完整；镜头景别必须服从本镜剧情，而不是机械套用参考视频里的近景。",
+        "不同资产只能作为对应身份参考：人物是人物，场景是空间，道具是道具，不要互相融合或改变尺寸关系。",
+    ].join("\n");
 };
 
 const buildSceneAssetBindingInstruction = (scene?: SceneDraft) => {
@@ -2312,9 +2424,15 @@ const valueForCloudField = (
     if (String(field?.type || "") === "number") {
         return defaultCloudFieldValue(field, 0);
     }
+    if (fieldLooksLike(field, ["first", "start", "首帧", "起始帧", "开始帧"])) {
+        return chooseFileValue([base.firstFrame].filter(Boolean));
+    }
+    if (fieldLooksLike(field, ["last", "end", "tail", "尾帧", "结束帧"])) {
+        return chooseFileValue([base.lastFrame].filter(Boolean));
+    }
     if (["image", "images", "file", "files"].includes(String(field?.type || ""))) {
         const imageValues = capability === "video"
-            ? [base.firstFrame, ...allAssets].filter(Boolean)
+            ? [base.firstFrame, base.lastFrame, ...allAssets].filter(Boolean)
             : allAssets;
         return chooseFileValue(imageValues);
     }
@@ -2347,12 +2465,6 @@ const valueForCloudField = (
     }
     if (fieldLooksLike(field, ["voiceover", "line", "台词", "口播", "旁白"])) {
         return base.voiceoverLine || "";
-    }
-    if (fieldLooksLike(field, ["first", "start", "首帧", "起始帧", "开始帧"])) {
-        return chooseFileValue([base.firstFrame].filter(Boolean));
-    }
-    if (fieldLooksLike(field, ["last", "end", "tail", "尾帧", "结束帧"])) {
-        return chooseFileValue([base.lastFrame].filter(Boolean));
     }
     return defaultCloudFieldValue(field, "");
 };
@@ -2397,8 +2509,8 @@ const buildCloudMarketingInput = (
         ...base,
         image: base.firstFrame || allAssetUrls[0] || "",
         imageUrl: base.firstFrame || allAssetUrls[0] || "",
-        images: capability === "video" ? [base.firstFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
-        imageUrls: capability === "video" ? [base.firstFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
+        images: capability === "video" ? [base.firstFrame, base.lastFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
+        imageUrls: capability === "video" ? [base.firstFrame, base.lastFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
         referenceImageUrl: allAssetUrls[0] || "",
         referenceImages: allAssetUrls,
         assetImages: allAssetUrls,
@@ -3360,6 +3472,9 @@ const normalizeAiDraft = (raw: any, index: number): MarketingDraft | null => {
                 assetIds: Array.isArray(scene?.assetIds) ? scene.assetIds.map((item: any) => String(item || "")).filter(Boolean) : [],
                 requiredAssets: normalizeRequiredAssets(scene?.requiredAssets || scene?.assets || scene?.neededAssets),
                 referenceImageUrl: String(scene?.referenceImageUrl || ""),
+                referenceImageName: String(scene?.referenceImageName || ""),
+                lastFrameUrl: String(scene?.lastFrameUrl || ""),
+                lastFrameName: String(scene?.lastFrameName || ""),
             };
             applySpeechTimingGuard(normalizedScene);
             return normalizedScene;
@@ -3594,6 +3709,9 @@ const buildScene = (angle: AngleType, index: number, draftIndex: number): SceneD
             },
         ],
         referenceImageUrl: "",
+        referenceImageName: "",
+        lastFrameUrl: "",
+        lastFrameName: "",
         subtitleMode: form.value.subtitleMode,
     };
 };
@@ -3699,12 +3817,12 @@ const generateDrafts = async () => {
     }
 };
 
-const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft) => {
+const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft, frameType: "first" | "last" = "first") => {
     const platform = currentImagePlatform.value;
     if (!platform || !platform.content.apiKey.trim()) {
         throw new Error("请先配置可用的 GPT Image 2 平台");
     }
-    const prompt = buildImagePromptWithReferenceAnalysis(draft, scene);
+    const prompt = buildSceneFramePrompt(draft, scene, frameType);
     const body = {
         model: "gpt-image-2",
         prompt,
@@ -3735,7 +3853,7 @@ const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft) =
     };
     const record: TaskRecord = {
         biz: "DirectApiTask",
-        title: `${draft.title}_${scene.title}_分镜图`,
+        title: `${draft.title}_${scene.title}_${frameType === "last" ? "尾帧图" : "分镜图"}`,
         serverName: "",
         serverTitle: "",
         serverVersion: "",
@@ -3745,23 +3863,23 @@ const submitDirectImageTask = async (draft: MarketingDraft, scene: SceneDraft) =
     return await TaskService.submit(record);
 };
 
-const submitCloudImageTask = async (draft: MarketingDraft, scene: SceneDraft) => {
+const submitCloudImageTask = async (draft: MarketingDraft, scene: SceneDraft, frameType: "first" | "last" = "first") => {
     const template = currentImageTemplate.value;
     if (!template?.id) {
         throw new Error("请先选择云端生图模板");
     }
-    const prompt = buildImagePromptWithReferenceAnalysis(draft, scene);
+    const prompt = buildSceneFramePrompt(draft, scene, frameType);
     const imageAssets = buildImageAssetUrls(scene);
     const input = buildCloudMarketingInput(template, "image", {
-        title: `${draft.title}_${scene.title}_分镜图`,
+        title: `${draft.title}_${scene.title}_${frameType === "last" ? "尾帧图" : "分镜图"}`,
         prompt,
         text: prompt,
         imagePrompt: prompt,
         videoPrompt: buildVideoPromptWithSpeech(scene, draft.referenceAnalysis, draft.scenes.findIndex(item => item.id === scene.id), draft.scenes.length),
         firstFrame: scene.referenceImageUrl || "",
         firstFrameUrl: scene.referenceImageUrl || "",
-        lastFrame: "",
-        lastFrameUrl: "",
+        lastFrame: scene.lastFrameUrl || "",
+        lastFrameUrl: scene.lastFrameUrl || "",
         duration: scene.duration,
         ratio: form.value.ratio,
         subtitle: effectiveSceneCaption(scene),
@@ -3971,11 +4089,12 @@ const refreshMarketingAssetTasks = async (silent = false) => {
     }
 };
 
-const syncSceneImageTask = async (scene: SceneDraft) => {
-    if (!scene.imageTaskId) {
+const syncSceneImageTask = async (scene: SceneDraft, frameType: "first" | "last" = "first") => {
+    const taskId = frameType === "last" ? scene.lastFrameTaskId : scene.imageTaskId;
+    if (!taskId) {
         return false;
     }
-    const task = await TaskService.get(scene.imageTaskId);
+    const task = await TaskService.get(taskId);
     if (!task) {
         return false;
     }
@@ -3985,8 +4104,13 @@ const syncSceneImageTask = async (scene: SceneDraft) => {
         if (!imageUrl) {
             return false;
         }
-        scene.referenceImageUrl = imageUrl;
-        scene.referenceImageName = FileUtil.getBaseName(imageUrl, true);
+        if (frameType === "last") {
+            scene.lastFrameUrl = imageUrl;
+            scene.lastFrameName = FileUtil.getBaseName(imageUrl, true);
+        } else {
+            scene.referenceImageUrl = imageUrl;
+            scene.referenceImageName = FileUtil.getBaseName(imageUrl, true);
+        }
         return true;
     }
     if (task.status === "fail") {
@@ -3996,19 +4120,23 @@ const syncSceneImageTask = async (scene: SceneDraft) => {
 };
 
 const refreshSceneImageTasks = async (silent = false) => {
-    const scenes = drafts.value
+    const sceneJobs = drafts.value
         .flatMap(draft => draft.scenes)
-        .filter(scene => scene.imageTaskId && !scene.referenceImageUrl);
-    if (!scenes.length) {
+        .flatMap(scene => [
+            scene.imageTaskId && !scene.referenceImageUrl ? { scene, frameType: "first" as const } : null,
+            scene.lastFrameTaskId && !scene.lastFrameUrl ? { scene, frameType: "last" as const } : null,
+        ])
+        .filter(Boolean) as Array<{ scene: SceneDraft; frameType: "first" | "last" }>;
+    if (!sceneJobs.length) {
         if (!silent) {
             Dialog.tipError("没有需要同步的分镜图任务");
         }
         return;
     }
     let updated = 0;
-    for (const scene of scenes) {
+    for (const job of sceneJobs) {
         try {
-            if (await syncSceneImageTask(scene)) {
+            if (await syncSceneImageTask(job.scene, job.frameType)) {
                 updated += 1;
             }
         } catch (e) {
@@ -4020,28 +4148,51 @@ const refreshSceneImageTasks = async (silent = false) => {
     }
 };
 
-const startSceneImageTaskSync = (scene: SceneDraft, taskId: number | string) => {
+const startSceneImageTaskSync = (scene: SceneDraft, taskId: number | string, frameType: "first" | "last" = "first") => {
     if (!taskId) {
         return;
     }
     waitForTaskImage(taskId)
         .then(imageUrl => {
-            scene.referenceImageUrl = imageUrl;
-            scene.referenceImageName = FileUtil.getBaseName(imageUrl, true);
+            if (frameType === "last") {
+                scene.lastFrameUrl = imageUrl;
+                scene.lastFrameName = FileUtil.getBaseName(imageUrl, true);
+            } else {
+                scene.referenceImageUrl = imageUrl;
+                scene.referenceImageName = FileUtil.getBaseName(imageUrl, true);
+            }
         })
         .catch(() => {
             // 右侧任务列表会展示失败详情，这里保持编辑区不打断。
         });
 };
 
-const submitImageTask = async (draft: MarketingDraft, scene: SceneDraft) => {
+const submitImageTask = async (draft: MarketingDraft, scene: SceneDraft, frameType: "first" | "last" = "first") => {
     ensureSceneAssetsReady(scene);
     const id =
         imageChannel.value === "cloud"
-            ? await submitCloudImageTask(draft, scene)
-            : await submitDirectImageTask(draft, scene);
-    scene.imageTaskId = Number(id || 0);
+            ? await submitCloudImageTask(draft, scene, frameType)
+            : await submitDirectImageTask(draft, scene, frameType);
+    if (frameType === "last") {
+        scene.lastFrameTaskId = Number(id || 0);
+    } else {
+        scene.imageTaskId = Number(id || 0);
+    }
     return id;
+};
+
+const submitSceneLastFrame = async (draft: MarketingDraft, scene: SceneDraft) => {
+    try {
+        submitting.value = true;
+        ensureDraftVoiceoverLines(draft);
+        const taskId = await submitImageTask(draft, scene, "last");
+        startSceneImageTaskSync(scene, taskId, "last");
+        Dialog.tipSuccess("尾帧任务已提交");
+    } catch (e: any) {
+        Dialog.tipError(e?.message || "尾帧任务提交失败");
+    } finally {
+        submitting.value = false;
+    }
 };
 
 const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) => {
@@ -4051,8 +4202,10 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
     }
     const directFileRelay = await getEffectiveDirectFileRelay(platform);
     let referenceImageUrl = "";
+    let lastFrameUrl = "";
     try {
         referenceImageUrl = await resolveDirectVideoReferenceImageUrl(directFileRelay, scene.referenceImageUrl || "");
+        lastFrameUrl = await resolveDirectVideoReferenceImageUrl(directFileRelay, scene.lastFrameUrl || "");
     } catch (e: any) {
         throw new Error(e?.message || "123 云盘资产入库失败");
     }
@@ -4075,11 +4228,12 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
         content: [
             { type: "text", text: videoPrompt },
             ...(referenceImageUrl ? [buildVideoImageReferenceContent(referenceImageUrl, form.value.videoReferenceRole, form.value.storyboardImageMode)] : []),
+            ...(lastFrameUrl ? [buildVideoImageReferenceContent(lastFrameUrl, "reference_image", form.value.storyboardImageMode)] : []),
         ],
         ratio: form.value.ratio,
         duration: scene.duration,
         resolution: "720p",
-        generate_audio: true,
+        generate_audio: form.value.storyboardImageMode !== "first_last_frame",
         watermark: false,
     };
     const modelConfig: RunningHubModelConfigType = {
@@ -4094,8 +4248,8 @@ const submitDirectVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
         directFileRelay: directFileRelay || undefined,
-        submitPath: isKwjmPlatform ? "/v1/videos/generations" : "/api/v3/contents/generations/tasks",
-        queryPath: isKwjmPlatform ? "/v1/videos/generations/{id}" : "/api/v3/contents/generations/tasks/{id}",
+        submitPath: isKwjmPlatform ? "/v3/contents/generations/tasks" : "/api/v3/contents/generations/tasks",
+        queryPath: isKwjmPlatform ? "/v3/contents/generations/tasks/{id}" : "/api/v3/contents/generations/tasks/{id}",
         requestBodyJson: JSON.stringify(body, null, 2),
         requestFormat: "json",
     };
@@ -4115,6 +4269,13 @@ const submitSceneImageToVideoTask = async (draft: MarketingDraft, scene: SceneDr
     const imageTaskId = await submitImageTask(draft, scene);
     const imageUrl = await waitForTaskImage(imageTaskId);
     scene.referenceImageUrl = imageUrl;
+    scene.referenceImageName = FileUtil.getBaseName(imageUrl, true);
+    if (form.value.storyboardImageMode === "first_last_frame") {
+        const lastFrameTaskId = await submitImageTask(draft, scene, "last");
+        const lastFrameUrl = await waitForTaskImage(lastFrameTaskId);
+        scene.lastFrameUrl = lastFrameUrl;
+        scene.lastFrameName = FileUtil.getBaseName(lastFrameUrl, true);
+    }
     const videoTaskId = await submitVideoTask(draft, scene);
     return { imageTaskId, imageUrl, videoTaskId };
 };
@@ -4142,6 +4303,8 @@ const submitDraftChainTask = async (draft: MarketingDraft) => {
             videoPlatformId: videoPlatformId.value,
             imageTemplateId: imageTemplateId.value,
             videoTemplateId: videoTemplateId.value,
+            audioTemplateId: audioTemplateId.value,
+            lipsyncTemplateId: lipsyncTemplateId.value,
             referenceImageUrls: readyMarketingAssets.value.map(assetUrlValue),
             marketingAssets: readyMarketingAssets.value.map(item => ({
                 id: item.id,
@@ -4425,8 +4588,8 @@ const submitCloudVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =>
         videoPrompt,
         firstFrame: scene.referenceImageUrl || "",
         firstFrameUrl: scene.referenceImageUrl || "",
-        lastFrame: "",
-        lastFrameUrl: "",
+        lastFrame: scene.lastFrameUrl || "",
+        lastFrameUrl: scene.lastFrameUrl || "",
         duration: scene.duration,
         ratio: form.value.ratio,
         subtitle: effectiveSceneCaption(scene),
@@ -4441,6 +4604,9 @@ const submitCloudVideoTask = async (draft: MarketingDraft, scene: SceneDraft) =>
 const submitVideoTask = async (draft: MarketingDraft, scene: SceneDraft) => {
     ensureDraftVoiceoverLines(draft);
     ensureSceneAssetsReady(scene);
+    if (form.value.storyboardImageMode === "first_last_frame" && !scene.lastFrameUrl) {
+        throw new Error("当前是首尾帧模式，请先生成或上传尾帧图后再生视频");
+    }
     const id =
         videoChannel.value === "cloud"
             ? await submitCloudVideoTask(draft, scene)
@@ -4455,7 +4621,11 @@ const submitScene = async (draft: MarketingDraft, scene: SceneDraft, type: "imag
         ensureDraftVoiceoverLines(draft);
         if (type === "image") {
             const taskId = await submitImageTask(draft, scene);
-            startSceneImageTaskSync(scene, taskId);
+            startSceneImageTaskSync(scene, taskId, "first");
+            if (form.value.storyboardImageMode === "first_last_frame") {
+                const lastFrameTaskId = await submitImageTask(draft, scene, "last");
+                startSceneImageTaskSync(scene, lastFrameTaskId, "last");
+            }
         } else {
             await submitVideoTask(draft, scene);
         }
@@ -4556,7 +4726,7 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                     <a-input v-model="form.brandName" placeholder="例如：末日求生短剧 / 水獭矿工IP / 家居好物开箱" />
                                 </a-form-item>
                             </div>
-                            <a-form-item label="抖音链接导入">
+                            <a-form-item v-if="enableDouyinImport" label="抖音链接导入">
                                 <div class="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
                                     <div class="flex min-w-0 flex-wrap items-center gap-2">
                                         <a-input
@@ -5022,6 +5192,26 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                     刷新模板
                                 </a-button>
                             </div>
+                            <div v-if="form.storyboardImageMode === 'first_last_frame'" class="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3">
+                                <div class="mb-2 text-xs font-semibold text-amber-800">首尾帧后置音频</div>
+                                <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                    <div>
+                                        <div class="mb-1 text-xs text-amber-700">台词转音频模板</div>
+                                        <a-select v-model="audioTemplateId" allow-clear placeholder="选择云端生音频模板">
+                                            <a-option v-for="item in audioTemplates" :key="item.id" :value="item.id || 0">{{ item.title }}</a-option>
+                                        </a-select>
+                                    </div>
+                                    <div>
+                                        <div class="mb-1 text-xs text-amber-700">人物说话对口型模板</div>
+                                        <a-select v-model="lipsyncTemplateId" allow-clear placeholder="选择云端对口型模板">
+                                            <a-option v-for="item in lipsyncTemplates" :key="item.id" :value="item.id || 0">{{ item.title }}</a-option>
+                                        </a-select>
+                                    </div>
+                                </div>
+                                <div class="mt-2 text-xs leading-5 text-amber-700">
+                                    首尾帧视频模板通常只负责无声画面；画外音后续直接合成音轨，角色说话后续走对口型模板。
+                                </div>
+                            </div>
                             <div v-if="videoChannel === 'direct'">
                                 <div class="text-xs font-semibold text-gray-500 mb-2">视频模型</div>
                                 <a-select v-model="form.videoModel" class="w-full">
@@ -5259,6 +5449,7 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                             <a-option v-for="item in durationOptions" :key="item" :value="item">{{ item }}s</a-option>
                                         </a-select>
                                         <a-tag v-if="scene.imageTaskId" color="green">图 #{{ scene.imageTaskId }}</a-tag>
+                                        <a-tag v-if="scene.lastFrameTaskId" color="green">尾帧 #{{ scene.lastFrameTaskId }}</a-tag>
                                         <a-tag v-if="scene.videoTaskId" color="purple">视频 #{{ scene.videoTaskId }}</a-tag>
                                         <div class="flex-grow"></div>
                                         <a-button size="small" :loading="submitting" @click="submitScene(selectedDraft, scene, 'image')">
@@ -5287,12 +5478,12 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                             </div>
                                         </div>
                                         <div class="min-w-0 flex-1">
-                                            <div class="mb-1 text-xs font-medium text-gray-500">分镜参考图</div>
+                                            <div class="mb-1 text-xs font-medium text-gray-500">{{ form.storyboardImageMode === 'first_last_frame' ? '首帧参考图' : '分镜参考图' }}</div>
                                             <div class="truncate text-xs text-gray-500">
-                                                {{ scene.referenceImageName || scene.referenceImageUrl || "可选；图生视频会优先使用这张图，不再先生图。" }}
+                                                {{ scene.referenceImageName || scene.referenceImageUrl || (form.storyboardImageMode === 'first_last_frame' ? "首尾帧生视频会使用这张图作为起始画面。" : "可选；图生视频会优先使用这张图，不再先生图。") }}
                                             </div>
                                             <div class="mt-2 flex flex-wrap gap-2">
-                                                <a-button size="mini" @click="pickSceneReferenceImage(scene)">上传图片</a-button>
+                                                <a-button size="mini" @click="pickSceneReferenceImage(scene)">上传{{ form.storyboardImageMode === 'first_last_frame' ? '首帧' : '图片' }}</a-button>
                                                 <a-button size="mini" type="primary" :loading="submitting" @click="submitScene(selectedDraft, scene, 'image')">
                                                     {{ scene.referenceImageUrl ? `重新${storyboardImageActionText}` : storyboardImageActionText }}
                                                 </a-button>
@@ -5300,6 +5491,42 @@ const submitAll = async (type: "image" | "video" | "both") => {
                                                     同步结果
                                                 </a-button>
                                                 <a-button v-if="scene.referenceImageUrl" size="mini" @click="clearSceneReferenceImage(scene)">移除</a-button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div v-if="form.storyboardImageMode === 'first_last_frame'" class="mb-3 flex min-w-0 items-center gap-3 rounded-lg bg-gray-50 px-3 py-2">
+                                        <div class="h-20 w-14 shrink-0 overflow-hidden rounded-md border border-gray-100 bg-white">
+                                            <a-popover v-if="sceneLastFrameDisplayUrl(scene)" trigger="hover" position="right">
+                                                <div class="h-full w-full">
+                                                    <img :src="sceneLastFrameDisplayUrl(scene)" class="h-full w-full object-cover" />
+                                                </div>
+                                                <template #content>
+                                                    <div class="max-w-[380px]">
+                                                        <img :src="sceneLastFrameDisplayUrl(scene)" class="max-h-[460px] max-w-[360px] rounded-lg object-contain" />
+                                                        <div class="mt-2 max-w-[360px] truncate text-xs text-gray-500">
+                                                            {{ scene.lastFrameName || scene.lastFrameUrl || `镜头 ${index + 1} 尾帧图` }}
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </a-popover>
+                                            <div v-else class="flex h-full w-full items-center justify-center px-1 text-center text-[11px] text-gray-400">
+                                                尾帧
+                                            </div>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="mb-1 text-xs font-medium text-gray-500">尾帧参考图</div>
+                                            <div class="truncate text-xs text-gray-500">
+                                                {{ scene.lastFrameName || scene.lastFrameUrl || "首尾帧生视频会使用这张图作为结束画面。" }}
+                                            </div>
+                                            <div class="mt-2 flex flex-wrap gap-2">
+                                                <a-button size="mini" @click="pickSceneReferenceImage(scene, 'last')">上传尾帧</a-button>
+                                                <a-button size="mini" type="primary" :loading="submitting" @click="submitSceneLastFrame(selectedDraft, scene)">
+                                                    {{ scene.lastFrameUrl ? "重新生成尾帧" : "生成尾帧" }}
+                                                </a-button>
+                                                <a-button v-if="scene.lastFrameTaskId && !scene.lastFrameUrl" size="mini" @click="syncSceneImageTask(scene, 'last')">
+                                                    同步尾帧
+                                                </a-button>
+                                                <a-button v-if="scene.lastFrameUrl" size="mini" @click="clearSceneReferenceImage(scene, 'last')">移除尾帧</a-button>
                                             </div>
                                         </div>
                                     </div>

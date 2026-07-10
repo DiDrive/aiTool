@@ -1,10 +1,10 @@
-import packageJson from "../package.json";
+﻿import packageJson from "../package.json";
 
 const BASE_URL = "https://aigcpanel.com";
 
 export const AppConfig = {
-    name: "东风奕境AI工作台",
-    title: "东风奕境AI工作台",
+    name: "唯变AI工作台",
+    title: "唯变AI工作台",
     slogan: "一站式AI数字人系统",
     version: packageJson.version,
     website: `${BASE_URL}`,

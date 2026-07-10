@@ -1,4 +1,4 @@
-{
+﻿{
     "about.disclaimer": "声明",
     "about.license": "本产品为开源软件，遵循 AGPL-3.0 license 协议。",
     "about.title": "关于",
@@ -495,7 +495,7 @@
     "voice.timbreDesc": "音色说明",
     "voice.timbreManage": "音色管理",
     "voice.voice": "声音",
-    "welcome.title": "欢迎使用东风奕境AI工作台！",
+    "welcome.title": "欢迎使用唯变AI工作台！",
     "workflow.configureRecognitionAndGeneration": "请配置声音识别和声音生成服务",
     "workflow.inputVideoParam": "请输入视频参数",
     "workflow.paramErrorMissing": "参数错误：缺少 {items}",

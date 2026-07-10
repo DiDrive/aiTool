@@ -170,6 +170,17 @@ const collectMaterialUrls = (value: any, result: string[] = []) => {
     return result;
 };
 
+const isPan123DirectUrl = (value: string) => {
+    try {
+        const hostname = new URL(value).hostname.toLowerCase();
+        return /(^|\.)123pan\.(com|cn)$/i.test(hostname) ||
+            /(^|\.)123yx\.com$/i.test(hostname) ||
+            /(^|\.)123cloudd?isk\.(com|cn)$/i.test(hostname);
+    } catch (e) {
+        return false;
+    }
+};
+
 const pickKwjmMaterialUrl = (value: any, publicUrl = "") => {
     const source = String(publicUrl || "").trim();
     const candidates = Array.from(new Set(collectMaterialUrls(value)));
@@ -184,7 +195,7 @@ const pickKwjmMaterialUrl = (value: any, publicUrl = "") => {
         if (source && url === source) {
             return false;
         }
-        return !/123pan\.(com|cn)|\.123pan\.(com|cn)/i.test(url);
+        return !isPan123DirectUrl(url);
     }) || "";
 };
 
@@ -289,6 +300,8 @@ const verifyPublicSourceUrl = async (sourceUrl: string, proxyUrl?: string) => {
         if (!res.ok && res.status !== 206) {
             throw new Error(`HTTP ${res.status}`);
         }
+        const finalUrl = String(res.url || "").trim();
+        return /^https?:\/\//i.test(finalUrl) ? finalUrl : sourceUrl;
     } catch (e: any) {
         throw new Error(`123 云盘直链自检失败，素材源可能无法被外部服务访问：${describeHttpSource(sourceUrl)}\n${e?.message || e}`);
     } finally {
@@ -440,8 +453,7 @@ const pickVerifiedPan123DirectUrl = async (directUrl: string, authKey?: string, 
     let softFailCandidate = "";
     for (const candidate of candidates) {
         try {
-            await verifyPublicSourceUrl(candidate, proxyUrl);
-            return candidate;
+            return await verifyPublicSourceUrl(candidate, proxyUrl);
         } catch (e: any) {
             if (allowSoftFail && !softFailCandidate && isSoftPublicSourceCheckError(e)) {
                 softFailCandidate = candidate;
@@ -1855,6 +1867,25 @@ ipcMain.handle("runninghub:runTask", async (event, options: {
     directFileRelay?: DirectFileRelayOptions;
 }) => {
     const connectorType = String(options.connectorType || "").trim();
+    const submitPath = normalizeApiPath(options.submitPath, "");
+    const isKwjmSeedanceRequest =
+        /kwjm\.com/i.test(normalizeApiBaseUrl(options.apiBaseUrl || "")) ||
+        /(^|\/)(v1\/videos\/generations|v3\/contents\/generations\/tasks)/i.test(submitPath);
+    if (connectorType === "custom-api" && isKwjmSeedanceRequest && !String(options.apiKey || "").trim()) {
+        return attachDiagnostics(
+            {
+                code: 401,
+                msg: "当前 KWJM / Seedance 平台未配置 API Key，请在模型栏的平台接入中重新导入配置或填写 API Key",
+                data: {},
+            },
+            {
+                requestUrl: buildApiUrl(options.apiBaseUrl || DEFAULT_BASE_URL, submitPath),
+                method: "POST",
+                requestFormat: options.requestFormat || "json",
+                authMissing: true,
+            }
+        );
+    }
     if (connectorType === "ai-app") {
         if (String(options.submitPath || "").trim()) {
             return await requestJson(

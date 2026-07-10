@@ -24,6 +24,7 @@ export type TaskBiz =
     | "DirectApiTask"
     // marketing video orchestration
     | "MarketingVideoChainTask"
+    | "MarketingVideoFinalizeTask"
     // digital human live clip orchestration
     | "DigitalHumanClipChainTask";
 

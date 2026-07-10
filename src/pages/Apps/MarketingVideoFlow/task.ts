@@ -11,7 +11,7 @@ import { RunningHubModelConfigType } from "../RunningHubStudio/type";
 
 type MarketingChannel = "direct" | "cloud";
 type VideoReferenceRole = "reference_image" | "first_frame";
-type StoryboardImageMode = "single_frame" | "scene_grid";
+type StoryboardImageMode = "single_frame" | "scene_grid" | "first_last_frame";
 type NarrationMode = "none" | "voiceover" | "character";
 type SubtitleMode = "none" | "caption";
 type MarketingAssetType = "character" | "scene" | "prop";
@@ -29,6 +29,7 @@ type MarketingChainScene = {
     id: string;
     title: string;
     duration: number;
+    rhythmHint?: string;
     scriptBeat?: string;
     subtitle: string;
     captionOverride?: string;
@@ -44,6 +45,7 @@ type MarketingChainScene = {
         reason?: string;
     }>;
     referenceImageUrl?: string;
+    lastFrameUrl?: string;
 };
 
 type MarketingReferenceAnalysis = {
@@ -81,13 +83,17 @@ type MarketingChainParam = {
     videoPlatformId?: number;
     imageTemplateId?: number;
     videoTemplateId?: number;
+    audioTemplateId?: number;
+    lipsyncTemplateId?: number;
 };
 
 type MarketingChainSceneState = {
     sceneId: string;
     imageTaskId?: number;
+    lastFrameTaskId?: number;
     videoTaskId?: number;
     referenceImageUrl?: string;
+    lastFrameUrl?: string;
     status?: "queue" | "image-running" | "video-submitted" | "success";
 };
 
@@ -313,6 +319,27 @@ const propUseInstruction = (scene: MarketingChainScene | undefined, propNames: s
     return `道具资产用途：${rows.join(" ")}`;
 };
 
+const buildShotScaleInstruction = (scene?: MarketingChainScene) => {
+    const text = sceneTextForAssetUse(scene);
+    const wantsEnvironment = /庇护所|海上|海面|漂浮|资源|建造|搭建|房子|基地|场景展示|玩法展示|全景|远景|中景|空间|开阔|周围|环境/.test(text);
+    const wantsFullBody = wantsEnvironment || /全身|三视图|站立|走路|行走|奔跑|动作全貌|完整人物/.test(text);
+    const wantsClose = !wantsEnvironment && /特写|近景|中近景|面部|表情|口型|采访|对话|分享|讲述|说话/.test(text);
+    const shotScale = wantsEnvironment
+        ? "这是环境/玩法展示镜头，优先表现人物所在空间、庇护所结构、海面纵深和周围资源；人物保持全身或大半身，人物高度约占画面 28%-48%，不要画成贴脸半身照。"
+        : wantsFullBody
+          ? "人物保持完整身体或膝盖以上构图，头顶和脚边留出安全边距；人物高度约占画面 40%-65%。"
+          : wantsClose
+            ? "人物保持自然中近景或半身构图，头部、肩膀、手部道具不要被裁切；人物高度约占画面 55%-75%。"
+            : "人物按剧情保持自然中景比例，不要占满画面；人物高度约占画面 40%-65%。";
+    return [
+        "画面尺度硬要求：人物、道具和场景必须符合真实透视比例。",
+        shotScale,
+        "背景场景要有真实纵深和可辨识空间结构，不要把人物放大到遮住主要环境，也不要把场景压缩成贴纸背景。",
+        "9:16 竖屏安全框内主体完整；镜头景别必须服从本镜剧情，而不是机械套用参考视频里的近景。",
+        "不同资产只能作为对应身份参考：人物是人物，场景是空间，道具是道具，不要互相融合或改变尺寸关系。",
+    ].join("\n");
+};
+
 const buildSceneAssetBindingInstruction = (param: MarketingChainParam, scene: MarketingChainScene) => {
     const assets = assetsForScene(param, scene);
     if (!assets.length) {
@@ -483,8 +510,10 @@ const valueForCloudField = (
     if (fieldLooksLike(field, ["ratio", "aspect", "size", "画幅", "比例", "尺寸", "竖版", "横版", "竖屏", "横屏", "portrait", "landscape"])) return ratioValueForCloudField(field, base.ratio);
     if (String(field?.type || "") === "select") return defaultCloudFieldValue(field, "");
     if (String(field?.type || "") === "number") return defaultCloudFieldValue(field, 0);
+    if (fieldLooksLike(field, ["first", "start", "首帧", "起始帧", "开始帧"])) return choose([base.firstFrame].filter(Boolean));
+    if (fieldLooksLike(field, ["last", "end", "tail", "尾帧", "结束帧"])) return choose([base.lastFrame].filter(Boolean));
     if (["image", "images", "file", "files"].includes(String(field?.type || ""))) {
-        return choose(capability === "video" ? [base.firstFrame, ...allAssets].filter(Boolean) : allAssets);
+        return choose(capability === "video" ? [base.firstFrame, base.lastFrame, ...allAssets].filter(Boolean) : allAssets);
     }
     if (fieldLooksLike(field, ["character", "person", "role", "avatar", "人物", "角色", "主角"])) return choose(characterAssets.length ? characterAssets : allAssets);
     if (fieldLooksLike(field, ["scene", "background", "environment", "space", "场景", "背景", "环境", "空间"])) return choose(sceneAssets.length ? sceneAssets : allAssets);
@@ -496,8 +525,6 @@ const valueForCloudField = (
     if (fieldLooksLike(field, ["title", "标题", "名称"])) return base.title;
     if (fieldLooksLike(field, ["subtitle", "caption", "字幕"])) return base.subtitle || "";
     if (fieldLooksLike(field, ["voiceover", "line", "台词", "口播", "旁白"])) return base.voiceoverLine || "";
-    if (fieldLooksLike(field, ["first", "start", "首帧", "起始帧", "开始帧"])) return choose([base.firstFrame].filter(Boolean));
-    if (fieldLooksLike(field, ["last", "end", "tail", "尾帧", "结束帧"])) return choose([base.lastFrame].filter(Boolean));
     return defaultCloudFieldValue(field, "");
 };
 
@@ -517,8 +544,8 @@ const buildCloudMarketingInput = (
         ...base,
         image: base.firstFrame || allAssetUrls[0] || "",
         imageUrl: base.firstFrame || allAssetUrls[0] || "",
-        images: capability === "video" ? [base.firstFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
-        imageUrls: capability === "video" ? [base.firstFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
+        images: capability === "video" ? [base.firstFrame, base.lastFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
+        imageUrls: capability === "video" ? [base.firstFrame, base.lastFrame, ...allAssetUrls].filter(Boolean) : allAssetUrls,
         referenceImageUrl: allAssetUrls[0] || "",
         referenceImages: allAssetUrls,
         assetImages: allAssetUrls,
@@ -595,7 +622,7 @@ const normalizeVideoReferenceRole = (value?: string): VideoReferenceRole => {
 };
 
 const effectiveVideoReferenceRole = (role?: string, storyboardImageMode: StoryboardImageMode = "single_frame"): VideoReferenceRole => {
-    if (storyboardImageMode === "scene_grid") {
+    if (storyboardImageMode === "scene_grid" || storyboardImageMode === "first_last_frame") {
         return "reference_image";
     }
     return normalizeVideoReferenceRole(role);
@@ -779,6 +806,13 @@ const sceneGridCount = (scene: MarketingChainScene) => {
 const buildSceneImageModeInstruction = (param: MarketingChainParam, scene: MarketingChainScene) => {
     const sceneIndex = param.draft.scenes.findIndex(item => item.id === scene.id);
     const position = sceneIndex >= 0 ? `第 ${sceneIndex + 1}/${param.draft.scenes.length} 镜` : "当前镜头";
+    if (param.form.storyboardImageMode === "first_last_frame") {
+        return [
+            `分镜图模式：首尾帧。当前任务只生成${position}的一张首帧或尾帧参考图，不要生成宫格或拼贴。`,
+            "首帧表达本镜开场状态，尾帧表达本镜结束状态；两张图必须保持同一人物、场景、服装、光线方向和道具关系。",
+            "画面必须是完整单图，不要字幕、编号、说明文字、水印或 UI。",
+        ].join("\n");
+    }
     if (param.form.storyboardImageMode === "single_frame") {
         return [
             `分镜图模式：单张首帧。只生成${position}的一张竖屏首帧参考图。`,
@@ -793,6 +827,34 @@ const buildSceneImageModeInstruction = (param: MarketingChainParam, scene: Marke
         "所有宫格保持同一人物、同一服装、同一场景空间、同一光线方向和统一画风；每格构图略有变化但连续自然。",
         "不要在画面中生成字幕、说明文字、编号、水印或 UI；这张图只是后续视频的动作时间轴参考，不代表最终视频构图。",
     ].join("\n");
+};
+
+const buildSceneFramePrompt = (
+    param: MarketingChainParam,
+    scene: MarketingChainScene,
+    frameType: "first" | "last",
+    continuityReferenceImageUrl?: string,
+    previousScene?: MarketingChainScene
+) => {
+    const base = buildConsistentImagePrompt(param, scene, continuityReferenceImageUrl, previousScene);
+    if (param.form.storyboardImageMode !== "first_last_frame") {
+        return base;
+    }
+    const frameInstruction =
+        frameType === "first"
+            ? [
+                "本次只生成首帧图：表现本镜刚开始的画面。",
+                "画面要包含开场主体、场景、道具和动作起点，为后续视频起始状态服务。",
+            ]
+            : [
+                "本次只生成尾帧图：表现本镜结束时的画面。",
+                "画面要体现本镜动作完成后的结果、情绪落点或剧情成果，为后续视频结束状态服务。",
+                "尾帧不要重复首帧，要能看出动作/剧情已经推进完成。",
+            ];
+    return [
+        base,
+        frameInstruction.join("\n"),
+    ].join("\n\n");
 };
 
 const escapeRegExp = (value: string) => {
@@ -829,12 +891,13 @@ const buildScenePicturePrompt = (param: MarketingChainParam, scene: MarketingCha
             hasPhone ? "主角手持黑色手机或低头看手机，表情自然。" : "",
             hasMic ? "画面边缘露出另一人的手持采访麦克风递向主角，采访者本人可以不完整入镜；不要让主角一开始拿着麦克风。" : "",
         ].filter(Boolean).join(" ")
-        : rawImagePrompt;
+        : "";
     return [
         "画面提示词：请直接生成这一镜的具体画面。",
         rawImagePrompt,
         sceneLine,
         actionLine,
+        buildShotScaleInstruction(scene),
         "只画当前镜头的画面，不画其它分镜内容；不要生成字幕、标题条、贴纸文字、UI 或说明文字。",
     ].filter(Boolean).join("\n");
 };
@@ -1021,24 +1084,36 @@ const buildVideoReferenceStyleLine = (analysis?: MarketingReferenceAnalysis) => 
     if (!analysis) {
         return "";
     }
-    const compact = (value?: string, max = 46) => {
+    const compact = (value?: string, max = 38) => {
         const text = cleanSentence(value || "");
         return text.length > max ? `${text.slice(0, max)}...` : text;
     };
-    const rows = [compact(analysis.visualStyle), compact(analysis.shotLanguage), compact(analysis.rhythm)].filter(Boolean);
-    return rows.length ? `风格参考：${rows.join("；")}。只借鉴光线、构图和节奏。` : "";
+    const style = compact(analysis.visualStyle);
+    return style ? `风格参考：${style}。只借鉴画面质感，不覆盖本镜剧情。` : "";
 };
 
 const buildVideoCorePrompt = (scene: MarketingChainScene) => {
     const prompt = humanizeVideoPromptTiming(scene.videoPrompt || scene.scriptBeat || scene.imagePrompt || "");
     const beat = cleanSentence(scene.scriptBeat || "");
-    const rhythm = cleanSentence(scene.rhythmHint || "");
     return [
-        "镜头画面：",
-        prompt,
-        beat && !prompt.includes(beat) ? `剧情重点：${beat}` : "",
-        rhythm ? `节奏：${rhythm}` : "",
+        `镜头画面：${prompt}`,
+        beat && prompt && !prompt.includes(beat) ? `剧情目标：${beat}` : "",
     ].filter(Boolean).join("\n");
+};
+
+const buildVideoSubjectContinuityInstruction = (scene: MarketingChainScene) => {
+    const text = [scene.title, scene.scriptBeat, scene.imagePrompt, scene.videoPrompt, scene.voiceoverLine, scene.rhythmHint]
+        .map(item => String(item || ""))
+        .join("\n");
+    const isEnvironmentShowcase = /庇护所|海上|海面|漂浮|资源|建造|搭建|房子|基地|玩法|收集|升级|装备|游戏/.test(text);
+    const isInterview = sceneLooksLikeInterview(scene);
+    if (isInterview) {
+        return "主体连续：采访者和被采访者身份保持稳定；提问者不要变成回答者，回答者不要消失或换人。";
+    }
+    if (isEnvironmentShowcase) {
+        return "主体连续：主角必须全程作为动作执行者出现，参与搭建、收集或展示；拉远展示场景时也要保留主角位置和动作，不要只剩空场景或建筑。";
+    }
+    return "主体连续：主角/核心主体全程保持可见，身份、服装、位置关系稳定；不要中途消失、换人或变成背景元素。";
 };
 
 const extractProtectedTerms = (values: string[]) => {
@@ -1085,7 +1160,7 @@ const buildPerformanceFlowInstruction = (line: string, scene: MarketingChainScen
     if (!line || scene.narrationMode === "none") {
         return "";
     }
-    return "表演：自然语速，动作跟随台词情绪推进，不要抢话、忽快忽慢或机械卡秒。";
+    return "节奏：自然语速，动作服务台词，不要抢话或机械卡秒。";
 };
 
 const buildSpeechLockInstruction = (line: string, scene: MarketingChainScene) => {
@@ -1153,9 +1228,10 @@ const buildVideoPromptWithSpeech = (
     return [
         buildScenePositionInstruction(scene, sceneIndex, totalScenes),
         buildVideoCorePrompt(scene),
-        buildVideoReferenceStyleLine(analysis),
+        buildVideoSubjectContinuityInstruction(scene),
         assetBindingInstruction,
         buildStoryboardVideoReferenceInstruction(storyboardImageMode),
+        buildVideoReferenceStyleLine(analysis),
         speechInstruction,
         performanceInstruction,
         protectedTermInstruction,
@@ -1167,14 +1243,15 @@ const submitDirectImageTask = async (
     param: MarketingChainParam,
     scene: MarketingChainScene,
     continuityReferenceImageUrl?: string,
-    previousScene?: MarketingChainScene
+    previousScene?: MarketingChainScene,
+    frameType: "first" | "last" = "first"
 ) => {
     const platform = await DirectApiPlatformService.get(Number(param.imagePlatformId || 0));
     if (!platform || !platform.content.apiKey.trim()) {
         throw new Error("请先配置可用的 GPT Image 2 平台");
     }
     const prompt = appendReferenceAnalysisToPrompt(
-        buildConsistentImagePrompt(param, scene, continuityReferenceImageUrl, previousScene),
+        buildSceneFramePrompt(param, scene, frameType, continuityReferenceImageUrl, previousScene),
         param.draft.referenceAnalysis
     );
     const fullPrompt = [prompt, buildAssetReferenceInstruction(param, scene)].filter(Boolean).join("\n\n");
@@ -1208,7 +1285,7 @@ const submitDirectImageTask = async (
     };
     return await TaskService.submit({
         biz: "DirectApiTask",
-        title: `${param.draft.title}_${scene.title}_分镜图`,
+        title: `${param.draft.title}_${scene.title}_${frameType === "last" ? "尾帧图" : "分镜图"}`,
         serverName: "",
         serverTitle: "",
         serverVersion: "",
@@ -1230,7 +1307,8 @@ const submitCloudImageTask = async (
     param: MarketingChainParam,
     scene: MarketingChainScene,
     continuityReferenceImageUrl?: string,
-    previousScene?: MarketingChainScene
+    previousScene?: MarketingChainScene,
+    frameType: "first" | "last" = "first"
 ) => {
     if (!param.imageTemplateId) {
         throw new Error("请先选择云端生图模板");
@@ -1240,13 +1318,13 @@ const submitCloudImageTask = async (
         throw new Error("云端生图模板不存在");
     }
     const prompt = appendReferenceAnalysisToPrompt(
-        buildConsistentImagePrompt(param, scene, continuityReferenceImageUrl, previousScene),
+        buildSceneFramePrompt(param, scene, frameType, continuityReferenceImageUrl, previousScene),
         param.draft.referenceAnalysis
     );
     const fullPrompt = [prompt, buildAssetReferenceInstruction(param, scene)].filter(Boolean).join("\n\n");
     const imageAssets = buildImageAssetUrls(param, scene, continuityReferenceImageUrl ? [continuityReferenceImageUrl] : []);
     const input = buildCloudMarketingInput(template, "image", {
-        title: `${param.draft.title}_${scene.title}_分镜图`,
+        title: `${param.draft.title}_${scene.title}_${frameType === "last" ? "尾帧图" : "分镜图"}`,
         prompt: fullPrompt,
         text: fullPrompt,
         imagePrompt: fullPrompt,
@@ -1280,17 +1358,19 @@ const submitImageTask = async (
     param: MarketingChainParam,
     scene: MarketingChainScene,
     continuityReferenceImageUrl?: string,
-    previousScene?: MarketingChainScene
+    previousScene?: MarketingChainScene,
+    frameType: "first" | "last" = "first"
 ) => {
     return param.imageChannel === "cloud"
-        ? await submitCloudImageTask(param, scene, continuityReferenceImageUrl, previousScene)
-        : await submitDirectImageTask(param, scene, continuityReferenceImageUrl, previousScene);
+        ? await submitCloudImageTask(param, scene, continuityReferenceImageUrl, previousScene, frameType)
+        : await submitDirectImageTask(param, scene, continuityReferenceImageUrl, previousScene, frameType);
 };
 
 const submitDirectVideoTask = async (
     param: MarketingChainParam,
     scene: MarketingChainScene,
-    referenceImageUrl: string
+    referenceImageUrl: string,
+    lastFrameUrl = ""
 ) => {
     const platform = await DirectApiPlatformService.get(Number(param.videoPlatformId || 0));
     if (!platform || !platform.content.apiKey.trim()) {
@@ -1298,6 +1378,7 @@ const submitDirectVideoTask = async (
     }
     const directFileRelay = await getEffectiveDirectFileRelay(platform);
     const resolvedReferenceImageUrl = await resolveDirectVideoReferenceImageUrl(directFileRelay, referenceImageUrl);
+    const resolvedLastFrameUrl = await resolveDirectVideoReferenceImageUrl(directFileRelay, lastFrameUrl);
     const sceneIndex = param.draft.scenes.findIndex(item => item.id === scene.id);
     const videoPrompt = buildVideoPromptWithSpeech(
         scene,
@@ -1321,11 +1402,12 @@ const submitDirectVideoTask = async (
         content: [
             { type: "text", text: videoPrompt },
             ...(resolvedReferenceImageUrl ? [buildVideoImageReferenceContent(resolvedReferenceImageUrl, param.form.videoReferenceRole, param.form.storyboardImageMode)] : []),
+            ...(resolvedLastFrameUrl ? [buildVideoImageReferenceContent(resolvedLastFrameUrl, "reference_image", param.form.storyboardImageMode)] : []),
         ],
         ratio: param.form.ratio,
         duration: scene.duration,
         resolution: "720p",
-        generate_audio: true,
+        generate_audio: param.form.storyboardImageMode !== "first_last_frame",
         watermark: false,
     };
     const modelConfig: RunningHubModelConfigType = {
@@ -1340,8 +1422,8 @@ const submitDirectVideoTask = async (
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
         directFileRelay: directFileRelay || undefined,
-        submitPath: isKwjmPlatform ? "/v1/videos/generations" : "/api/v3/contents/generations/tasks",
-        queryPath: isKwjmPlatform ? "/v1/videos/generations/{id}" : "/api/v3/contents/generations/tasks/{id}",
+        submitPath: isKwjmPlatform ? "/v3/contents/generations/tasks" : "/api/v3/contents/generations/tasks",
+        queryPath: isKwjmPlatform ? "/v3/contents/generations/tasks/{id}" : "/api/v3/contents/generations/tasks/{id}",
         requestBodyJson: JSON.stringify(body, null, 2),
         requestFormat: "json",
     };
@@ -1359,7 +1441,8 @@ const submitDirectVideoTask = async (
 const submitCloudVideoTask = async (
     param: MarketingChainParam,
     scene: MarketingChainScene,
-    referenceImageUrl: string
+    referenceImageUrl: string,
+    lastFrameUrl = ""
 ) => {
     if (!param.videoTemplateId) {
         throw new Error("请先选择云端生视频模板");
@@ -1386,8 +1469,8 @@ const submitCloudVideoTask = async (
         videoPrompt,
         firstFrame: referenceImageUrl,
         firstFrameUrl: referenceImageUrl,
-        lastFrame: "",
-        lastFrameUrl: "",
+        lastFrame: lastFrameUrl,
+        lastFrameUrl,
         duration: scene.duration,
         ratio: param.form.ratio,
         subtitle: effectiveSceneCaption(scene),
@@ -1402,11 +1485,15 @@ const submitCloudVideoTask = async (
 const submitVideoTask = async (
     param: MarketingChainParam,
     scene: MarketingChainScene,
-    referenceImageUrl: string
+    referenceImageUrl: string,
+    lastFrameUrl = ""
 ) => {
+    if (param.form.storyboardImageMode === "first_last_frame" && !lastFrameUrl) {
+        throw new Error(`分镜「${scene.title}」缺少尾帧图，无法提交首尾帧生视频模板`);
+    }
     return param.videoChannel === "cloud"
-        ? await submitCloudVideoTask(param, scene, referenceImageUrl)
-        : await submitDirectVideoTask(param, scene, referenceImageUrl);
+        ? await submitCloudVideoTask(param, scene, referenceImageUrl, lastFrameUrl)
+        : await submitDirectVideoTask(param, scene, referenceImageUrl, lastFrameUrl);
 };
 
 const buildInitialJobResult = (param: MarketingChainParam): MarketingChainJobResult => {
@@ -1418,6 +1505,7 @@ const buildInitialJobResult = (param: MarketingChainParam): MarketingChainJobRes
         scenes: param.draft.scenes.map(scene => ({
             sceneId: scene.id,
             referenceImageUrl: scene.referenceImageUrl || "",
+            lastFrameUrl: scene.lastFrameUrl || "",
             status: "queue",
         })),
     };
@@ -1431,7 +1519,7 @@ const resolveChainParam = (record: TaskRecord, bizParam?: Partial<MarketingChain
     param.form = param.form || { ratio: "9:16" };
     param.form.ratio = param.form.ratio || "9:16";
     param.form.videoReferenceRole = normalizeVideoReferenceRole(param.form.videoReferenceRole);
-    if (param.form.storyboardImageMode === "scene_grid") {
+    if (param.form.storyboardImageMode === "scene_grid" || param.form.storyboardImageMode === "first_last_frame") {
         param.form.videoReferenceRole = "reference_image";
     }
     param.draft.scenes.forEach(scene => applySpeechTimingGuard(scene));
@@ -1456,8 +1544,12 @@ const advanceChain = async (bizId: string, bizParam?: Partial<MarketingChainPara
     while (jobResult.currentIndex < param.draft.scenes.length) {
         const scene = param.draft.scenes[jobResult.currentIndex];
         const state = jobResult.scenes[jobResult.currentIndex];
-        if (state.referenceImageUrl && !state.videoTaskId) {
-            state.videoTaskId = Number(await submitVideoTask(param, scene, state.referenceImageUrl));
+        if (
+            state.referenceImageUrl
+            && (param.form.storyboardImageMode !== "first_last_frame" || state.lastFrameUrl)
+            && !state.videoTaskId
+        ) {
+            state.videoTaskId = Number(await submitVideoTask(param, scene, state.referenceImageUrl, state.lastFrameUrl || ""));
             state.status = "video-submitted";
             jobResult.currentIndex += 1;
             await updateChainRecord(bizId, record, jobResult);
@@ -1485,7 +1577,30 @@ const advanceChain = async (bizId: string, bizParam?: Partial<MarketingChainPara
         }
         const imageUrl = await resolveTaskOutputImage(rawImageUrl);
         state.referenceImageUrl = imageUrl;
-        state.videoTaskId = Number(await submitVideoTask(param, scene, imageUrl));
+        if (param.form.storyboardImageMode === "first_last_frame" && !state.lastFrameTaskId) {
+            state.lastFrameTaskId = Number(await submitImageTask(param, scene, imageUrl, scene, "last"));
+            state.status = "image-running";
+            await updateChainRecord(bizId, record, jobResult);
+            return "running";
+        }
+        if (param.form.storyboardImageMode === "first_last_frame") {
+            if (!state.lastFrameTaskId) {
+                return "running";
+            }
+            const lastFrameTask = await TaskService.get(state.lastFrameTaskId);
+            if (lastFrameTask?.status === "fail") {
+                throw new Error(lastFrameTask.statusMsg || `尾帧图片任务 #${state.lastFrameTaskId} 失败`);
+            }
+            if (lastFrameTask?.status !== "success") {
+                return "running";
+            }
+            const rawLastFrameUrl = extractTaskOutputImage(lastFrameTask);
+            if (!rawLastFrameUrl) {
+                throw new Error(`尾帧图片任务 #${state.lastFrameTaskId} 已完成，但没有识别到图片产物`);
+            }
+            state.lastFrameUrl = await resolveTaskOutputImage(rawLastFrameUrl);
+        }
+        state.videoTaskId = Number(await submitVideoTask(param, scene, imageUrl, state.lastFrameUrl || ""));
         state.status = "video-submitted";
         jobResult.currentIndex += 1;
         await updateChainRecord(bizId, record, jobResult);

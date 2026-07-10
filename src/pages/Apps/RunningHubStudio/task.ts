@@ -188,13 +188,19 @@ const safeJsonPreview = (value: any, maxLength = 1200) => {
 };
 
 const responseMessageOf = (res: any, fallback: string) => {
-    return String(
+    const message = String(
         res?.error?.message ||
             res?.errorMessage ||
             res?.msg ||
             res?.message ||
             fallback
     );
+    const code = String(res?.code ?? res?.status ?? res?.error?.code ?? "").toUpperCase();
+    const upper = message.toUpperCase();
+    if (code === "401" || code === "403" || code.includes("AUTH") || upper.includes("UNAUTHORIZED") || upper.includes("TOKEN")) {
+        return "云端鉴权失败或素材直链无法访问，请检查模型栏的平台接入 API Key、123 云盘直链域名/URL 鉴权配置，或重新导入管理员配置";
+    }
+    return message;
 };
 
 const parseNodeInfoMismatch = (res: any) => {
@@ -238,7 +244,13 @@ const remoteResultUrl = (item: any) => {
 
 const inferRemoteResultExt = (item: any) => {
     const url = remoteResultUrl(item);
-    const fromUrl = FileUtil.getExt(url);
+    let urlPath = url;
+    try {
+        urlPath = new URL(url).pathname;
+    } catch (e) {
+        urlPath = url.split(/[?#]/)[0] || url;
+    }
+    const fromUrl = FileUtil.getExt(urlPath).replace(/[^a-z0-9]/gi, "");
     if (fromUrl) {
         return fromUrl;
     }
@@ -988,7 +1000,7 @@ export const RunningHubTask: TaskBiz = {
             jobResult.step = "End";
             await TaskService.update(bizId, {
                 status: "success",
-                statusMsg: downloadErrors.length > 0 ? "任务已成功，部分产出物下载失败，可先使用远端结果" : "",
+                statusMsg: downloadErrors.length > 0 ? "任务已成功，远端结果可用，但自动保存到本地失败；可先预览远端结果或点击下载重试" : "",
                 jobResult,
             });
             return "success";

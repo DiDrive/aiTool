@@ -1,4 +1,4 @@
-import {ffprobeGetMediaDuration, ffprobeVideoInfo} from "./ffprobe";
+﻿import {ffprobeGetMediaDuration, ffprobeVideoInfo} from "./ffprobe";
 
 let hardwareEncodersCache: { [key: string]: boolean } | null = null;
 
@@ -612,6 +612,26 @@ export async function ffmpegConcatVideos(videos: string[]): Promise<string> {
     await ffmpegOptimized(args, {
         successFileCheck: output
     });
+    return output;
+}
+
+export async function ffmpegExtractLastFrame(video: string): Promise<string> {
+    const output = await $mapi.file.temp("png", "seedance-tail");
+    // 先通过 ffprobe 获取实际时长，再用 -ss 精确 seek，避免 -sseof 在部分编码格式下无法定位帧
+    const duration = await ffprobeGetMediaDuration(video);
+    const seekTo = Math.max(0, duration - 0.5);
+    let stderr = "";
+    await $mapi.app.spawnBinary("ffmpeg", [
+        "-ss", String(seekTo),
+        "-i", video,
+        "-frames:v", "1",
+        "-y", output,
+    ], {
+        stderr: (data: string) => { stderr += data; },
+    });
+    if (!(await $mapi.file.exists(output))) {
+        throw new Error(`尾帧提取失败，未生成图片：${output}。ffmpeg: ${stderr.slice(-500)}`);
+    }
     return output;
 }
 

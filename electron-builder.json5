@@ -1,11 +1,11 @@
-// @see https://www.electron.build/configuration/configuration
+﻿// @see https://www.electron.build/configuration/configuration
 {
     "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
     "appId": "ShuzhiYinxiang",
     "publish": [],
     "asar": true,
     "npmRebuild": true,
-    "productName": "东风奕境AI工作台",
+    "productName": "唯变AI工作台",
     "directories": {
         "output": "dist-release",
         "buildResources": "electron/resources/build"
@@ -54,7 +54,7 @@
     "appx": {
         "identityName": "ShuzhiYinxiang",
         "publisher": "CN=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXX",
-        "publisherDisplayName": "东风奕境AI工作台",
+        "publisherDisplayName": "唯变AI工作台",
         "languages": [
             "zh-CN",
             "en-US",

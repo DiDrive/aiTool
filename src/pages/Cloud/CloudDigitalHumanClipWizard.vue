@@ -667,11 +667,11 @@ const seedancePlatformModel = (platform: DirectApiPlatformRecord, value: string)
 };
 
 const seedanceSubmitPath = (platform: DirectApiPlatformRecord) => {
-    return platform.content.platformType === "kwjm" ? "/v1/videos/generations" : "/api/v3/contents/generations/tasks";
+    return platform.content.platformType === "kwjm" ? "/v3/contents/generations/tasks" : "/api/v3/contents/generations/tasks";
 };
 
 const seedanceQueryPath = (platform: DirectApiPlatformRecord) => {
-    return platform.content.platformType === "kwjm" ? "/v1/videos/generations/{id}" : "/api/v3/contents/generations/tasks/{id}";
+    return platform.content.platformType === "kwjm" ? "/v3/contents/generations/tasks/{id}" : "/api/v3/contents/generations/tasks/{id}";
 };
 
 const buildSeedanceContent = (draft: WizardClipDraft) => {

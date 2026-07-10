@@ -224,6 +224,11 @@ type DefsMapi = {
         } = {}) => Promise<string | null>;
         openDirectory: (options: {} = {}) => Promise<string | null>;
         openSave: (options: {} = {}) => Promise<string | null>;
+        readSpreadsheetRows: (path: string) => Promise<{
+            headers: string[];
+            rows: Record<string, string>[];
+        }>;
+        writeSpreadsheetRows: (path: string, headers: string[], rows: Record<string, unknown>[]) => Promise<void>;
         ext: (path: string) => Promise<string>;
         stat: (path: string, option?: { isDataPath?: boolean }) => Promise<{
             size: number;

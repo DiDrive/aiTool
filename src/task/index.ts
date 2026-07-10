@@ -19,6 +19,7 @@ import {
 } from "../pages/Apps/RunningHubStudio/task";
 import { MarketingVideoChainTask, MarketingVideoFinalizeTask } from "../pages/Apps/MarketingVideoFlow/task";
 import { DigitalHumanClipChainTask } from "../pages/Cloud/DigitalHumanClipChainTask";
+import { SeedanceLongVideoChainTask } from "../pages/Cloud/SeedanceLongVideoChainTask";
 
 const taskStore = useTaskStore();
 const serverStore = useServerStore();
@@ -41,6 +42,7 @@ export const tasks = {
     MarketingVideoChainTask,
     MarketingVideoFinalizeTask,
     DigitalHumanClipChainTask,
+    SeedanceLongVideoChainTask,
 };
 
 export const taskCleaners = {

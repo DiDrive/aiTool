@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useTaskChangeRefresh } from "../../hooks/task";
@@ -68,13 +68,14 @@ const resolveDisplayStatus = (record: TaskRecord): DisplayStatus => {
 };
 
 const refresh = async () => {
-    const [runningHubRecords, directApiRecords, marketingChainRecords, marketingFinalizeRecords] = await Promise.all([
+    const [runningHubRecords, directApiRecords, marketingChainRecords, marketingFinalizeRecords, seedanceLongVideoRecords] = await Promise.all([
         TaskService.list("RunningHubTask"),
         TaskService.list("DirectApiTask"),
         TaskService.list("MarketingVideoChainTask"),
         TaskService.list("MarketingVideoFinalizeTask"),
+        TaskService.list("SeedanceLongVideoChainTask"),
     ]);
-    records.value = [...runningHubRecords, ...directApiRecords, ...marketingChainRecords, ...marketingFinalizeRecords].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+    records.value = [...runningHubRecords, ...directApiRecords, ...marketingChainRecords, ...marketingFinalizeRecords, ...seedanceLongVideoRecords].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 };
 
 const directApiEditTarget = (record: TaskRecord) => {
@@ -180,16 +181,50 @@ const splitSeedanceSpeechFromVisualText = (value: string) => {
     return { visualText, speeches };
 };
 
+const seedancePromptMentionLabels = (prompt: string) => {
+    const result = new Set<string>();
+    const regex = /@[（(]?([^@\s，,。；;：:\n\r）)]+)[）)]?/g;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(prompt || ""))) {
+        const label = String(match[1] || "").trim();
+        if (label) result.add(label);
+    }
+    return Array.from(result);
+};
+
+const seedanceReplaceBatchMention = (text: string, label: string, replacement: string) => {
+    const raw = String(label || "").trim();
+    if (!raw) return text;
+    const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return text.replace(new RegExp(`@[（(]?\\\s*${escaped}\\\s*[）)]?`, "g"), replacement);
+};
+
+const seedanceMentionMatchesAsset = (mentionLabel: string, assetUrl: string) => {
+    const fileName = shortPathName(assetUrl).replace(/\.[^.]+$/, "");
+    const normalize = (s: string) => String(s || "").replace(/[\s_\-（）()【】\[\]：:]/g, "").toLowerCase();
+    const m = normalize(mentionLabel);
+    const a = normalize(fileName);
+    if (!m || !a) return false;
+    return m === a || a.includes(m) || m.includes(a);
+};
+
 const buildSeedancePromptText = (prompt: string, selectedAssets: any[]) => {
     let text = String(prompt || "").trim();
     if (!selectedAssets.length) {
         return text.replace(/@\S+/g, "").trim();
     }
+    const mentionLabels = seedancePromptMentionLabels(text);
     const legend = selectedAssets.map((asset, index) => {
         const url = String(asset?.url || "");
         const type = String(asset?.type || "");
         const label = seedanceMentionLabelOf(type, index);
+        // 第1层: @文件名 精确匹配
         text = text.split(mentionTokenOfPath(url)).join(`「${label}」`);
+        // 第2层: @（名字）模糊匹配兜底
+        const matchedLabels = mentionLabels.filter(l => seedanceMentionMatchesAsset(l, url));
+        matchedLabels.forEach(l => {
+            text = seedanceReplaceBatchMention(text, l, `「${label}」`);
+        });
         return `${label} = ${type === "video" ? "视频" : type === "audio" ? "音频" : "图片"}「${shortPathName(url)}」`;
     });
     text = text.replace(/@\S+/g, "").replace(/\s{2,}/g, " ").trim();
@@ -317,7 +352,7 @@ const deleteTask = async (record: TaskRecord) => {
 
 const recordViews = computed(() => records.value.map(record => ({
     record,
-    capability: record.biz === "MarketingVideoChainTask" ? "video" : record.modelConfig?.capability,
+    capability: record.biz === "MarketingVideoChainTask" || record.biz === "SeedanceLongVideoChainTask" ? "video" : record.modelConfig?.capability,
     status: resolveDisplayStatus(record),
 })));
 
@@ -437,6 +472,10 @@ useTaskChangeRefresh("MarketingVideoChainTask", () => {
 });
 
 useTaskChangeRefresh("MarketingVideoFinalizeTask", () => {
+    refresh();
+});
+
+useTaskChangeRefresh("SeedanceLongVideoChainTask", () => {
     refresh();
 });
 
