@@ -2560,12 +2560,6 @@ const submit = async () => {
                         {{ item.title }}
                     </a-option>
                 </a-select>
-                <a-button type="primary" @click="batchPromptGeneratorVisible = true">AI生成批量提示词</a-button>
-                <a-button @click="pickBatchSpreadsheet">导入批量表</a-button>
-                <a-button @click="batchAssetLibraryVisible = true">素材库{{ batchAssetLibrary.length ? `(${batchAssetLibrary.length})` : "" }}</a-button>
-                <a-button type="primary" status="success" :disabled="!selectedBatchRows.length" :loading="batchSubmitting" @click="submitSelectedBatch">
-                    提交选中{{ selectedBatchRows.length ? `(${selectedBatchRows.length})` : "" }}
-                </a-button>
                 <a-button @click="router.push('/server')">平台设置</a-button>
             </div>
         </div>
@@ -2578,7 +2572,7 @@ const submit = async () => {
             </div>
 
             <div v-else class="space-y-4">
-            <div v-if="batchRows.length" class="rounded-lg bg-white p-4 shadow-sm">
+            <div v-if="false && batchRows.length" class="rounded-lg bg-white p-4 shadow-sm">
                 <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <div class="min-w-0">
                         <div class="text-sm font-semibold text-gray-800">批量清单：{{ shortName(batchFilePath) }}</div>
@@ -2881,7 +2875,7 @@ const submit = async () => {
             </div>
         </div>
 
-        <a-modal v-model:visible="batchPromptGeneratorVisible" width="920px" title="AI生成批量提示词" :footer="false" title-align="start">
+        <a-modal v-if="false" v-model:visible="batchPromptGeneratorVisible" width="920px" title="AI生成批量提示词" :footer="false" title-align="start">
             <div class="space-y-5">
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div class="space-y-2">
@@ -3000,7 +2994,7 @@ const submit = async () => {
             </div>
         </a-modal>
 
-        <a-modal v-model:visible="batchAssetLibraryVisible" width="980px" title="批量素材库" :footer="false" title-align="start">
+        <a-modal v-if="false" v-model:visible="batchAssetLibraryVisible" width="980px" title="批量素材库" :footer="false" title-align="start">
             <div class="space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="min-w-0">

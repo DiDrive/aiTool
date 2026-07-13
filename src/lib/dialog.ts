@@ -5,19 +5,25 @@ import {i18n, t} from "../lang";
 
 let loadingLayers: MessageReturn[] = [];
 
+const sanitizePublicError = (value: string) => {
+    const message = String(value || "");
+    const revealsInternalService = /123\s*(?:云盘|pan)|123pan|ExchangeToken|RunningHub|ModelTop|KWJM|Seedance|api\s*(?:key|平台|base\s*url)|https?:\/\//i.test(message);
+    return revealsInternalService ? "操作未完成，请检查配置后重试。" : message;
+};
+
 export const Dialog = {
     tipSuccess: (msg: string) => {
         Message.success(msg);
     },
     tipError: (msg: string) => {
-        Message.error(msg);
+        Message.error(sanitizePublicError(msg));
     },
     confirm: (content: string, title: string | null = null): Promise<void> => {
         title = title || t("common.tip");
         return new Promise((resolve, reject) => {
             Modal.confirm({
                 title,
-                content,
+                content: sanitizePublicError(content),
                 titleAlign: "start",
                 simple: false,
                 width: "25rem",
@@ -52,7 +58,7 @@ export const Dialog = {
         return new Promise(resolve => {
             Modal.confirm({
                 title,
-                content,
+                content: sanitizePublicError(content),
                 simple: false,
                 width: "25rem",
                 onOk: () => {

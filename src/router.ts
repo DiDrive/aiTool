@@ -29,6 +29,10 @@ const router = createRouter({
 });
 
 router.beforeEach((to, from, next) => {
+    if (["/sound", "/live", "/tool"].includes(to.path)) {
+        next({path: "/home", replace: true});
+        return;
+    }
     next();
     window.setTimeout(() => {
         try {

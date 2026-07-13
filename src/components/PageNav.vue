@@ -98,6 +98,7 @@ const goPage = (event: MouseEvent, path: string) => {
             </a>
             <a
                 class="page-nav-item block text-center py-3"
+                v-if="false"
                 :class="activeTab === 'live' ? 'active' : ''"
                 data-route-path="/live"
                 @click="goPage($event, '/live')"
@@ -134,6 +135,7 @@ const goPage = (event: MouseEvent, path: string) => {
             </a>
             <a
                 class="page-nav-item block text-center py-3"
+                v-if="false"
                 :class="activeTab === 'sound' ? 'active' : ''"
                 data-route-path="/sound"
                 @click="goPage($event, '/sound')"
@@ -158,6 +160,7 @@ const goPage = (event: MouseEvent, path: string) => {
             </a>
             <a
                 class="page-nav-item block text-center py-3"
+                v-if="false"
                 :class="activeTab === 'tool' ? 'active' : ''"
                 data-route-path="/tool"
                 @click="goPage($event, '/tool')"

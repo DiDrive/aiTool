@@ -21,7 +21,7 @@ import TextToImageIcon from "./TextToImage/assets/icon.svg";
 import WatermarkInpaint from "./WatermarkInpaint/WatermarkInpaint.vue";
 import WatermarkInpaintIcon from "./WatermarkInpaint/assets/icon.svg";
 
-export const SoundApps = [
+const hiddenSoundApps = [
     {
         name: "CloudAudio",
         title: "云端生音频",
@@ -38,7 +38,9 @@ export const SoundApps = [
     },
 ];
 
-export const VideoApps = [
+export const SoundApps: any[] = [];
+
+const videoApps = [
     {
         name: "MarketingVideoFlow",
         title: "营销短视频批量生成",
@@ -62,7 +64,9 @@ export const VideoApps = [
     },
 ];
 
-export const DigitalHumanApps = [
+export const VideoApps = videoApps.filter(app => app.name !== "MarketingVideoFlow");
+
+const hiddenDigitalHumanApps = [
     {
         name: "CloudDigitalHumanClipWizard",
         title: "直播片段生成向导",
@@ -107,6 +111,8 @@ export const DigitalHumanApps = [
     },
 ];
 
+export const DigitalHumanApps: any[] = [];
+
 export const ImageApps = [
     {
         name: "ToolGptImage2",
@@ -150,9 +156,5 @@ export const AllApps = [
     ...(ImageApps.map(app => ({
         ...app,
         url: `/image?tab=${app.name}`,
-    })) as any),
-    ...(ToolApps.map(app => ({
-        ...app,
-        url: `/tool?tab=${app.name}`,
     })) as any),
 ];

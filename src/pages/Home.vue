@@ -52,7 +52,7 @@ onMounted(async () => {
         </div>
         <div class="mb-5">
             <div class="flex gap-5 pb-top-area">
-                <div class="flex-grow w-0 bg-white rounded-lg p-3 bg-contain bg-right bg-no-repeat hover:shadow-lg">
+                <div v-if="false" class="flex-grow w-0 bg-white rounded-lg p-3 bg-contain bg-right bg-no-repeat hover:shadow-lg">
                     <div class="font-bold text-xl mb-1">{{ $t("voice.synthesis") }}</div>
                     <div class="h-8 truncate overflow-hidden text-gray-500">
                         {{ $t("intro.modelsSupported") }}
@@ -63,7 +63,7 @@ onMounted(async () => {
                         </a-button>
                     </div>
                 </div>
-                <div class="flex-grow w-0 bg-white rounded-lg p-3 bg-contain bg-right bg-no-repeat hover:shadow-lg">
+                <div v-if="false" class="flex-grow w-0 bg-white rounded-lg p-3 bg-contain bg-right bg-no-repeat hover:shadow-lg">
                     <div class="font-bold text-xl mb-1">{{ $t("voice.recognition") }}</div>
                     <div class="h-8 truncate overflow-hidden text-gray-500">
                         {{ $t("desc.recognitionDownload") }}
@@ -74,7 +74,7 @@ onMounted(async () => {
                         </a-button>
                     </div>
                 </div>
-                <div class="flex-grow w-0 bg-white rounded-lg p-3 bg-contain bg-right bg-no-repeat hover:shadow-lg">
+                <div v-if="false" class="flex-grow w-0 bg-white rounded-lg p-3 bg-contain bg-right bg-no-repeat hover:shadow-lg">
                     <div class="font-bold text-xl mb-1">{{ $t("avatar.synthesis") }}</div>
                     <div class="h-8 truncate overflow-hidden text-gray-500">
                         {{ $t("avatar.audioToVideo") }}
@@ -85,7 +85,7 @@ onMounted(async () => {
                         </a-button>
                     </div>
                 </div>
-                <div class="flex-grow w-0 bg-white rounded-lg p-3 bg-contain bg-right bg-no-repeat hover:shadow-lg">
+                <div v-if="false" class="flex-grow w-0 bg-white rounded-lg p-3 bg-contain bg-right bg-no-repeat hover:shadow-lg">
                     <div class="font-bold text-xl mb-1">{{ $t("avatar.live") }}</div>
                     <div class="h-8 truncate overflow-hidden text-gray-500">
                         {{ $t("intro.interactionSupport") }}
@@ -104,7 +104,7 @@ onMounted(async () => {
                 {{ $t("dashboard.statistics") }}
             </div>
             <div class="flex">
-                <div class="flex-grow w-0">
+                <div v-if="false" class="flex-grow w-0">
                     <div class="mb-3">
                         {{ $t("voice.synthesis") }}
                     </div>
@@ -125,7 +125,7 @@ onMounted(async () => {
                         />
                     </div>
                 </div>
-                <div class="flex-grow w-0">
+                <div v-if="false" class="flex-grow w-0">
                     <div class="mb-3">
                         {{ $t("voice.recognition") }}
                     </div>
@@ -145,7 +145,7 @@ onMounted(async () => {
                         />
                     </div>
                 </div>
-                <div class="flex-grow w-0">
+                <div v-if="false" class="flex-grow w-0">
                     <div class="mb-3">
                         {{ $t("avatar.synthesis") }}
                     </div>
