@@ -471,8 +471,8 @@ onMounted(async () => {
     }
     await hydrateFromTask();
     model.value = normalizeUiVideoModel(model.value);
-    ensureSelectedMentionTokens();
     if (!route.query.editTaskId) {
+        ensureSelectedMentionTokens();
         syncMentionIdsFromPrompt();
     }
     await nextTick();
