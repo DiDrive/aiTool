@@ -617,22 +617,54 @@ export async function ffmpegConcatVideos(videos: string[]): Promise<string> {
 
 export async function ffmpegExtractLastFrame(video: string): Promise<string> {
     const output = await $mapi.file.temp("png", "seedance-tail");
-    // 先通过 ffprobe 获取实际时长，再用 -ss 精确 seek，避免 -sseof 在部分编码格式下无法定位帧
-    const duration = await ffprobeGetMediaDuration(video);
-    const seekTo = Math.max(0, duration - 0.5);
-    let stderr = "";
-    await $mapi.app.spawnBinary("ffmpeg", [
-        "-ss", String(seekTo),
-        "-i", video,
-        "-frames:v", "1",
-        "-y", output,
-    ], {
-        stderr: (data: string) => { stderr += data; },
-    });
-    if (!(await $mapi.file.exists(output))) {
-        throw new Error(`尾帧提取失败，未生成图片：${output}。ffmpeg: ${stderr.slice(-500)}`);
+    const fallbackOutput = await $mapi.file.temp("png", "seedance-tail-reverse");
+    const errors: string[] = [];
+
+    try {
+        // -ss 放在输入之后，确保从实际时间戳精确解码，而不是只跳到相邻关键帧。
+        const duration = await ffprobeGetMediaDuration(video);
+        const seekTo = Math.max(0, duration - 0.5);
+        let stderr = "";
+        await $mapi.app.spawnBinary("ffmpeg", [
+            "-i", video,
+            "-ss", String(seekTo),
+            "-map", "0:v:0",
+            "-frames:v", "1",
+            "-an",
+            "-y", output,
+        ], {
+            stderr: (data: string) => { stderr += data; },
+        });
+        if (await $mapi.file.exists(output)) {
+            return output;
+        }
+        errors.push(`精确 seek: ${stderr.slice(-500)}`);
+    } catch (e: any) {
+        errors.push(`精确 seek: ${e?.message || String(e)}`);
     }
-    return output;
+
+    try {
+        // 部分上传视频的 duration/GOP 元数据异常时，反向解码后第一帧就是原视频尾帧。
+        let stderr = "";
+        await $mapi.app.spawnBinary("ffmpeg", [
+            "-i", video,
+            "-map", "0:v:0",
+            "-vf", "reverse",
+            "-frames:v", "1",
+            "-an",
+            "-y", fallbackOutput,
+        ], {
+            stderr: (data: string) => { stderr += data; },
+        });
+        if (await $mapi.file.exists(fallbackOutput)) {
+            return fallbackOutput;
+        }
+        errors.push(`反向解码: ${stderr.slice(-500)}`);
+    } catch (e: any) {
+        errors.push(`反向解码: ${e?.message || String(e)}`);
+    }
+
+    throw new Error(`尾帧提取失败，未生成图片：${output}。${errors.join("；")}`);
 }
 
 export type VideoTimelineClip = {
