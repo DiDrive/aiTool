@@ -1,6 +1,6 @@
 import { StorageRecord, StorageService } from "./StorageService";
 
-export type DirectApiPlatformType = "exchangetoken" | "modeltop" | "kwjm" | "custom";
+export type DirectApiPlatformType = "exchangetoken" | "modeltop" | "kwjm" | "pix" | "custom";
 export type DirectApiCapability = "seedance" | "gpt-image-2";
 
 export type DirectApiPlatformContent = {
@@ -56,7 +56,16 @@ const normalizeBaseUrl = (platformType: DirectApiPlatformType, value?: string) =
     if (platformType === "kwjm" && /^https:\/\/kwjm\.com\/?$/i.test(baseUrl)) {
         return "https://www.kwjm.com";
     }
-    return baseUrl || (platformType === "kwjm" ? "https://www.kwjm.com" : "https://api.exchangetoken.ai");
+    if (baseUrl) {
+        return baseUrl;
+    }
+    if (platformType === "kwjm") {
+        return "https://www.kwjm.com";
+    }
+    if (platformType === "pix") {
+        return "https://pix.token6688.com";
+    }
+    return "https://api.exchangetoken.ai";
 };
 
 const decode = (record: StorageRecord | null): DirectApiPlatformRecord | null => {

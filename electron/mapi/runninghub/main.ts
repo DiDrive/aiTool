@@ -1039,7 +1039,18 @@ const requestTextByNodeHttps = async (
 };
 
 const normalizeStatus = (status: any) => {
-    return String(status || "").trim().toUpperCase();
+    const value = String(status || "").trim();
+    const normalized = value.toUpperCase();
+    if (/生成失败|处理失败|任务失败|已失败|失败|已取消|已撤销|取消/.test(value)) {
+        return /取消|撤销/.test(value) ? "CANCELLED" : "FAILED";
+    }
+    if (/生成完成|处理完成|任务完成|已完成|生成成功|处理成功|任务成功|已成功/.test(value)) {
+        return "COMPLETED";
+    }
+    if (/生成中|处理中|运行中|执行中|排队中|等待中|已提交/.test(value)) {
+        return "RUNNING";
+    }
+    return normalized;
 };
 
 const requestJson = async (
@@ -1234,6 +1245,57 @@ const localFileToDataUrl = async (value: string) => {
     return `data:${mimeFromFile(filePath)};base64,${buffer.toString("base64")}`;
 };
 
+const isPixApiBaseUrl = (value?: string) => {
+    try {
+        return new URL(normalizeApiBaseUrl(value || "")).hostname.toLowerCase() === "pix.token6688.com";
+    } catch (e) {
+        return false;
+    }
+};
+
+const PIX_GENERATION_MODELS = new Set([
+    "seedance-2-0-official",
+    "seedance-2-0-promo",
+    "seedance-2-0-special",
+    "seedance-2-5",
+    "veo-3.1",
+    "veo-4-omni",
+    "minimax-h3",
+    "sora-2",
+    "happyhorse-1-1",
+    "gpt-image-2",
+    "gemini-3-pro-image",
+    "gemini-3.1-flash-image",
+    "mj_imagine",
+]);
+
+const uploadFileToPix = async (
+    apiBaseUrl: string,
+    apiKey: string,
+    filePath: string,
+    proxyUrl?: string
+) => {
+    const response: any = await requestFormData(
+        apiBaseUrl,
+        "v1/files",
+        { file: filePath },
+        apiKey,
+        DEFAULT_DIRECT_API_TIMEOUT_MS,
+        proxyUrl
+    );
+    const url = String(
+        response?.url ||
+            response?.data?.url ||
+            response?.file?.url ||
+            response?.data?.file?.url ||
+            ""
+    ).trim();
+    if (!url) {
+        throw new Error(responseMessageOf(response, "PIX 文件上传成功，但响应中没有可用 URL"));
+    }
+    return url;
+};
+
 const normalizeJsonBodyLocalFiles = async (
     value: any,
     apiBaseUrl?: string,
@@ -1254,6 +1316,12 @@ const normalizeJsonBodyLocalFiles = async (
     }
     if (typeof value === "string" && isLocalFilePath(value)) {
         const filePath = toLocalFilePath(value);
+        if (isPixApiBaseUrl(apiBaseUrl) || PIX_GENERATION_MODELS.has(String(assetModel || ""))) {
+            if (!apiBaseUrl || !apiKey) {
+                throw new Error("PIX 本地素材上传需要 Base URL 和 API Key");
+            }
+            return await uploadFileToPix(apiBaseUrl, apiKey, filePath, proxyUrl);
+        }
         const usePan123Relay = Boolean(relay?.enabled && relay?.provider === "123pan");
         const useModelTopAssetsRelay = Boolean(relay?.enabled && relay?.provider === "modeltop-assets");
         const ext = path.extname(filePath).toLowerCase();
@@ -1637,6 +1705,7 @@ const requestGetJson = async (
             requestFormat: "json",
             httpStatus: res.status,
             ok: res.ok,
+            retryAfter: res.headers.get("retry-after") || "",
         });
     } catch (e: any) {
         return attachDiagnostics(
@@ -1724,10 +1793,48 @@ const normalizeDirectTaskResults = (value: any) => {
             "data.video_url",
             "data.output.video_url",
             "data.output.url",
+            "data.result.video.url",
+            "data.result.video_url",
+            "data.result.output.video_url",
+            "data.result.output.url",
+            "data.result.videos.0.url",
+            "data.results.0.video_url",
+            "data.results.0.url",
             "result.video.url",
             "result.video_url",
             "result.output.video_url",
             "result.output.url",
+        ])
+    ).trim();
+    const directResultUrl = String(
+        pickDeepValue(value, [
+            "url",
+            "output_url",
+            "result_url",
+            "audio_url",
+            "image_url",
+            "data.url",
+            "data.output_url",
+            "data.result_url",
+            "data.audio_url",
+            "data.image_url",
+            "data.output.url",
+            "data.result.url",
+            "data.result.output_url",
+            "data.result.result_url",
+            "data.result.audio_url",
+            "data.result.image_url",
+            "data.result.images.0.url",
+            "data.result.audios.0.url",
+            "data.data.0.url",
+            "data.outputs.0.url",
+            "result.url",
+            "result.output_url",
+            "result.result_url",
+            "result.audio_url",
+            "result.videos.0.url",
+            "result.images.0.url",
+            "result.audios.0.url",
         ])
     ).trim();
     const imageDataResults = [
@@ -1735,6 +1842,11 @@ const normalizeDirectTaskResults = (value: any) => {
         value?.data?.data,
         value?.result?.data,
         value?.data?.result?.data,
+        value?.data?.results,
+        value?.data?.outputs,
+        value?.data?.result?.videos,
+        value?.data?.result?.images,
+        value?.data?.result?.audios,
         value?.output,
         value?.outputs,
         value?.result?.output,
@@ -1767,11 +1879,21 @@ const normalizeDirectTaskResults = (value: any) => {
     const fromContent = [
         ...(contentVideoUrl ? [{ url: contentVideoUrl, outputType: "video", fileUrl: contentVideoUrl }] : []),
         ...(directVideoUrl ? [{ url: directVideoUrl, outputType: "video", fileUrl: directVideoUrl }] : []),
+        ...(directResultUrl && directResultUrl !== directVideoUrl
+            ? [{ url: directResultUrl, outputType: String(value?.result_type || value?.type || "file"), fileUrl: directResultUrl }]
+            : []),
         ...(contentImageUrl ? [{ url: contentImageUrl, outputType: "image", fileUrl: contentImageUrl }] : []),
         ...(outputText ? [{ text: outputText, outputType: "text", fileUrl: "" }] : []),
         ...imageDataResults,
     ];
-    return fromContent.length > 0 ? fromContent : normalizeResults(value?.results);
+    const normalized = fromContent.length > 0 ? fromContent : normalizeResults(value?.results);
+    const seen = new Set<string>();
+    return normalized.filter((item: any) => {
+        const key = String(item?.url || item?.fileUrl || item?.text || "").trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 };
 
 const pickDeepValue = (value: any, paths: string[]) => {
@@ -1807,10 +1929,17 @@ const extractDirectStatus = (value: any) => {
             "data.taskStatus",
             "data.task.status",
             "data.task_status",
+            "data.data.status",
+            "data.result.status",
+            "data.job.status",
+            "data.state",
             "status",
             "taskStatus",
             "task_status",
             "state",
+            "task.status",
+            "result.status",
+            "job.status",
         ]) || ""
     );
 };
@@ -1989,11 +2118,33 @@ ipcMain.handle("runninghub:queryTask", async (event, options: {
               DEFAULT_DIRECT_API_TIMEOUT_MS,
               options.proxyUrl
           );
-    const directTaskId = extractDirectTaskId(directResult, options.taskId);
+    const httpOk = directResult?._diagnostics?.ok;
+    const httpStatus = Number(directResult?._diagnostics?.httpStatus || 0);
+    const responseCode = Number(directResult?.code);
     const directStatus = extractDirectStatus(directResult);
+    const directResults = normalizeDirectTaskResults(directResult);
+    const apiRejected = Number.isFinite(responseCode) && responseCode !== 0 && responseCode !== 200 && !directStatus && directResults.length === 0;
+    if (httpOk === false || apiRejected) {
+        return {
+            code: httpStatus || responseCode || 500,
+            msg: directResult?.error?.message || directResult?.errorMessage || directResult?.message || directResult?.msg || `任务状态查询失败${httpStatus ? `（HTTP ${httpStatus}）` : ""}`,
+            data: {
+                taskId: options.taskId,
+                status: "",
+                rawStatus: "",
+                results: [],
+                errorCode: directResult?.error?.code || directResult?.errorCode || "",
+                errorMessage: directResult?.error?.message || directResult?.errorMessage || directResult?.message || directResult?.msg || "",
+                failedReason: directResult?.failedReason || directResult?.error || {},
+            },
+            _diagnostics: directResult?._diagnostics,
+        };
+    }
+    const directTaskId = extractDirectTaskId(directResult, options.taskId);
     if (directStatus || Array.isArray(directResult?.results) || Array.isArray(directResult?.data) || directTaskId) {
-        const normalizedDirectStatus = normalizeStatus(directStatus || (Array.isArray(directResult?.data) ? "succeeded" : ""));
-        const failedDirectStatus = /FAILED|FAIL|ERROR|CANCEL|REJECT/.test(normalizedDirectStatus);
+        const rawNormalizedStatus = normalizeStatus(directStatus || (directResults.length > 0 || Array.isArray(directResult?.data) ? "succeeded" : ""));
+        const failedDirectStatus = /FAILED|FAIL|ERROR|CANCEL|REJECT/.test(rawNormalizedStatus);
+        const normalizedDirectStatus = directResults.length > 0 && !failedDirectStatus ? "COMPLETED" : rawNormalizedStatus;
         return {
             code: failedDirectStatus ? 500 : 0,
             msg: directResult?.errorMessage || directResult?.msg || "",
@@ -2001,7 +2152,7 @@ ipcMain.handle("runninghub:queryTask", async (event, options: {
                 taskId: directTaskId,
                 status: normalizedDirectStatus,
                 rawStatus: directStatus,
-                results: normalizeDirectTaskResults(directResult),
+                results: directResults,
                 clientId: directResult?.clientId || "",
                 promptTips: directResult?.promptTips || "",
                 usage: directResult?.usage || {},

@@ -55,7 +55,7 @@ export const VideoApps = [
     },
     {
         name: "ToolSeedance",
-        title: "Seedance 2.0",
+        title: "AI 视频模型",
         description: "ExchangeToken Seedance 视频生成",
         icon: VideoGenFlowIcon,
         component: ToolSeedance,
@@ -110,7 +110,7 @@ export const DigitalHumanApps = [
 export const ImageApps = [
     {
         name: "ToolGptImage2",
-        title: "GPT Image 2",
+        title: "AI 图片模型",
         description: "ExchangeToken OpenAI 兼容生图",
         icon: TextToImageIcon,
         component: ToolGptImage2,

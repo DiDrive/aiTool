@@ -1,0 +1,34 @@
+ARG BUN_IMAGE=oven/bun:1.3.14
+ARG GO_IMAGE=golang:1.25-alpine
+
+FROM ${BUN_IMAGE} AS web-build
+WORKDIR /src/web
+COPY web/package.json web/bun.lock ./
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile --cache-dir=/root/.bun/install/cache
+COPY VERSION /src/VERSION
+COPY CHANGELOG.md /src/CHANGELOG.md
+COPY web ./
+RUN bun run build
+
+FROM ${GO_IMAGE} AS api-build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY config ./config
+COPY handler ./handler
+COPY middleware ./middleware
+COPY model ./model
+COPY repository ./repository
+COPY router ./router
+COPY service ./service
+COPY main.go ./
+RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o /server.exe .
+
+FROM scratch
+COPY --from=api-build /server.exe /bundle/api/server.exe
+COPY --from=web-build /src/web/public /bundle/web/public
+COPY --from=web-build /src/web/.next/standalone /bundle/web
+COPY --from=web-build /src/web/.next/static /bundle/web/.next/static
+COPY LICENSE /bundle/LICENSE
+COPY MODIFICATIONS.md /bundle/MODIFICATIONS.md
+COPY . /bundle/SOURCE

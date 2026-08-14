@@ -79,12 +79,13 @@ const refresh = async () => {
 };
 
 const directApiEditTarget = (record: TaskRecord) => {
+    const capability = String((record as any)?.modelConfig?.capability || "").toLowerCase();
     const title = String((record as any)?.modelConfig?.templateTitle || "").toLowerCase();
     const body = String((record as any)?.modelConfig?.requestBodyJson || "").toLowerCase();
-    if (title.includes("seedance") || body.includes("seedance-2.0") || body.includes("kw-video-v2")) {
+    if (capability === "video" || title.includes("seedance") || body.includes("seedance-2.0") || body.includes("kw-video-v2")) {
         return { path: "/video", tab: "ToolSeedance" };
     }
-    if (title.includes("gpt image 2") || body.includes("gpt-image-2")) {
+    if (capability === "image" || title.includes("gpt image 2") || body.includes("gpt-image-2")) {
         return { path: "/image", tab: "ToolGptImage2" };
     }
     return null;
@@ -247,7 +248,7 @@ const normalizeSeedanceClone = (cloned: TaskRecord) => {
     const config = (cloned as any)?.modelConfig;
     const bodyText = String(config?.requestBodyJson || "");
     const title = String(config?.templateTitle || "").toLowerCase();
-    if (!title.includes("seedance") && !bodyText.toLowerCase().includes("seedance-2.0") && !bodyText.toLowerCase().includes("kw-video-v2")) {
+    if (String(config?.capability || "").toLowerCase() !== "video" && !title.includes("seedance") && !bodyText.toLowerCase().includes("seedance-2.0") && !bodyText.toLowerCase().includes("kw-video-v2")) {
         return;
     }
     try {

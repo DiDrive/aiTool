@@ -29,6 +29,8 @@ const activeTab = computed(() => {
             return "live";
         case "/tool":
             return "tool";
+        case "/canvas":
+            return "canvas";
     }
 });
 
@@ -167,6 +169,18 @@ const goPage = (event: MouseEvent, path: string) => {
                     <icon-tool class="text-xl" />
                 </div>
                 <div class="text-sm">工具</div>
+            </a>
+            <a
+                class="page-nav-item block text-center py-3"
+                :class="activeTab === 'canvas' ? 'active' : ''"
+                data-route-path="/canvas"
+                @click="goPage($event, '/canvas')"
+                :href="pageHref('/canvas')"
+            >
+                <div>
+                    <icon-apps class="text-xl" />
+                </div>
+                <div class="text-sm">无限画布</div>
             </a>
             <a
                 class="page-nav-item block text-center py-3"

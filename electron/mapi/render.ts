@@ -16,6 +16,7 @@ import misc from "./misc/render";
 import douyin from "./douyin/render";
 import hottrend from "./hottrend/render";
 import watermark from "./watermark/render";
+import infiniteCanvas from "./infiniteCanvas/render";
 
 import server from "./server/render";
 
@@ -39,6 +40,7 @@ export const MAPI = {
                 douyin,
                 hottrend,
                 watermark,
+                infiniteCanvas,
                 server,
             });
             db.init();

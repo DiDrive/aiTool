@@ -1,0 +1,7 @@
+{
+    "version":  "v0.5.1+workbench.33",
+    "apiExecutable":  "api/server-workbench18.exe",
+    "webEntry":  "web-workbench33/server.js",
+    "healthPath":  "/api/health",
+    "loopbackOnly":  true
+}

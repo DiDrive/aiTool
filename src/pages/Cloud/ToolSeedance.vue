@@ -22,6 +22,7 @@ type SeedanceAsset = {
     type: SeedanceAssetType;
     role: "reference_image" | "reference_video" | "reference_audio";
     url: string;
+    origin?: "upload" | "library";
     size?: number;
     duration?: number;
     width?: number;
@@ -34,7 +35,8 @@ type MentionAsset = {
     label: string;
     type: SeedanceAssetType | "frame";
     url: string;
-    source: "first_frame" | "last_frame" | "asset";
+    source: "first_frame" | "last_frame" | "asset" | "library";
+    origin: "upload" | "library";
 };
 
 type BatchSeedanceAsset = {
@@ -98,19 +100,24 @@ const model = ref("seedance-2.0-fast");
 const ratio = ref("16:9");
 const duration = ref(4);
 const resolution = ref("720p");
+const videoQuality = ref("标准");
 const generateAudio = ref(true);
 const watermark = ref(false);
 const webSearch = ref(false);
 const firstFrame = ref("");
 const lastFrame = ref("");
+const firstFrameOrigin = ref<"upload" | "library">("upload");
+const lastFrameOrigin = ref<"upload" | "library">("upload");
 const assets = ref<SeedanceAsset[]>([]);
 const batchAssetLibrary = ref<SeedanceAsset[]>([]);
 const batchAssetLibraryVisible = ref(false);
+const assetLibraryMode = ref<"manage" | "firstFrame" | "lastFrame">("manage");
+const batchWorkspaceVisible = ref(false);
+const batchWorkspaceView = ref<"list" | "generate">("list");
 const batchFilePath = ref("");
 const batchRows = ref<BatchSeedanceRow[]>([]);
 const selectedBatchRowKeys = ref<number[]>([]);
 const batchSubmitting = ref(false);
-const batchPromptGeneratorVisible = ref(false);
 const batchPromptGenerating = ref(false);
 const promptModelOptions = ref<Array<{ id: string; providerTitle: string; modelName: string }>>([]);
 const batchPromptGenerator = ref<BatchPromptGeneratorSettings>({
@@ -177,11 +184,14 @@ const pageDraft = usePageDraft("ToolSeedance", {
     ratio,
     duration,
     resolution,
+    videoQuality,
     generateAudio,
     watermark,
     webSearch,
     firstFrame,
     lastFrame,
+    firstFrameOrigin,
+    lastFrameOrigin,
     assets,
     mentionAssetIds,
 });
@@ -229,7 +239,30 @@ const modeOptions: Array<{ label: string; value: CreationMode; desc: string }> =
     { label: "全能参考", value: "reference", desc: "图片、视频、音频混合参考" },
 ];
 
-const modelOptions = ["seedance-2.0", "seedance-2.0-fast"];
+const legacyVideoModelOptions = ["seedance-2.0", "seedance-2.0-fast"];
+const pixVideoModelDefinitions = [
+    { id: "seedance-2-0-official", label: "Seedance 2.0 · 官方直连", ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolutions: ["480p", "720p", "1080p"], modes: ["text-to-video", "reference", "first-frame", "first-last"], media: ["image", "video", "audio"], qualities: ["标准", "fast", "mini"], defaultQuality: "标准", qualityRules: { 标准: { resolutions: ["480p", "720p", "1080p"] }, fast: { resolutions: ["480p", "720p"] }, mini: { resolutions: ["480p", "720p"] } }, maxImages: 9, maxVideos: 3, maxAudios: 3 },
+    { id: "seedance-2-0-promo", label: "Seedance 2.0 · 特价按秒", ratios: ["9:16", "16:9", "1:1", "4:3", "3:4", "21:9"], durations: [5, 6, 7, 8, 9, 10, 12, 15], resolutions: ["480p", "720p", "1080p"], modes: ["text-to-video", "first-frame", "first-last", "reference"], media: ["image", "video", "audio"], qualities: ["标准", "fast", "mini"], defaultQuality: "标准", qualityRules: { 标准: { resolutions: ["480p", "720p", "1080p"] }, fast: { resolutions: ["480p", "720p"] }, mini: { resolutions: ["480p", "720p"], modes: ["text-to-video", "first-last", "reference"] } }, maxImages: 9, maxVideos: 3, maxAudios: 3 },
+    { id: "seedance-2-0-special", label: "Seedance 2.0 · 特价按次", ratios: ["9:16", "16:9", "21:9", "1:1", "4:3", "3:4"], durations: [15], resolutions: ["720p", "480p", "1080p", "4k"], modes: ["reference", "first-frame", "first-last", "text-to-video"], media: ["image", "video", "audio"], qualities: ["标准", "快速", "高清"], defaultQuality: "标准", qualityRules: { 标准: { resolutions: ["480p", "720p", "1080p"] }, 快速: { resolutions: ["480p", "720p", "1080p"] }, 高清: { resolutions: ["480p", "720p", "1080p", "4k"] } }, maxImages: 9, maxVideos: 3, maxAudios: 9 },
+    { id: "seedance-2-5", label: "Seedance 2.5 官方", ratios: ["16:9", "9:16"], durations: [4, 5, 6, 8, 10, 12, 15, 20, 25, 30], resolutions: ["480p", "720p"], modes: ["text-to-video", "first-frame", "reference"], media: ["image", "audio"], maxImages: 30, maxVideos: 0, maxAudios: 10 },
+    { id: "veo-3.1", label: "Veo 3.1", ratios: ["16:9", "9:16"], durations: [8], resolutions: ["720p", "1080p"], modes: ["text-to-video", "first-frame", "first-last", "reference"], media: ["image"], qualities: ["经济", "快速", "高质量"], defaultQuality: "高质量", maxImages: 3, maxVideos: 0, maxAudios: 0 },
+    { id: "veo-4-omni", label: "Veo 4 Omni", ratios: ["16:9", "9:16"], durations: [3, 4, 5, 6, 7, 8, 9, 10], resolutions: ["720p"], modes: ["text-to-video", "first-frame", "first-last", "reference"], media: ["image"], maxImages: 9, maxVideos: 0, maxAudios: 0 },
+    { id: "minimax-h3", label: "MiniMax H3", ratios: ["16:9", "9:16", "21:9", "4:3", "1:1", "3:4"], durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolutions: ["2k"], modes: ["text-to-video", "first-frame", "first-last", "reference"], media: ["image", "video", "audio"], maxImages: 9, maxVideos: 3, maxAudios: 3 },
+    { id: "sora-2", label: "Sora 2", ratios: ["16:9", "9:16"], durations: [4, 8, 12], resolutions: [] as string[], modes: ["text-to-video", "first-frame"], media: ["image"], maxImages: 1, maxVideos: 0, maxAudios: 0 },
+    { id: "happyhorse-1-1", label: "HappyHorse 1.1", ratios: ["16:9"], durations: [5, 10, 15], resolutions: ["720p", "1080p"], modes: ["text-to-video", "first-frame", "reference"], media: ["image"], maxImages: 9, maxVideos: 0, maxAudios: 0 },
+] as const;
+const pixVideoModelIds = pixVideoModelDefinitions.map(item => item.id);
+const pixModelConstraints = (definition: any, quality?: string) => {
+    const rule = definition?.qualityRules?.[quality || definition?.defaultQuality || ""] || {};
+    return {
+        ratios: rule.ratios || definition?.ratios || [],
+        durations: rule.durations || definition?.durations || [],
+        resolutions: rule.resolutions || definition?.resolutions || [],
+        modes: rule.modes || definition?.modes || [],
+    };
+};
+const pixQualityLabel = (value: string) => value === "fast" ? "fast (Fast)" : value === "mini" ? "mini (Mini)" : value;
+const allVideoModelIds = [...legacyVideoModelOptions, ...pixVideoModelIds];
 const normalizeUiVideoModel = (value: string) => {
     const raw = String(value || "").trim();
     if (raw === "kw-video-v2-fast") {
@@ -238,12 +271,12 @@ const normalizeUiVideoModel = (value: string) => {
     if (raw === "kw-video-v2") {
         return "seedance-2.0";
     }
-    return modelOptions.includes(raw) ? raw : "seedance-2.0-fast";
+    return allVideoModelIds.includes(raw as any) ? raw : "seedance-2.0";
 };
 const ratioOptions = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"];
 const baseResolutionOptions = ["480p", "720p"];
 const hdResolutionOptions = ["480p", "720p", "1080p"];
-const durationOptions = [
+const allDurationOptions = [
     { label: "自动", value: -1 },
     ...Array.from({ length: 12 }, (_, index) => {
         const value = index + 4;
@@ -251,7 +284,7 @@ const durationOptions = [
     }),
 ];
 const batchDurationOptions = [
-    ...durationOptions.filter(item => item.value >= 4),
+    ...allDurationOptions.filter(item => item.value >= 4),
     { label: "30s（自动分段）", value: 30 },
     { label: "45s（自动分段）", value: 45 },
     { label: "60s（自动分段）", value: 60 },
@@ -287,11 +320,111 @@ const contentUrlOf = (item: any) => {
     return String(item?.[key]?.url || "").trim();
 };
 const isKwjmPlatform = (platform: DirectApiPlatformRecord | null) => platform?.content.platformType === "kwjm";
+const isPixPlatform = (platform: DirectApiPlatformRecord | null) => platform?.content.platformType === "pix";
 const platformVideoModel = (platform: DirectApiPlatformRecord | null, value: string) => {
+    if (isPixPlatform(platform)) {
+        return pixVideoModelIds.includes(value as any) ? value : "seedance-2-0-official";
+    }
     if (!isKwjmPlatform(platform)) {
         return value;
     }
     return value.includes("fast") ? "kw-video-v2-fast" : "kw-video-v2";
+};
+const platformVideoSubmitPath = (platform: DirectApiPlatformRecord) =>
+    isKwjmPlatform(platform) || isPixPlatform(platform)
+        ? "/v1/videos/generations"
+        : "/api/v3/contents/generations/tasks";
+const platformVideoQueryPath = (platform: DirectApiPlatformRecord) =>
+    isPixPlatform(platform)
+        ? "/v1/skills/task-status?task_id={id}"
+        : isKwjmPlatform(platform)
+          ? "/v1/videos/generations/{id}"
+          : "/api/v3/contents/generations/tasks/{id}";
+
+const pixVideoBody = (
+    platform: DirectApiPlatformRecord,
+    uiModel: string,
+    content: any[],
+    options: { ratio: string; duration: number; resolution: string; quality?: string }
+) => {
+    const promptText = content
+        .filter(item => item?.type === "text")
+        .map(item => String(item?.text || "").trim())
+        .filter(Boolean)
+        .join("\n");
+    const media = content
+        .filter(item => item?.type !== "text")
+        .map(item => ({
+            type: String(item?.type || "").replace(/_url$/, ""),
+            role: String(item?.role || ""),
+            url: String(item?.image_url?.url || item?.video_url?.url || item?.audio_url?.url || "").trim(),
+        }))
+        .filter(item => item.url);
+    const firstFrame = media.find(item => item.role === "first_frame")?.url || "";
+    const lastFrame = media.find(item => item.role === "last_frame")?.url || "";
+    const referenceMedia = media.filter(item => item.role !== "first_frame" && item.role !== "last_frame");
+    const images = firstFrame || lastFrame
+        ? [firstFrame, lastFrame].filter(Boolean)
+        : referenceMedia.filter(item => item.type === "image").map(item => item.url);
+    const videos = referenceMedia.filter(item => item.type === "video").map(item => item.url);
+    const audios = referenceMedia.filter(item => item.type === "audio").map(item => item.url);
+    const mode = firstFrame && lastFrame
+        ? "first-last"
+        : firstFrame || lastFrame
+          ? "first-frame"
+          : images.length || videos.length || audios.length
+            ? "reference"
+            : "text-to-video";
+    const definition = pixVideoModelDefinitions.find(item => item.id === platformVideoModel(platform, uiModel));
+    return {
+        model: platformVideoModel(platform, uiModel),
+        prompt: promptText,
+        mode,
+        aspect_ratio: options.ratio,
+        duration: options.duration,
+        count: 1,
+        ...(definition?.resolutions.length ? { resolution: options.resolution } : {}),
+        ...(definition && "qualities" in definition ? { quality: options.quality || definition.defaultQuality } : {}),
+        ...(images.length ? { images } : {}),
+        ...(videos.length ? { videos } : {}),
+        ...(audios.length ? { audios } : {}),
+    };
+};
+
+const validatePixVideoBody = (body: Record<string, any>) => {
+    const definition = pixVideoModelDefinitions.find(item => item.id === body.model);
+    if (!definition) return `PIX 不支持视频模型 ${body.model}`;
+    if ("qualities" in definition && !definition.qualities.includes(body.quality as never)) {
+        return `${definition.label} 不支持 ${body.quality || "空"} 档位`;
+    }
+    const constraints = pixModelConstraints(definition, body.quality);
+    if (!constraints.modes.includes(body.mode)) {
+        return `${definition.label} 不支持 ${body.mode} 模式`;
+    }
+    if (!constraints.ratios.includes(body.aspect_ratio)) {
+        return `${definition.label} 不支持 ${body.aspect_ratio} 比例`;
+    }
+    if (!constraints.durations.includes(Number(body.duration))) {
+        return `${definition.label} 不支持 ${body.duration}s 时长`;
+    }
+    if (constraints.resolutions.length && !constraints.resolutions.includes(body.resolution)) {
+        return `${definition.label} 不支持 ${body.resolution} 分辨率`;
+    }
+    if ((body.images?.length || 0) > definition.maxImages) {
+        return `${definition.label} 最多支持 ${definition.maxImages} 张图片`;
+    }
+    if ((body.videos?.length || 0) > definition.maxVideos) {
+        return `${definition.label} 最多支持 ${definition.maxVideos} 个视频参考素材`;
+    }
+    if ((body.audios?.length || 0) > definition.maxAudios) {
+        return `${definition.label} 最多支持 ${definition.maxAudios} 段音频参考素材`;
+    }
+    for (const [field, type] of [["images", "image"], ["videos", "video"], ["audios", "audio"]] as const) {
+        if (body[field]?.length && !definition.media.includes(type as never)) {
+            return `${definition.label} 不支持${type === "image" ? "图片" : type === "video" ? "视频" : "音频"}参考素材`;
+        }
+    }
+    return "";
 };
 const getEffectiveDirectFileRelay = async (platform: DirectApiPlatformRecord | null) => {
     const relay = platform?.content.directFileRelay;
@@ -348,13 +481,172 @@ const audioLimits = {
     totalDuration: 15,
 };
 
+type PixMediaLimit = {
+    maxSize?: number;
+    minSide?: number;
+    maxSide?: number;
+    minPixels?: number;
+    maxPixels?: number;
+};
+
+const pixUploadLimits: Record<string, {
+    image?: PixMediaLimit;
+    video?: PixMediaLimit;
+    audio?: PixMediaLimit;
+    combinedAvDuration?: number;
+}> = {
+    "seedance-2-5": {
+        image: { maxSize: 5 * MB },
+        audio: { maxSize: 50 * MB },
+        combinedAvDuration: 30,
+    },
+    "seedance-2-0-official": {
+        image: { maxSize: 5 * MB, minSide: 300, maxSide: 6000 },
+        video: { maxSize: 50 * MB, minSide: 300, maxSide: 6000, minPixels: 409600, maxPixels: 2086876 },
+        audio: { maxSize: 50 * MB },
+        combinedAvDuration: 15,
+    },
+    "seedance-2-0-promo": {
+        image: { maxSize: 5 * MB, minSide: 300, maxSide: 6000 },
+        video: { maxSize: 50 * MB },
+        combinedAvDuration: 15,
+    },
+    "seedance-2-0-special": {
+        image: { maxSize: 5 * MB, minSide: 300, maxSide: 6000 },
+        video: { maxSize: 50 * MB },
+        combinedAvDuration: 15,
+    },
+    "minimax-h3": {
+        image: { maxSize: 30 * MB, minSide: 256, maxSide: 5760 },
+        video: { maxSize: 50 * MB },
+        audio: { maxSize: 15 * MB },
+        combinedAvDuration: 15,
+    },
+    "veo-3.1": { image: { maxSize: 10 * MB } },
+    "veo-4-omni": { image: { maxSize: 5 * MB } },
+    "sora-2": { image: { maxSize: 10 * MB } },
+    "happyhorse-1-1": { image: { maxSize: 20 * MB, minSide: 300 } },
+};
+
+const pixMediaLimit = (modelId: string, type: SeedanceAssetType) => pixUploadLimits[modelId]?.[type];
+const isPixVideoModel = (modelId: string) => pixVideoModelIds.includes(modelId as any);
+
 const currentPlatform = computed(() => {
     return platforms.value.find(item => item.id === platformId.value) || null;
 });
 
+const currentPixVideoModel = computed(() => pixVideoModelDefinitions.find(item => item.id === model.value) || null);
+const availableVideoModelOptions = computed(() => isPixPlatform(currentPlatform.value)
+    ? pixVideoModelDefinitions.map(item => ({ label: item.label, value: item.id }))
+    : legacyVideoModelOptions.map(item => ({ label: item, value: item }))
+);
+const currentPixConstraints = computed(() => currentPixVideoModel.value
+    ? pixModelConstraints(currentPixVideoModel.value, videoQuality.value)
+    : null
+);
+const availableRatioOptions = computed(() => currentPixConstraints.value
+    ? [...currentPixConstraints.value.ratios]
+    : ratioOptions
+);
+const availableCreationModeOptions = computed(() => {
+    const definition = currentPixVideoModel.value;
+    if (!definition) return modeOptions;
+    const modes = currentPixConstraints.value?.modes || definition.modes;
+    const frameOption = modes.includes("first-last")
+        ? { label: "首尾帧", value: "frames" as CreationMode, desc: "可上传首帧和尾帧图片" }
+        : { label: "首帧", value: "frames" as CreationMode, desc: `只支持提示词，可选 1 张首帧图片` };
+    if (!modes.includes("reference")) return modes.includes("first-frame") || modes.includes("first-last") ? [frameOption] : [];
+    const referenceLabels = definition.media.map(type => type === "image" ? "图片" : type === "video" ? "视频" : "音频");
+    return [
+        ...(modes.includes("first-frame") || modes.includes("first-last") ? [frameOption] : []),
+        { label: "@参考", value: "reference" as CreationMode, desc: `可引用${referenceLabels.join("、")}` },
+    ];
+});
+const videoQualityOptions = computed(() => currentPixVideoModel.value && "qualities" in currentPixVideoModel.value
+    ? [...currentPixVideoModel.value.qualities]
+    : []
+);
+const supportsReferenceMode = computed(() => !currentPixConstraints.value || currentPixConstraints.value.modes.includes("reference"));
+const supportsLastFrame = computed(() => !currentPixConstraints.value || currentPixConstraints.value.modes.includes("first-last"));
+const canUseAtMentions = computed(() => mode.value === "reference" && supportsReferenceMode.value);
+const allowedReferenceMediaTypes = computed<SeedanceAssetType[]>(() => currentPixVideoModel.value
+    ? currentPixVideoModel.value.media.map(item => item as SeedanceAssetType)
+    : ["image", "video", "audio"]
+);
+const visibleReferenceAssets = computed(() => assets.value.filter(item => allowedReferenceMediaTypes.value.includes(item.type)));
+const referenceMaterialHint = computed(() => {
+    const definition = currentPixVideoModel.value;
+    if (definition && !supportsReferenceMode.value) {
+        return `${definition.label} 不支持 @ 引用，只能使用提示词${definition.maxImages ? "和 1 张首帧图片" : ""}`;
+    }
+    if (!definition) return "支持 @ 引用图片（≤9）、视频（≤3）、音频（≤3）";
+    const limits = [
+        definition.maxImages ? `图片≤${definition.maxImages}` : "",
+        definition.maxVideos ? `视频≤${definition.maxVideos}` : "",
+        definition.maxAudios ? `音频≤${definition.maxAudios}` : "",
+    ].filter(Boolean);
+    return `支持 @ 引用：${limits.join("、")}`;
+});
 const resolutionOptions = computed(() => {
+    if (currentPixConstraints.value) {
+        return [...currentPixConstraints.value.resolutions];
+    }
     return model.value === "seedance-2.0" ? hdResolutionOptions : baseResolutionOptions;
 });
+const durationOptions = computed(() => currentPixConstraints.value
+    ? currentPixConstraints.value.durations.map((value: number) => ({ label: `${value}s`, value }))
+    : allDurationOptions
+);
+
+const normalizeVideoModelParameters = () => {
+    const allowedModels = availableVideoModelOptions.value.map(item => item.value);
+    if (!allowedModels.includes(model.value)) {
+        model.value = allowedModels[0] || "seedance-2.0";
+    }
+    const config = pixVideoModelDefinitions.find(item => item.id === model.value);
+    if (!config) return;
+    if ("qualities" in config && !config.qualities.includes(videoQuality.value as never)) {
+        videoQuality.value = config.defaultQuality;
+    }
+    const constraints = pixModelConstraints(config, videoQuality.value);
+    if (mode.value === "reference" && !constraints.modes.includes("reference")) mode.value = "frames";
+    if (mode.value === "frames" && !constraints.modes.includes("first-frame") && !constraints.modes.includes("first-last")) mode.value = "reference";
+    if (!constraints.modes.includes("first-last") && lastFrame.value) {
+        lastFrame.value = "";
+        lastFrameOrigin.value = "upload";
+    }
+    const allowedTypes = new Set(config.media);
+    const allowedMentionIds = new Set([
+        ...assets.value.filter(item => allowedTypes.has(item.type as never)).map(item => item.id),
+        ...batchAssetLibrary.value.filter(item => allowedTypes.has(item.type as never)).map(item => `library:${item.id}`),
+    ]);
+    mentionAssetIds.value = constraints.modes.includes("reference")
+        ? mentionAssetIds.value.filter(id => allowedMentionIds.has(id))
+        : [];
+    if (!constraints.modes.includes("reference")) assetPickerVisible.value = false;
+    if (!constraints.ratios.includes(ratio.value)) ratio.value = constraints.ratios[0];
+    if (constraints.resolutions.length && !constraints.resolutions.includes(resolution.value)) resolution.value = constraints.resolutions[0];
+    if (!constraints.durations.includes(duration.value)) duration.value = constraints.durations[0];
+};
+const videoRatioOptions = (value: string) => {
+    const definition = pixVideoModelDefinitions.find(item => item.id === value);
+    return definition ? pixModelConstraints(definition).ratios : ratioOptions;
+};
+const videoResolutionOptions = (value: string) => {
+    const definition = pixVideoModelDefinitions.find(item => item.id === value);
+    return definition ? pixModelConstraints(definition).resolutions : hdResolutionOptions;
+};
+const videoDurationOptions = (value: string, includeLong = false) => {
+    const definition = pixVideoModelDefinitions.find(item => item.id === value);
+    if (!definition) {
+        const items = allDurationOptions.filter(item => item.value >= 4);
+        return includeLong ? [...items, { label: "30s（自动分段）", value: 30 }, { label: "45s（自动分段）", value: 45 }, { label: "60s（自动分段）", value: 60 }] : items;
+    }
+    const constraints = pixModelConstraints(definition);
+    const items = constraints.durations.map((duration: number) => ({ label: `${duration}s`, value: duration }));
+    const canChain = constraints.durations.includes(15) && constraints.modes.includes("first-frame");
+    return includeLong && canChain ? [...items, { label: "30s（自动分段）", value: 30 }, { label: "45s（自动分段）", value: 45 }, { label: "60s（自动分段）", value: 60 }] : items;
+};
 
 const loadPlatforms = async () => {
     platforms.value = await DirectApiPlatformService.listByCapability("seedance");
@@ -366,7 +658,9 @@ const loadPlatforms = async () => {
 
 const loadBatchAssetLibrary = async () => {
     const saved = await window.$mapi.storage.get(BATCH_ASSET_LIBRARY_STORAGE_GROUP, BATCH_ASSET_LIBRARY_STORAGE_KEY, []);
-    const savedLibrary = Array.isArray(saved) ? saved.filter(item => item?.url && item?.type) : [];
+    const savedLibrary = Array.isArray(saved)
+        ? saved.filter(item => item?.url && item?.type).map(item => ({ ...item, origin: "library" as const }))
+        : [];
     if (savedLibrary.length) {
         batchAssetLibrary.value = savedLibrary;
         return;
@@ -375,7 +669,7 @@ const loadBatchAssetLibrary = async () => {
     const oldLibrary = Array.isArray(oldDraft?.batchAssetLibrary)
         ? oldDraft.batchAssetLibrary.filter((item: any) => item?.url && item?.type)
         : [];
-    batchAssetLibrary.value = oldLibrary;
+    batchAssetLibrary.value = oldLibrary.map((item: SeedanceAsset) => ({ ...item, origin: "library" }));
     if (oldLibrary.length) {
         await saveBatchAssetLibrary();
     }
@@ -401,15 +695,18 @@ const hydrateFromTask = async () => {
     mode.value = input.mode === "frames" ? "frames" : "reference";
     prompt.value = String(input.prompt || "");
     model.value = normalizeUiVideoModel(String(body.model || model.value));
-    ratio.value = String(body.ratio || ratio.value);
+    ratio.value = String(body.aspect_ratio || body.ratio || ratio.value);
     resolution.value = String(body.resolution || resolution.value);
+    videoQuality.value = String(body.quality || videoQuality.value);
     duration.value = normalizeDuration(body.duration);
     generateAudio.value = body.generate_audio !== false;
     watermark.value = !!body.watermark;
     webSearch.value = Array.isArray(body.tools) && body.tools.some((item: any) => item?.type === "web_search");
     firstFrame.value = String(input.firstFrame || "");
     lastFrame.value = String(input.lastFrame || "");
-    assets.value = Array.isArray(input.assets) ? input.assets : [];
+    firstFrameOrigin.value = input.firstFrameOrigin === "library" ? "library" : "upload";
+    lastFrameOrigin.value = input.lastFrameOrigin === "library" ? "library" : "upload";
+    assets.value = Array.isArray(input.assets) ? input.assets.map((item: SeedanceAsset) => ({ ...item, origin: item.origin || "upload" })) : [];
     const selectedIds = Array.isArray(input.mentionAssetIds) ? input.mentionAssetIds.map((item: any) => String(item)) : [];
     const validAssetIds = new Set(assets.value.map(item => item.id));
     mentionAssetIds.value = selectedIds.filter((id: string) => validAssetIds.has(id));
@@ -471,6 +768,7 @@ onMounted(async () => {
     }
     await hydrateFromTask();
     model.value = normalizeUiVideoModel(model.value);
+    normalizeVideoModelParameters();
     if (!route.query.editTaskId) {
         ensureSelectedMentionTokens();
         syncMentionIdsFromPrompt();
@@ -483,18 +781,20 @@ onBeforeUnmount(() => {
     unbindPageDropUpload();
 });
 
-watch(model, value => {
-    const normalized = normalizeUiVideoModel(value);
-    if (normalized !== value) {
-        model.value = normalized;
+watch([platformId, model, videoQuality], normalizeVideoModelParameters);
+
+watch([platformId, () => batchPromptGenerator.value.videoModel], ([, value]) => {
+    if (isPixPlatform(currentPlatform.value) && !pixVideoModelIds.includes(value as any)) {
+        batchPromptGenerator.value.videoModel = "seedance-2-0-official";
         return;
     }
-    if (normalized === "seedance-2.0-fast" && resolution.value === "1080p") {
-        resolution.value = "720p";
+    const definition = pixVideoModelDefinitions.find(item => item.id === value);
+    if (definition) {
+        if (!definition.ratios.includes(batchPromptGenerator.value.ratio as never)) batchPromptGenerator.value.ratio = definition.ratios[0];
+        if (definition.resolutions.length && !definition.resolutions.includes(batchPromptGenerator.value.resolution as never)) batchPromptGenerator.value.resolution = definition.resolutions[0];
+        if (!definition.durations.includes(batchPromptGenerator.value.duration as never) && batchPromptGenerator.value.duration <= 15) batchPromptGenerator.value.duration = definition.durations[0];
+        return;
     }
-});
-
-watch(() => batchPromptGenerator.value.videoModel, value => {
     if (normalizeUiVideoModel(value) === "seedance-2.0-fast" && batchPromptGenerator.value.resolution === "1080p") {
         batchPromptGenerator.value.resolution = "720p";
     }
@@ -581,81 +881,105 @@ const imageInfo = async (path: string) => {
 
 const within = (value: number, min: number, max: number) => value >= min && value <= max;
 
-const validateImageUpload = async (path: string): Promise<{ ok: true; asset: Partial<SeedanceAsset> } | { ok: false; message: string }> => {
+const validateImageUpload = async (path: string, modelId = model.value): Promise<{ ok: true; asset: Partial<SeedanceAsset> } | { ok: false; message: string }> => {
     const ext = fileExt(path);
     if (!["jpeg", "jpg", "png", "webp", "bmp", "tiff", "gif"].includes(ext)) {
         return { ok: false, message: shortName(path) + " 格式不支持，图片仅支持 jpeg、png、webp、bmp、tiff、gif" };
     }
     const size = await localFileSize(path);
-    if (size > imageLimits.maxSize) {
-        return { ok: false, message: shortName(path) + " 大小为 " + formatMB(size) + "，单张图片需小于 30MB" };
+    const pixModel = isPixVideoModel(modelId);
+    const limit = pixMediaLimit(modelId, "image");
+    const maxSize = pixModel ? limit?.maxSize : imageLimits.maxSize;
+    if (maxSize && size > maxSize) {
+        return { ok: false, message: shortName(path) + " 大小为 " + formatMB(size) + "，当前模型单张图片不能超过 " + formatMB(maxSize) };
     }
     const { width, height } = await imageInfo(path);
     const aspect = width / height;
-    if (!within(width, imageLimits.minSide, imageLimits.maxSide) || !within(height, imageLimits.minSide, imageLimits.maxSide)) {
-        return { ok: false, message: shortName(path) + " 尺寸为 " + width + "x" + height + "px，宽高需在 300-6000px 之间" };
+    const shortSide = Math.min(width, height);
+    const longSide = Math.max(width, height);
+    const minSide = pixModel ? limit?.minSide : imageLimits.minSide;
+    const maxSide = pixModel ? limit?.maxSide : imageLimits.maxSide;
+    if (minSide && shortSide < minSide) {
+        return { ok: false, message: shortName(path) + " 尺寸为 " + width + "x" + height + "px，当前模型要求短边至少 " + minSide + "px" };
     }
-    if (!within(aspect, imageLimits.minAspect, imageLimits.maxAspect)) {
+    if (maxSide && longSide > maxSide) {
+        return { ok: false, message: shortName(path) + " 尺寸为 " + width + "x" + height + "px，当前模型要求长边不超过 " + maxSide + "px" };
+    }
+    if (!pixModel && !within(aspect, imageLimits.minAspect, imageLimits.maxAspect)) {
         return { ok: false, message: shortName(path) + " 宽高比为 " + aspect.toFixed(2) + "，需在 0.4-2.5 之间" };
     }
     return { ok: true, asset: { size, width, height } };
 };
 
-const validateVideoUpload = async (path: string): Promise<{ ok: true; asset: Partial<SeedanceAsset> } | { ok: false; message: string }> => {
+const validateVideoUpload = async (path: string, modelId = model.value): Promise<{ ok: true; asset: Partial<SeedanceAsset> } | { ok: false; message: string }> => {
     const ext = fileExt(path);
     if (!["mp4", "mov"].includes(ext)) {
         return { ok: false, message: shortName(path) + " 格式不支持，视频仅支持 mp4、mov" };
     }
     const size = await localFileSize(path);
-    if (size > videoLimits.maxSize) {
-        return { ok: false, message: shortName(path) + " 大小为 " + formatMB(size) + "，单个视频不能超过 50MB" };
+    const pixModel = isPixVideoModel(modelId);
+    const limit = pixMediaLimit(modelId, "video");
+    const maxSize = pixModel ? limit?.maxSize : videoLimits.maxSize;
+    if (maxSize && size > maxSize) {
+        return { ok: false, message: shortName(path) + " 大小为 " + formatMB(size) + "，当前模型单个视频不能超过 " + formatMB(maxSize) };
     }
     const info = await ffprobeVideoInfo(path);
     const aspect = info.width / info.height;
     const pixels = info.width * info.height;
-    if (!within(info.duration, videoLimits.minDuration, videoLimits.maxDuration)) {
+    if (!pixModel && !within(info.duration, videoLimits.minDuration, videoLimits.maxDuration)) {
         return { ok: false, message: shortName(path) + " 时长为 " + info.duration.toFixed(1) + "s，单个视频需在 2-15s 之间" };
     }
-    if (!within(info.width, videoLimits.minSide, videoLimits.maxSide) || !within(info.height, videoLimits.minSide, videoLimits.maxSide)) {
-        return { ok: false, message: shortName(path) + " 尺寸为 " + info.width + "x" + info.height + "px，宽高需在 300-6000px 之间" };
+    const shortSide = Math.min(info.width, info.height);
+    const longSide = Math.max(info.width, info.height);
+    const minSide = pixModel ? limit?.minSide : videoLimits.minSide;
+    const maxSide = pixModel ? limit?.maxSide : videoLimits.maxSide;
+    if (minSide && shortSide < minSide) {
+        return { ok: false, message: shortName(path) + " 尺寸为 " + info.width + "x" + info.height + "px，当前模型要求短边至少 " + minSide + "px" };
     }
-    if (!within(aspect, videoLimits.minAspect, videoLimits.maxAspect)) {
+    if (maxSide && longSide > maxSide) {
+        return { ok: false, message: shortName(path) + " 尺寸为 " + info.width + "x" + info.height + "px，当前模型要求长边不超过 " + maxSide + "px" };
+    }
+    if (!pixModel && !within(aspect, videoLimits.minAspect, videoLimits.maxAspect)) {
         return { ok: false, message: shortName(path) + " 宽高比为 " + aspect.toFixed(2) + "，需在 0.4-2.5 之间" };
     }
-    if (!within(pixels, videoLimits.minPixels, videoLimits.maxPixels)) {
-        return { ok: false, message: shortName(path) + " 画面像素为 " + pixels + "，需在 409600-927408 之间" };
+    const minPixels = pixModel ? limit?.minPixels : videoLimits.minPixels;
+    const maxPixels = pixModel ? limit?.maxPixels : videoLimits.maxPixels;
+    if ((minPixels && pixels < minPixels) || (maxPixels && pixels > maxPixels)) {
+        return { ok: false, message: shortName(path) + " 画面像素为 " + pixels + `，需在 ${minPixels || 0}-${maxPixels || "不限"} 之间` };
     }
-    if (!within(info.fps, videoLimits.minFps, videoLimits.maxFps)) {
+    if (!pixModel && !within(info.fps, videoLimits.minFps, videoLimits.maxFps)) {
         return { ok: false, message: shortName(path) + " 帧率为 " + info.fps.toFixed(2) + " FPS，需在 24-60 FPS 之间" };
     }
     return { ok: true, asset: { size, duration: info.duration, width: info.width, height: info.height, fps: info.fps } };
 };
 
-const validateAudioUpload = async (path: string): Promise<{ ok: true; asset: Partial<SeedanceAsset> } | { ok: false; message: string }> => {
+const validateAudioUpload = async (path: string, modelId = model.value): Promise<{ ok: true; asset: Partial<SeedanceAsset> } | { ok: false; message: string }> => {
     const ext = fileExt(path);
     if (!["wav", "mp3"].includes(ext)) {
         return { ok: false, message: shortName(path) + " 格式不支持，音频仅支持 wav、mp3" };
     }
     const size = await localFileSize(path);
-    if (size > audioLimits.maxSize) {
-        return { ok: false, message: shortName(path) + " 大小为 " + formatMB(size) + "，单个音频不能超过 15MB" };
+    const pixModel = isPixVideoModel(modelId);
+    const maxSize = pixModel ? pixMediaLimit(modelId, "audio")?.maxSize : audioLimits.maxSize;
+    if (maxSize && size > maxSize) {
+        return { ok: false, message: shortName(path) + " 大小为 " + formatMB(size) + "，当前模型单个音频不能超过 " + formatMB(maxSize) };
     }
     const info = await ffprobeAudioInfo(path);
-    if (!within(info.duration, audioLimits.minDuration, audioLimits.maxDuration)) {
+    if (!pixModel && !within(info.duration, audioLimits.minDuration, audioLimits.maxDuration)) {
         return { ok: false, message: shortName(path) + " 时长为 " + info.duration.toFixed(1) + "s，单个音频需在 2-15s 之间" };
     }
     return { ok: true, asset: { size, duration: info.duration } };
 };
 
-const validateUpload = async (type: SeedanceAssetType, path: string) => {
+const validateUpload = async (type: SeedanceAssetType, path: string, modelId = model.value) => {
     try {
         if (type === "image") {
-            return await validateImageUpload(path);
+            return await validateImageUpload(path, modelId);
         }
         if (type === "video") {
-            return await validateVideoUpload(path);
+            return await validateVideoUpload(path, modelId);
         }
-        return await validateAudioUpload(path);
+        return await validateAudioUpload(path, modelId);
     } catch (e: any) {
         return { ok: false as const, message: shortName(path) + " 读取失败：" + String(e?.message || e || "无法识别文件") };
     }
@@ -766,8 +1090,10 @@ const pickFrame = async (target: "first" | "last") => {
     }
     if (target === "first") {
         firstFrame.value = filePath;
+        firstFrameOrigin.value = "upload";
     } else {
         lastFrame.value = filePath;
+        lastFrameOrigin.value = "upload";
     }
 };
 
@@ -778,6 +1104,7 @@ const addReferenceAsset = (type: SeedanceAssetType, url: string, meta: Partial<S
         role: referenceRoleMap[type],
         url,
         ...meta,
+        origin: "upload",
     });
 };
 
@@ -792,9 +1119,49 @@ const addBatchLibraryAsset = (type: SeedanceAssetType, url: string, meta: Partia
         role: referenceRoleMap[type],
         url,
         ...meta,
+        origin: "library",
     });
     return true;
 };
+
+const isAssetInLibrary = (asset: Pick<SeedanceAsset, "type" | "url">) => {
+    return batchAssetLibrary.value.some(item => item.type === asset.type && item.url === asset.url);
+};
+
+const saveReferenceAssetToLibrary = async (asset: SeedanceAsset) => {
+    if (!addBatchLibraryAsset(asset.type, asset.url, asset)) {
+        Dialog.tipError("该素材已经在素材库中");
+        return;
+    }
+    await saveBatchAssetLibrary();
+    Dialog.tipSuccess("已存入 Seedance 素材库");
+};
+
+const openAssetLibrary = (mode: "manage" | "firstFrame" | "lastFrame" = "manage") => {
+    assetLibraryMode.value = mode;
+    batchAssetLibraryVisible.value = true;
+};
+
+const useLibraryAssetAsFrame = (asset: SeedanceAsset) => {
+    if (asset.type !== "image") {
+        return;
+    }
+    if (assetLibraryMode.value === "firstFrame") {
+        firstFrame.value = asset.url;
+        firstFrameOrigin.value = "library";
+    } else if (assetLibraryMode.value === "lastFrame") {
+        lastFrame.value = asset.url;
+        lastFrameOrigin.value = "library";
+    }
+    batchAssetLibraryVisible.value = false;
+};
+
+const visibleLibraryAssets = computed(() => {
+    if (assetLibraryMode.value === "firstFrame" || assetLibraryMode.value === "lastFrame") {
+        return batchAssetLibrary.value.filter(item => item.type === "image");
+    }
+    return batchAssetLibrary.value;
+});
 
 const addReferenceAssetsByType = (type: SeedanceAssetType, valid: Array<{ url: string; meta: Partial<SeedanceAsset> }>, errors: string[]) => {
     if (!valid.length) {
@@ -816,36 +1183,52 @@ const validateReferenceGroupLimit = (type: SeedanceAssetType, newItems: Array<Pa
 };
 
 const validateReferenceSubmissionLimit = () => {
+    const definition = currentPixVideoModel.value;
+    const maxImages = definition?.maxImages ?? imageLimits.maxCount;
+    const maxVideos = definition?.maxVideos ?? videoLimits.maxCount;
+    const maxAudios = definition?.maxAudios ?? audioLimits.maxCount;
     const currentImages = activeReferenceAssets().filter(item => item.type === "image");
-    if (currentImages.length > imageLimits.maxCount) {
-        return "本次引用图片最多 " + imageLimits.maxCount + " 张";
+    if (currentImages.length > maxImages) {
+        return "本次引用图片最多 " + maxImages + " 张";
     }
     const totalImageSize = currentImages.reduce((sum, item) => sum + Number(item.size || 0), 0);
-    if (totalImageSize > imageLimits.requestBodyMaxSize) {
+    if (!definition && totalImageSize > imageLimits.requestBodyMaxSize) {
         return "本次引用图片总体大小约 " + formatMB(totalImageSize) + "，请求体需不超过 64MB；请减少引用或压缩后再传";
     }
 
     const currentVideos = activeReferenceAssets().filter(item => item.type === "video");
-    if (currentVideos.length > videoLimits.maxCount) {
-        return "本次引用视频最多 " + videoLimits.maxCount + " 个";
+    if (currentVideos.length > maxVideos) {
+        return "本次引用视频最多 " + maxVideos + " 个";
     }
     const totalVideoDuration = currentVideos.reduce((sum, item) => sum + Number(item.duration || 0), 0);
-    if (totalVideoDuration > videoLimits.totalDuration) {
-        return "本次引用视频总时长为 " + totalVideoDuration.toFixed(1) + "s，不能超过 15s";
-    }
 
     const currentAudios = activeReferenceAssets().filter(item => item.type === "audio");
-    if (currentAudios.length > audioLimits.maxCount) {
-        return "本次引用音频最多 " + audioLimits.maxCount + " 段";
+    if (currentAudios.length > maxAudios) {
+        return "本次引用音频最多 " + maxAudios + " 段";
     }
     const totalAudioDuration = currentAudios.reduce((sum, item) => sum + Number(item.duration || 0), 0);
-    if (totalAudioDuration > audioLimits.totalDuration) {
-        return "本次引用音频总时长为 " + totalAudioDuration.toFixed(1) + "s，不能超过 15s";
+    if (definition) {
+        const combinedLimit = pixUploadLimits[definition.id]?.combinedAvDuration;
+        const combinedDuration = totalVideoDuration + totalAudioDuration;
+        if (combinedLimit && combinedDuration > combinedLimit) {
+            return "本次引用视频和音频合计时长为 " + combinedDuration.toFixed(1) + "s，当前模型不能超过 " + combinedLimit + "s";
+        }
+    } else {
+        if (totalVideoDuration > videoLimits.totalDuration) {
+            return "本次引用视频总时长为 " + totalVideoDuration.toFixed(1) + "s，不能超过 15s";
+        }
+        if (totalAudioDuration > audioLimits.totalDuration) {
+            return "本次引用音频总时长为 " + totalAudioDuration.toFixed(1) + "s，不能超过 15s";
+        }
     }
     return "";
 };
 
 const pickReference = async (type: SeedanceAssetType) => {
+    if (!canUseAtMentions.value || !allowedReferenceMediaTypes.value.includes(type)) {
+        Dialog.tipError(`${currentPixVideoModel.value?.label || "当前模型"} 不支持这种 @ 参考素材`);
+        return;
+    }
     const filePath = await window.$mapi.file.openFile({
         filters: referenceFilters[type],
         properties: ["multiSelections"],
@@ -951,6 +1334,10 @@ const handleReferenceDrop = async (files: File[]) => {
             errors.push(file.name + " 格式不支持，仅支持图片、视频、音频素材");
             continue;
         }
+        if (!allowedReferenceMediaTypes.value.includes(type)) {
+            errors.push(`${file.name} 未添加；当前模型不支持${type === "image" ? "图片" : type === "video" ? "视频" : "音频"}参考`);
+            continue;
+        }
         const result = await validateUpload(type, path);
         if (result.ok) {
             groups[type].push({ url: path, meta: result.asset });
@@ -989,12 +1376,14 @@ const handleFrameDrop = async (files: File[]) => {
         }
         if (!firstFrame.value) {
             firstFrame.value = path;
+            firstFrameOrigin.value = "upload";
             added += 1;
-        } else if (!lastFrame.value) {
+        } else if (supportsLastFrame.value && !lastFrame.value) {
             lastFrame.value = path;
+            lastFrameOrigin.value = "upload";
             added += 1;
         } else {
-            errors.push(file.name + " 未添加；首帧和尾帧已存在");
+            errors.push(file.name + (supportsLastFrame.value ? " 未添加；首帧和尾帧已存在" : " 未添加；当前模型只支持首帧"));
         }
     }
     uploadLimitMessage(errors);
@@ -1046,6 +1435,7 @@ const removeFrame = (target: "first" | "last") => {
     if (target === "first") {
         const asset = mentionAssets.value.find(item => item.id === "first-frame");
         firstFrame.value = "";
+        firstFrameOrigin.value = "upload";
         mentionAssetIds.value = mentionAssetIds.value.filter(item => item !== "first-frame");
         if (asset) {
             removeMentionToken(asset);
@@ -1053,6 +1443,7 @@ const removeFrame = (target: "first" | "last") => {
     } else {
         const asset = mentionAssets.value.find(item => item.id === "last-frame");
         lastFrame.value = "";
+        lastFrameOrigin.value = "upload";
         mentionAssetIds.value = mentionAssetIds.value.filter(item => item !== "last-frame");
         if (asset) {
             removeMentionToken(asset);
@@ -1062,32 +1453,45 @@ const removeFrame = (target: "first" | "last") => {
 
 const mentionAssets = computed<MentionAsset[]>(() => {
     const list: MentionAsset[] = [];
-    if (mode.value === "frames" && firstFrame.value) {
+    if (mode.value === "frames" && firstFrame.value && !isPixPlatform(currentPlatform.value)) {
         list.push({
             id: "first-frame",
             label: `首帧 ${shortName(firstFrame.value)}`,
             type: "frame",
             url: firstFrame.value,
             source: "first_frame",
+            origin: firstFrameOrigin.value,
         });
     }
-    if (mode.value === "frames" && lastFrame.value) {
+    if (mode.value === "frames" && lastFrame.value && !isPixPlatform(currentPlatform.value)) {
         list.push({
             id: "last-frame",
             label: `尾帧 ${shortName(lastFrame.value)}`,
             type: "frame",
             url: lastFrame.value,
             source: "last_frame",
+            origin: lastFrameOrigin.value,
         });
     }
     if (mode.value === "reference") {
-        for (const item of assets.value.filter(item => item.url)) {
+        for (const item of batchAssetLibrary.value.filter(item => item.url && allowedReferenceMediaTypes.value.includes(item.type))) {
+            list.push({
+                id: `library:${item.id}`,
+                label: shortName(item.url),
+                type: item.type,
+                url: item.url,
+                source: "library",
+                origin: "library",
+            });
+        }
+        for (const item of assets.value.filter(item => item.url && allowedReferenceMediaTypes.value.includes(item.type))) {
             list.push({
                 id: item.id,
                 label: shortName(item.url),
                 type: item.type,
                 url: item.url,
                 source: "asset",
+                origin: item.origin || "upload",
             });
         }
     }
@@ -1101,23 +1505,32 @@ const selectedMentionAssets = computed(() => {
 });
 
 const activeReferenceAssets = () => {
-    const ids = Array.from(new Set(selectedMentionAssets.value
-        .filter(item => item.source === "asset")
-        .map(item => item.id)));
-    return ids
-        .map(id => assets.value.find(item => item.id === id))
-        .filter(item => item?.url?.trim()) as SeedanceAsset[];
+    const selected = selectedMentionAssets.value.filter(item => item.source === "asset" || item.source === "library");
+    return selected.map(item => {
+        if (item.source === "library") {
+            return batchAssetLibrary.value.find(asset => `library:${asset.id}` === item.id);
+        }
+        return assets.value.find(asset => asset.id === item.id);
+    }).filter((item): item is SeedanceAsset => !!item?.url?.trim());
 };
 
 const mentionTokenOf = (asset: MentionAsset) => {
-    return "@" + asset.label.replace(/\s+/g, "_");
+    const sourcePrefix = asset.source === "library"
+        ? "素材库_"
+        : asset.source === "asset"
+            ? "本次上传_"
+            : "";
+    return "@" + sourcePrefix + asset.label.replace(/\s+/g, "_");
 };
 
 const promptMentionLabels = () => batchPromptMentionLabels(prompt.value);
+const legacyPromptMentionLabels = () => promptMentionLabels().filter(label => {
+    return !label.startsWith("素材库_") && !label.startsWith("本次上传_");
+});
 
 const promptReferencesMentionAsset = (asset: MentionAsset) => {
     return prompt.value.includes(mentionTokenOf(asset)) ||
-        promptMentionLabels().some(label => batchMentionLabelMatchesAsset(label, asset.label));
+        (asset.source === "asset" && legacyPromptMentionLabels().some(label => batchMentionLabelMatchesAsset(label, asset.label)));
 };
 
 const mentionLabelOf = (asset: MentionAsset, index: number) => {
@@ -1142,13 +1555,15 @@ const splitSpeechFromVisualText = (value: string) => {
 
 const buildPromptText = () => {
     let text = prompt.value.trim();
-    const referencedAssets = selectedMentionAssets.value.filter(item => item.source === "asset");
+    const referencedAssets = selectedMentionAssets.value.filter(item => item.source === "asset" || item.source === "library");
     if (!referencedAssets.length) {
         return text.replace(/@\S+/g, "").trim();
     }
     const legend = referencedAssets.map((asset, index) => {
         const label = mentionLabelOf(asset, index);
-        const matchedLabels = promptMentionLabels().filter(item => batchMentionLabelMatchesAsset(item, asset.label));
+        const matchedLabels = asset.source === "asset"
+            ? legacyPromptMentionLabels().filter(item => batchMentionLabelMatchesAsset(item, asset.label))
+            : [];
         text = text.split(mentionTokenOf(asset)).join(`「${label}」`);
         matchedLabels.forEach(item => {
             text = replaceBatchMention(text, item, `「${label}」`);
@@ -1201,9 +1616,31 @@ const filteredMentionAssets = computed(() => {
     return mentionAssets.value.filter(item => item.label.toLowerCase().includes(keyword));
 });
 
+const mentionAssetGroups = computed(() => {
+    const filtered = filteredMentionAssets.value;
+    return [
+        {
+            key: "library",
+            title: "素材库",
+            hint: "长期保存，可重复使用",
+            assets: filtered.filter(item => item.origin === "library"),
+        },
+        {
+            key: "upload",
+            title: "本次上传",
+            hint: "仅用于当前生成草稿",
+            assets: filtered.filter(item => item.origin === "upload"),
+        },
+    ].filter(group => group.assets.length);
+});
+
 const openMentionPicker = () => {
+    if (!canUseAtMentions.value) {
+        Dialog.tipError(`${currentPixVideoModel.value?.label || "当前模式"} 不支持 @ 参考素材`);
+        return;
+    }
     if (!mentionAssets.value.length) {
-        Dialog.tipError("请先上传素材");
+        Dialog.tipError("请先上传素材或将素材加入 Seedance 素材库");
         return;
     }
     assetPickerKeyword.value = "";
@@ -2072,7 +2509,7 @@ const generateBatchPrompts = async () => {
         batchRows.value = nextRows;
         batchFilePath.value = `AI生成批量提示词_${new Date().toLocaleString()}`;
         selectedBatchRowKeys.value = [];
-        batchPromptGeneratorVisible.value = false;
+        batchWorkspaceView.value = "list";
         Dialog.tipSuccess(`已生成 ${nextRows.length} 条批量提示词，请检查后再提交`);
     } catch (e: any) {
         Dialog.tipError(e?.message || "AI 提示词生成失败");
@@ -2218,24 +2655,32 @@ const validateBatchRow = async (row: BatchSeedanceRow, directFileRelay: Awaited<
     const unresolvedMentions = unresolvedBatchMentions(row);
     if (unresolvedMentions.length) return `提示词引用了未匹配的素材：${unresolvedMentions.join("、")}`;
     if (row.model === "seedance-2.0-fast" && row.resolution === "1080p") return "Seedance fast 不支持 1080p，请改为 480p 或 720p";
+    let localVideoDuration = 0;
+    let localAudioDuration = 0;
     for (const image of [row.firstFrame, row.lastFrame, ...batchRowAssets(row).filter(item => item.type === "image").map(item => item.url)].filter(Boolean)) {
         if (!isRemoteOrDataUrl(image)) {
-            const result = await validateUpload("image", image);
+            const result = await validateUpload("image", image, row.model);
             if (!result.ok) return result.message;
         }
     }
     for (const video of batchRowAssets(row).filter(item => item.type === "video").map(item => item.url)) {
         if (!isRemoteOrDataUrl(video)) {
             if (!directFileRelay) return "本地视频参考需要先配置 123 云盘或平台素材中转";
-            const result = await validateUpload("video", video);
+            const result = await validateUpload("video", video, row.model);
             if (!result.ok) return result.message;
+            localVideoDuration += Number(result.asset.duration || 0);
         }
     }
     for (const audio of batchRowAssets(row).filter(item => item.type === "audio").map(item => item.url)) {
         if (!isRemoteOrDataUrl(audio)) {
-            const result = await validateUpload("audio", audio);
+            const result = await validateUpload("audio", audio, row.model);
             if (!result.ok) return result.message;
+            localAudioDuration += Number(result.asset.duration || 0);
         }
+    }
+    const combinedLimit = pixUploadLimits[row.model]?.combinedAvDuration;
+    if (combinedLimit && localVideoDuration + localAudioDuration > combinedLimit) {
+        return `本行本地参考视频和音频合计 ${(localVideoDuration + localAudioDuration).toFixed(1)}s，${row.model} 不能超过 ${combinedLimit}s`;
     }
     return "";
 };
@@ -2260,6 +2705,7 @@ const pickBatchSpreadsheet = async () => {
             Dialog.tipError("批量清单没有可提交的数据行");
             return;
         }
+        batchWorkspaceView.value = "list";
         Dialog.tipSuccess(`已读取 ${batchRows.value.length} 条批量任务`);
     } catch (e: any) {
         Dialog.tipError(e?.message || "批量清单读取失败");
@@ -2313,29 +2759,47 @@ const submitBatchRow = async (
     platform: DirectApiPlatformRecord,
     directFileRelay: Awaited<ReturnType<typeof getEffectiveDirectFileRelay>>
 ) => {
-    const body: any = {
-        model: platformVideoModel(platform, row.model),
-        content: buildBatchContent(row),
-        generate_audio: row.generateAudio,
-        resolution: row.resolution,
-        ratio: row.ratio,
-        duration: row.duration,
-        watermark: row.watermark,
-    };
+    if (isPixPlatform(platform) && row.lastFrame && !row.firstFrame) {
+        throw new Error("PIX 首尾帧模式不能只提交尾帧，请同时设置首帧");
+    }
+    const batchContent = buildBatchContent(row);
+    const batchDefinition = pixVideoModelDefinitions.find(item => item.id === platformVideoModel(platform, row.model));
+    const body: any = isPixPlatform(platform)
+        ? pixVideoBody(platform, row.model, batchContent, {
+              ratio: row.ratio,
+              duration: row.duration,
+              resolution: row.resolution,
+              quality: batchDefinition && "qualities" in batchDefinition ? batchDefinition.defaultQuality : undefined,
+          })
+        : {
+              model: platformVideoModel(platform, row.model),
+              content: batchContent,
+              generate_audio: row.generateAudio,
+              resolution: row.resolution,
+              ratio: row.ratio,
+              duration: row.duration,
+              watermark: row.watermark,
+          };
+    if (isPixPlatform(platform)) {
+        const pixError = validatePixVideoBody(body);
+        if (pixError) throw new Error(pixError);
+    }
     const modelConfig: RunningHubModelConfigType = {
         capability: "video",
         connectorType: "custom-api",
         providerType: platform.content.platformType,
         providerProfileId: platform.id,
         providerProfileTitle: platform.title,
-        templateTitle: "Seedance 2.0",
+        templateTitle: isPixPlatform(platform)
+            ? pixVideoModelDefinitions.find(item => item.id === body.model)?.label || "PIX 视频模型"
+            : "Seedance 2.0",
         templateType: "custom-api",
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
         directFileRelay: directFileRelay || undefined,
-        submitPath: isKwjmPlatform(platform) ? "/v1/videos/generations" : "/api/v3/contents/generations/tasks",
-        queryPath: isKwjmPlatform(platform) ? "/v1/videos/generations/{id}" : "/api/v3/contents/generations/tasks/{id}",
+        submitPath: platformVideoSubmitPath(platform),
+        queryPath: platformVideoQueryPath(platform),
         requestBodyJson: JSON.stringify(body, null, 2),
         requestFormat: "json",
     };
@@ -2479,7 +2943,7 @@ const submit = async () => {
     }
     const content = buildContent();
     if (content.length === 0) {
-        Dialog.tipError("请输入提示词，或用 @ 引用已上传素材");
+        Dialog.tipError("请输入提示词，或用 @ 引用素材库 / 本次上传素材");
         return;
     }
     const limitError = await validateCurrentLimits();
@@ -2491,21 +2955,39 @@ const submit = async () => {
         return item.type === "video" && item.url.trim() && !/^https?:\/\//i.test(item.url.trim()) && !/^asset:\/\//i.test(item.url.trim());
     });
     const directFileRelay = await getEffectiveDirectFileRelay(platform);
-    if (localVideoAsset && !directFileRelay) {
+    if (localVideoAsset && !directFileRelay && !isPixPlatform(platform)) {
         Dialog.tipError("视频参考当前需要先配置全局 123 云盘中转；图片和音频可自动处理");
         return;
     }
-    const body: any = {
-        model: platformVideoModel(platform, model.value),
-        content,
-        generate_audio: generateAudio.value,
-        resolution: resolution.value,
-        ratio: ratio.value,
-        duration: normalizeDuration(duration.value),
-        watermark: watermark.value,
-    };
-    if (webSearch.value) {
+    const body: any = isPixPlatform(platform)
+        ? pixVideoBody(platform, model.value, content, {
+              ratio: ratio.value,
+              duration: normalizeDuration(duration.value),
+              resolution: resolution.value,
+              quality: videoQuality.value,
+          })
+        : {
+              model: platformVideoModel(platform, model.value),
+              content,
+              generate_audio: generateAudio.value,
+              resolution: resolution.value,
+              ratio: ratio.value,
+              duration: normalizeDuration(duration.value),
+              watermark: watermark.value,
+          };
+    if (webSearch.value && !isPixPlatform(platform)) {
         body.tools = [{ type: "web_search" }];
+    }
+    if (isPixPlatform(platform) && lastFrame.value && !firstFrame.value) {
+        Dialog.tipError("PIX 首尾帧模式不能只提交尾帧，请同时设置首帧");
+        return;
+    }
+    if (isPixPlatform(platform)) {
+        const pixError = validatePixVideoBody(body);
+        if (pixError) {
+            Dialog.tipError(pixError);
+            return;
+        }
     }
     const selectedReferenceAssets = activeReferenceAssets();
     const modelConfig: RunningHubModelConfigType = {
@@ -2514,14 +2996,16 @@ const submit = async () => {
         providerType: platform.content.platformType,
         providerProfileId: platform.id,
         providerProfileTitle: platform.title,
-        templateTitle: "Seedance 2.0",
+        templateTitle: isPixPlatform(platform)
+            ? pixVideoModelDefinitions.find(item => item.id === body.model)?.label || "PIX 视频模型"
+            : "Seedance 2.0",
         templateType: "custom-api",
         baseUrl: platform.content.baseUrl,
         apiKey: platform.content.apiKey,
         proxyUrl: platform.content.proxyUrl || "",
         directFileRelay: directFileRelay || undefined,
-        submitPath: isKwjmPlatform(platform) ? "/v1/videos/generations" : "/api/v3/contents/generations/tasks",
-        queryPath: isKwjmPlatform(platform) ? "/v1/videos/generations/{id}" : "/api/v3/contents/generations/tasks/{id}",
+        submitPath: platformVideoSubmitPath(platform),
+        queryPath: platformVideoQueryPath(platform),
         requestBodyJson: JSON.stringify(body, null, 2),
         requestFormat: "json",
     };
@@ -2538,6 +3022,8 @@ const submit = async () => {
                 prompt: prompt.value,
                 firstFrame: firstFrame.value,
                 lastFrame: lastFrame.value,
+                firstFrameOrigin: firstFrameOrigin.value,
+                lastFrameOrigin: lastFrameOrigin.value,
                 assets: mode.value === "reference" ? selectedReferenceAssets : [],
                 mentionAssetIds: mode.value === "reference" ? selectedReferenceAssets.map(item => item.id) : [],
             },
@@ -2553,19 +3039,17 @@ const submit = async () => {
         <div class="flex-shrink-0 border-b border-gray-100 bg-white px-8 py-5">
             <div class="flex flex-wrap items-center gap-3">
                 <div class="min-w-[122px] shrink-0">
-                    <div class="whitespace-nowrap text-[28px] font-semibold leading-tight text-gray-900">Seedance 2.0</div>
+                    <div class="whitespace-nowrap text-[28px] font-semibold leading-tight text-gray-900">AI 视频模型</div>
                 </div>
                 <a-select v-model="platformId" class="!w-56" placeholder="选择平台">
                     <a-option v-for="item in platforms" :key="item.id" :value="item.id || 0">
                         {{ item.title }}
                     </a-option>
                 </a-select>
-                <a-button type="primary" @click="batchPromptGeneratorVisible = true">AI生成批量提示词</a-button>
-                <a-button @click="pickBatchSpreadsheet">导入批量表</a-button>
-                <a-button @click="batchAssetLibraryVisible = true">素材库{{ batchAssetLibrary.length ? `(${batchAssetLibrary.length})` : "" }}</a-button>
-                <a-button type="primary" status="success" :disabled="!selectedBatchRows.length" :loading="batchSubmitting" @click="submitSelectedBatch">
-                    提交选中{{ selectedBatchRows.length ? `(${selectedBatchRows.length})` : "" }}
+                <a-button type="primary" @click="batchWorkspaceVisible = true; batchWorkspaceView = 'list'">
+                    批量创作{{ batchRows.length ? `(${batchRows.length})` : "" }}
                 </a-button>
+                <a-button @click="openAssetLibrary('manage')">Seedance 素材库{{ batchAssetLibrary.length ? `(${batchAssetLibrary.length})` : "" }}</a-button>
                 <a-button @click="router.push('/server')">平台设置</a-button>
             </div>
         </div>
@@ -2578,82 +3062,10 @@ const submit = async () => {
             </div>
 
             <div v-else class="space-y-4">
-            <div v-if="batchRows.length" class="rounded-lg bg-white p-4 shadow-sm">
-                <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-                    <div class="min-w-0">
-                        <div class="text-sm font-semibold text-gray-800">批量清单：{{ shortName(batchFilePath) }}</div>
-                        <div class="mt-1 text-xs text-gray-500">
-                            Excel 可只写标题、提示词、比例、时长；提示词里的 @ 名称会从素材库按文件名自动匹配。
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <a-checkbox :model-value="batchAllSelected" :indeterminate="batchSomeSelected" @change="toggleAllBatchRows">全选</a-checkbox>
-                        <a-button size="small" @click="invertBatchSelection">反选</a-button>
-                        <a-button size="small" @click="pickBatchSpreadsheet">重新导入</a-button>
-                        <a-button size="small" @click="exportBatchSpreadsheet">导出 Excel</a-button>
-                        <a-button size="small" status="danger" @click="clearAllBatchRows">全部删除</a-button>
-                        <a-button size="small" type="primary" status="success" :disabled="!selectedBatchRows.length" :loading="batchSubmitting" @click="submitSelectedBatch">
-                            提交选中{{ selectedBatchRows.length ? `(${selectedBatchRows.length})` : "" }}
-                        </a-button>
-                        <a-button size="small" type="outline" :loading="batchSubmitting" @click="submitBatch">提交全部</a-button>
-                    </div>
-                </div>
-                <div class="max-h-[280px] overflow-auto rounded border border-gray-100">
-                    <table class="w-full min-w-[760px] table-fixed text-left text-xs">
-                        <colgroup>
-                            <col class="w-9" />
-                            <col class="w-8" />
-                            <col class="w-28" />
-                            <col class="w-48" />
-                            <col class="w-20" />
-                            <col class="w-32" />
-                            <col class="w-16" />
-                            <col class="w-20" />
-                        </colgroup>
-                        <thead class="sticky top-0 bg-gray-50 text-gray-500">
-                            <tr>
-                                <th class="px-3 py-2 font-medium">选择</th>
-                                <th class="px-3 py-2 font-medium">行</th>
-                                <th class="px-3 py-2 font-medium">标题</th>
-                                <th class="px-3 py-2 font-medium">提示词</th>
-                                <th class="px-3 py-2 font-medium">素材</th>
-                                <th class="px-3 py-2 font-medium">参数</th>
-                                <th class="px-3 py-2 font-medium">状态</th>
-                                <th class="px-3 py-2 font-medium">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="row in batchRows" :key="row.rowIndex" class="h-12 border-t border-gray-100">
-                                <td class="whitespace-nowrap px-3 py-2">
-                                    <a-checkbox v-model="selectedBatchRowKeys" :value="batchRowKey(row)" />
-                                </td>
-                                <td class="whitespace-nowrap px-3 py-2 text-gray-500">{{ row.rowIndex }}</td>
-                                <td class="truncate whitespace-nowrap px-3 py-2 text-gray-700" :title="row.title">{{ row.title }}</td>
-                                <td class="truncate whitespace-nowrap px-3 py-2 text-gray-700" :title="row.prompt">{{ row.prompt }}</td>
-                                <td class="whitespace-nowrap px-3 py-2 text-gray-500">
-                                    图{{ batchAssetCountOf(row, 'image') + (row.firstFrame ? 1 : 0) + (row.lastFrame ? 1 : 0) }} / 视频{{ batchAssetCountOf(row, 'video') }} / 音频{{ batchAssetCountOf(row, 'audio') }}
-                                </td>
-                                <td class="truncate whitespace-nowrap px-3 py-2 text-gray-500" :title="`${row.model} · ${row.ratio} · ${batchDurationText(row)} · ${row.resolution}`">{{ row.model }} · {{ row.ratio }} · {{ batchDurationText(row) }} · {{ row.resolution }}</td>
-                                <td class="truncate whitespace-nowrap px-3 py-2">
-                                    <a-tag v-if="row.status === 'ready'">待提交</a-tag>
-                                    <a-tag v-else-if="row.status === 'submitting'" color="arcoblue">提交中</a-tag>
-                                    <a-tag v-else-if="row.status === 'success'" color="green">已提交 #{{ row.taskId }}</a-tag>
-                                    <a-tag v-else color="red">{{ row.error || "失败" }}</a-tag>
-                                </td>
-                                <td class="whitespace-nowrap px-3 py-2">
-                                    <a-button size="mini" @click="editBatchRow(row)">编辑</a-button>
-                                    <a-button size="mini" status="danger" class="ml-1" @click="removeBatchRow(row)">删除</a-button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
             <div class="grid grid-cols-[148px_minmax(0,1fr)] gap-4 xl:grid-cols-[184px_minmax(0,1fr)] xl:gap-5">
                 <div class="space-y-3">
                     <button
-                        v-for="item in modeOptions"
+                        v-for="item in availableCreationModeOptions"
                         :key="item.value"
                         type="button"
                         class="w-full rounded-lg border px-4 py-4 text-left transition-colors"
@@ -2677,24 +3089,28 @@ const submit = async () => {
                         v-if="draggingUpload"
                         class="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-400 bg-white/80 text-sm font-medium text-blue-600 shadow-sm backdrop-blur"
                     >
-                        松开后自动识别图片、视频、音频并添加
+                        {{ mode === 'frames' ? (supportsLastFrame ? '松开后添加首帧或尾帧图片' : '松开后添加首帧图片') : referenceMaterialHint }}
                     </div>
                     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <div class="flex flex-wrap items-center gap-2">
                             <a-tag color="arcoblue">{{ model }}</a-tag>
-                            <a-tag>{{ modeOptions.find(item => item.value === mode)?.label }}</a-tag>
+                            <a-tag>{{ availableCreationModeOptions.find(item => item.value === mode)?.label }}</a-tag>
                             <a-tag>{{ ratio }}</a-tag>
-                            <a-tag>{{ resolution }}</a-tag>
+                            <a-tag v-if="resolutionOptions.length">{{ resolution }}</a-tag>
                             <a-tag>{{ duration }}s</a-tag>
+                            <a-tag v-if="videoQualityOptions.length">档位：{{ pixQualityLabel(videoQuality) }}</a-tag>
                         </div>
-                        <div class="text-xs text-gray-400">在底部输入框输入 @ 可引用已上传素材</div>
+                        <div class="text-xs text-gray-400">{{ canUseAtMentions ? referenceMaterialHint : '当前模式不使用 @ 素材引用' }}</div>
                     </div>
 
-                    <div v-if="mode === 'frames'" class="grid grid-cols-2 gap-4">
-                        <div class="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4">
+                    <div v-if="mode === 'frames'" class="grid gap-4" :class="supportsLastFrame ? 'grid-cols-2' : 'grid-cols-1'">
+                        <div v-if="supportsLastFrame" class="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4">
                             <div class="mb-3 flex items-center justify-between">
                                 <div class="text-sm font-semibold text-gray-700">首帧</div>
-                                <a-button size="small" @click="pickFrame('first')">上传图片</a-button>
+                                <div class="flex gap-2">
+                                    <a-button size="small" @click="pickFrame('first')">上传图片</a-button>
+                                    <a-button size="small" @click="openAssetLibrary('firstFrame')">从素材库选择</a-button>
+                                </div>
                             </div>
                             <div class="aspect-video rounded-lg bg-white flex items-center justify-center overflow-hidden">
                                 <img v-if="firstFrame && isPreviewableImage(firstFrame)" :src="displayUrl(firstFrame)" class="h-full w-full object-contain" />
@@ -2702,13 +3118,17 @@ const submit = async () => {
                             </div>
                             <div v-if="firstFrame" class="mt-3 flex items-center justify-between gap-2 text-xs text-gray-500">
                                 <span class="min-w-0 truncate">{{ shortName(firstFrame) }}</span>
+                                <a-tag :color="firstFrameOrigin === 'library' ? 'arcoblue' : 'gray'">{{ firstFrameOrigin === 'library' ? '素材库' : '本次上传' }}</a-tag>
                                 <a-button size="mini" status="danger" @click="removeFrame('first')">移除</a-button>
                             </div>
                         </div>
                         <div class="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4">
                             <div class="mb-3 flex items-center justify-between">
                                 <div class="text-sm font-semibold text-gray-700">尾帧</div>
-                                <a-button size="small" @click="pickFrame('last')">上传图片</a-button>
+                                <div class="flex gap-2">
+                                    <a-button size="small" @click="pickFrame('last')">上传图片</a-button>
+                                    <a-button size="small" @click="openAssetLibrary('lastFrame')">从素材库选择</a-button>
+                                </div>
                             </div>
                             <div class="aspect-video rounded-lg bg-white flex items-center justify-center overflow-hidden">
                                 <img v-if="lastFrame && isPreviewableImage(lastFrame)" :src="displayUrl(lastFrame)" class="h-full w-full object-contain" />
@@ -2716,6 +3136,7 @@ const submit = async () => {
                             </div>
                             <div v-if="lastFrame" class="mt-3 flex items-center justify-between gap-2 text-xs text-gray-500">
                                 <span class="min-w-0 truncate">{{ shortName(lastFrame) }}</span>
+                                <a-tag :color="lastFrameOrigin === 'library' ? 'arcoblue' : 'gray'">{{ lastFrameOrigin === 'library' ? '素材库' : '本次上传' }}</a-tag>
                                 <a-button size="mini" status="danger" @click="removeFrame('last')">移除</a-button>
                             </div>
                         </div>
@@ -2723,13 +3144,14 @@ const submit = async () => {
 
                     <div v-else class="space-y-4">
                         <div class="flex flex-wrap gap-2">
-                            <a-button @click="pickReference('image')">上传图片</a-button>
-                            <a-button @click="pickReference('video')">上传视频</a-button>
-                            <a-button @click="pickReference('audio')">上传音频</a-button>
+                            <a-button v-if="allowedReferenceMediaTypes.includes('image')" @click="pickReference('image')">上传图片</a-button>
+                            <a-button v-if="allowedReferenceMediaTypes.includes('video')" @click="pickReference('video')">上传视频</a-button>
+                            <a-button v-if="allowedReferenceMediaTypes.includes('audio')" @click="pickReference('audio')">上传音频</a-button>
                         </div>
-                        <div v-if="assets.length" class="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+                        <div class="text-xs text-blue-600">{{ referenceMaterialHint }}</div>
+                        <div v-if="visibleReferenceAssets.length" class="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                             <div
-                                v-for="asset in assets"
+                                v-for="asset in visibleReferenceAssets"
                                 :key="asset.id"
                                 class="rounded-lg border border-gray-100 bg-gray-50 p-3"
                             >
@@ -2758,13 +3180,16 @@ const submit = async () => {
                                 </a-popover>
                                 <div class="mt-2 flex items-center gap-2">
                                     <a-tag>{{ assetTypeText(asset.type) }}</a-tag>
+                                    <a-tag color="gray">本次上传</a-tag>
                                     <div class="min-w-0 flex-grow truncate text-xs text-gray-600">{{ shortName(asset.url) }}</div>
+                                    <a-button v-if="!isAssetInLibrary(asset)" size="mini" @click="saveReferenceAssetToLibrary(asset)">存入素材库</a-button>
+                                    <a-button v-else size="mini" disabled>素材库已有</a-button>
                                     <a-button size="mini" status="danger" @click="removeAsset(asset.id)">删除</a-button>
                                 </div>
                             </div>
                         </div>
                         <div v-else class="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-sm text-gray-500">
-                            上传图片、视频或音频后，可在输入框用 @ 引用。
+                            {{ referenceMaterialHint }}。上传后可在输入框用 @ 引用。
                         </div>
                     </div>
                 </div>
@@ -2773,36 +3198,46 @@ const submit = async () => {
         </div>
 
         <div class="flex-shrink-0 border-t border-gray-100 bg-[#f6f7f9] px-4 py-4 xl:px-8">
-            <div class="relative mx-auto max-w-[840px] rounded-[22px] border border-gray-100 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]">
+            <div class="relative mx-auto max-w-[1120px] rounded-[22px] border border-gray-100 bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.12)]">
                 <div class="relative">
                 <div
-                    v-if="assetPickerVisible"
+                    v-if="assetPickerVisible && canUseAtMentions"
                     class="absolute bottom-full left-0 mb-2 w-72 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
                 >
-                    <div class="px-3 pt-3 text-xs text-gray-400">可能@的内容</div>
-                    <button
-                        v-for="asset in filteredMentionAssets"
-                        :key="asset.id"
-                        type="button"
-                        class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-gray-50"
-                        @mousedown.prevent
-                        @click="selectMentionAsset(asset)"
-                    >
-                        <div class="h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-gray-100 flex items-center justify-center text-xs text-gray-400">
-                            <img v-if="(asset.type === 'image' || asset.type === 'frame') && isPreviewableImage(asset.url)" :src="displayUrl(asset.url)" class="h-full w-full object-cover" />
-                            <video v-else-if="asset.type === 'video' && isPreviewableVideo(asset.url)" :src="displayUrl(asset.url)" class="h-full w-full object-cover" muted />
-                            <span v-else-if="asset.type === 'audio'">♪</span>
-                            <span v-else>{{ assetTypeText(asset.type) }}</span>
+                    <div class="max-h-80 overflow-auto py-2">
+                        <div v-for="group in mentionAssetGroups" :key="group.key" class="mb-2 last:mb-0">
+                            <div class="flex items-center justify-between px-3 py-1.5">
+                                <div class="text-xs font-semibold text-gray-600">{{ group.title }}</div>
+                                <div class="text-[11px] text-gray-400">{{ group.hint }}</div>
+                            </div>
+                            <button
+                                v-for="asset in group.assets"
+                                :key="asset.id"
+                                type="button"
+                                class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-gray-50"
+                                @mousedown.prevent
+                                @click="selectMentionAsset(asset)"
+                            >
+                                <div class="h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-gray-100 flex items-center justify-center text-xs text-gray-400">
+                                    <img v-if="(asset.type === 'image' || asset.type === 'frame') && isPreviewableImage(asset.url)" :src="displayUrl(asset.url)" class="h-full w-full object-cover" />
+                                    <video v-else-if="asset.type === 'video' && isPreviewableVideo(asset.url)" :src="displayUrl(asset.url)" class="h-full w-full object-cover" muted />
+                                    <span v-else-if="asset.type === 'audio'">♪</span>
+                                    <span v-else>{{ assetTypeText(asset.type) }}</span>
+                                </div>
+                                <div class="min-w-0 flex-grow">
+                                    <div class="truncate text-sm text-gray-800">{{ asset.label }}</div>
+                                    <div class="text-xs text-gray-400">{{ assetTypeText(asset.type) }}</div>
+                                </div>
+                                <a-tag size="small" :color="asset.origin === 'library' ? 'arcoblue' : 'gray'">
+                                    {{ asset.origin === 'library' ? '素材库' : '本次上传' }}
+                                </a-tag>
+                            </button>
                         </div>
-                        <div class="min-w-0">
-                            <div class="truncate text-sm text-gray-800">{{ asset.label }}</div>
-                            <div class="text-xs text-gray-400">{{ assetTypeText(asset.type) }}</div>
-                        </div>
-                    </button>
+                    </div>
                     <div v-if="!filteredMentionAssets.length" class="px-3 py-4 text-center text-xs text-gray-400">没有匹配素材</div>
                 </div>
                 <div class="rounded-lg bg-gray-50 p-3">
-                    <div v-if="selectedMentionAssets.length" class="mb-2 flex flex-wrap items-center gap-2">
+                    <div v-if="canUseAtMentions && selectedMentionAssets.length" class="mb-2 flex flex-wrap items-center gap-2">
                         <a-popover v-for="asset in selectedMentionAssets" :key="asset.id" trigger="hover" position="top">
                             <div class="group flex max-w-[220px] cursor-default items-center gap-2 rounded-md bg-white px-1.5 py-1 shadow-sm ring-1 ring-gray-100">
                                 <div class="h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-gray-100 flex items-center justify-center text-xs text-gray-400">
@@ -2813,7 +3248,9 @@ const submit = async () => {
                                 </div>
                                 <div class="min-w-0 flex-grow">
                                     <div class="truncate text-xs text-gray-700">{{ asset.label }}</div>
-                                    <div class="text-xs text-gray-400">{{ assetTypeText(asset.type) }}</div>
+                                    <div class="text-xs" :class="asset.origin === 'library' ? 'text-blue-500' : 'text-gray-400'">
+                                        {{ asset.origin === 'library' ? '素材库' : '本次上传' }} · {{ assetTypeText(asset.type) }}
+                                    </div>
                                 </div>
                                 <button class="hidden h-5 w-5 flex-shrink-0 rounded-full text-gray-400 hover:bg-gray-100 hover:text-red-500 group-hover:block" type="button" @click="removeMention(asset.id)">x</button>
                             </div>
@@ -2835,7 +3272,9 @@ const submit = async () => {
                             ref="promptTextareaRef"
                             v-model="prompt"
                             :auto-size="{ minRows: 2, maxRows: 5 }"
-                            placeholder="描述画面、角色、动作和镜头。输入 @ 选择已上传素材。"
+                            :placeholder="canUseAtMentions
+                                ? '描述画面、角色、动作和镜头。输入 @ 可选择当前模型支持的参考素材。'
+                                : `描述画面、角色、动作和镜头。${referenceMaterialHint}`"
                             @input="syncMentionPicker"
                             @keydown="handlePromptKeydown"
                             @keyup="syncMentionPicker"
@@ -2845,31 +3284,52 @@ const submit = async () => {
                         />
                     </div>
                 </div>
-                <div class="mt-3 flex flex-wrap items-center gap-2">
-                    <a-select v-model="model" class="!w-44">
-                        <a-option v-for="item in modelOptions" :key="item" :value="item">{{ item }}</a-option>
-                    </a-select>
-                    <a-select v-model="mode" class="!w-28">
-                        <a-option v-for="item in modeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
-                    </a-select>
-                    <a-select v-model="ratio" class="!w-24">
-                        <a-option v-for="item in ratioOptions" :key="item" :value="item">{{ item }}</a-option>
-                    </a-select>
-                    <a-select v-model="resolution" class="!w-24">
-                        <a-option v-for="item in resolutionOptions" :key="item" :value="item">{{ item }}</a-option>
-                    </a-select>
-                    <a-select v-model="duration" class="!w-24">
-                        <a-option v-for="item in durationOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
-                    </a-select>
-                    <a-button @click="openMentionPicker">@素材</a-button>
+                <div class="mt-3 flex flex-wrap items-end gap-3">
+                    <div class="w-52">
+                        <div class="mb-1 text-xs font-medium text-gray-500">视频模型（决定能力与素材规则）</div>
+                        <a-select v-model="model" class="!w-full">
+                            <a-option v-for="item in availableVideoModelOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                        </a-select>
+                    </div>
+                    <div v-if="videoQualityOptions.length" class="w-36">
+                        <div class="mb-1 text-xs font-medium text-gray-500">版本档位（画质/速度）</div>
+                        <a-select v-model="videoQuality" class="!w-full">
+                            <a-option v-for="item in videoQualityOptions" :key="item" :value="item">{{ pixQualityLabel(item) }}</a-option>
+                        </a-select>
+                    </div>
+                    <div class="w-32">
+                        <div class="mb-1 text-xs font-medium text-gray-500">生成方式（素材用法）</div>
+                        <a-select v-model="mode" class="!w-full">
+                            <a-option v-for="item in availableCreationModeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                        </a-select>
+                    </div>
+                    <div class="w-24">
+                        <div class="mb-1 text-xs font-medium text-gray-500">画面比例</div>
+                        <a-select v-model="ratio" class="!w-full">
+                            <a-option v-for="item in availableRatioOptions" :key="item" :value="item">{{ item }}</a-option>
+                        </a-select>
+                    </div>
+                    <div v-if="resolutionOptions.length" class="w-24">
+                        <div class="mb-1 text-xs font-medium text-gray-500">输出清晰度</div>
+                        <a-select v-model="resolution" class="!w-full">
+                            <a-option v-for="item in resolutionOptions" :key="item" :value="item">{{ item }}</a-option>
+                        </a-select>
+                    </div>
+                    <div class="w-24">
+                        <div class="mb-1 text-xs font-medium text-gray-500">视频时长</div>
+                        <a-select v-model="duration" class="!w-full">
+                            <a-option v-for="item in durationOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                        </a-select>
+                    </div>
+                    <a-button v-if="canUseAtMentions" @click="openMentionPicker">@素材</a-button>
                     <a-popover trigger="click" position="top">
-                        <a-button>更多</a-button>
+                        <a-button>更多参数</a-button>
                         <template #content>
                             <div class="w-52 space-y-3">
-                                <div class="flex items-center justify-between"><span>生成音频</span><a-switch v-model="generateAudio" /></div>
-                                <div class="flex items-center justify-between"><span>水印</span><a-switch v-model="watermark" /></div>
-                                <div class="flex items-center justify-between"><span>Web Search</span><a-switch v-model="webSearch" /></div>
-                                <a-input v-model="title" allow-clear placeholder="任务标题" />
+                                <div v-if="!isPixPlatform(currentPlatform)" class="flex items-center justify-between"><span><span class="block text-sm">生成音频</span><span class="block text-xs text-gray-400">同时生成视频声音</span></span><a-switch v-model="generateAudio" /></div>
+                                <div v-if="!isPixPlatform(currentPlatform)" class="flex items-center justify-between"><span><span class="block text-sm">添加水印</span><span class="block text-xs text-gray-400">在结果中保留平台水印</span></span><a-switch v-model="watermark" /></div>
+                                <div v-if="!isPixPlatform(currentPlatform)" class="flex items-center justify-between"><span><span class="block text-sm">联网搜索</span><span class="block text-xs text-gray-400">允许模型补充网络信息</span></span><a-switch v-model="webSearch" /></div>
+                                <div><div class="mb-1 text-xs text-gray-500">任务名称（可选）</div><a-input v-model="title" allow-clear placeholder="用于任务列表识别" /></div>
                             </div>
                         </template>
                     </a-popover>
@@ -2881,8 +3341,113 @@ const submit = async () => {
             </div>
         </div>
 
-        <a-modal v-model:visible="batchPromptGeneratorVisible" width="920px" title="AI生成批量提示词" :footer="false" title-align="start">
-            <div class="space-y-5">
+        <a-modal
+            v-model:visible="batchWorkspaceVisible"
+            width="calc(100vw - 48px)"
+            title="Seedance 批量创作"
+            :footer="false"
+            title-align="start"
+            :body-style="{ height: 'calc(100vh - 128px)', overflow: 'auto', padding: '20px 24px' }"
+        >
+            <div class="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4">
+                <div class="flex items-center gap-2">
+                    <a-button :type="batchWorkspaceView === 'list' ? 'primary' : 'secondary'" @click="batchWorkspaceView = 'list'">
+                        批量清单{{ batchRows.length ? `(${batchRows.length})` : "" }}
+                    </a-button>
+                    <a-button :type="batchWorkspaceView === 'generate' ? 'primary' : 'secondary'" @click="batchWorkspaceView = 'generate'">
+                        AI 生成批量提示词
+                    </a-button>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <a-button @click="pickBatchSpreadsheet">导入批量表</a-button>
+                    <a-button @click="openAssetLibrary('manage')">Seedance 素材库{{ batchAssetLibrary.length ? `(${batchAssetLibrary.length})` : "" }}</a-button>
+                    <a-button type="primary" status="success" :disabled="!selectedBatchRows.length" :loading="batchSubmitting" @click="submitSelectedBatch">
+                        提交选中{{ selectedBatchRows.length ? `(${selectedBatchRows.length})` : "" }}
+                    </a-button>
+                </div>
+            </div>
+
+            <div v-if="batchWorkspaceView === 'list'" class="space-y-4">
+                <div v-if="batchRows.length" class="rounded-lg border border-gray-100 bg-white p-4">
+                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="text-sm font-semibold text-gray-800">批量清单：{{ shortName(batchFilePath) }}</div>
+                            <div class="mt-1 text-xs text-gray-500">
+                                AI 生成和表格导入的提示词统一显示在这里；@ 名称会从共享素材库按文件名自动匹配。
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <a-checkbox :model-value="batchAllSelected" :indeterminate="batchSomeSelected" @change="toggleAllBatchRows">全选</a-checkbox>
+                            <a-button size="small" @click="invertBatchSelection">反选</a-button>
+                            <a-button size="small" @click="pickBatchSpreadsheet">重新导入</a-button>
+                            <a-button size="small" @click="exportBatchSpreadsheet">导出 Excel</a-button>
+                            <a-button size="small" status="danger" @click="clearAllBatchRows">全部删除</a-button>
+                            <a-button size="small" type="primary" status="success" :disabled="!selectedBatchRows.length" :loading="batchSubmitting" @click="submitSelectedBatch">
+                                提交选中{{ selectedBatchRows.length ? `(${selectedBatchRows.length})` : "" }}
+                            </a-button>
+                            <a-button size="small" type="outline" :loading="batchSubmitting" @click="submitBatch">提交全部</a-button>
+                        </div>
+                    </div>
+                    <div class="max-h-[calc(100vh-290px)] overflow-auto rounded border border-gray-100">
+                        <table class="w-full min-w-[1040px] table-fixed text-left text-xs">
+                            <colgroup>
+                                <col class="w-16" />
+                                <col class="w-12" />
+                                <col class="w-40" />
+                                <col />
+                                <col class="w-36" />
+                                <col class="w-56" />
+                                <col class="w-32" />
+                                <col class="w-32" />
+                            </colgroup>
+                            <thead class="sticky top-0 z-10 bg-gray-50 text-gray-500">
+                                <tr>
+                                    <th class="px-3 py-3 font-medium">选择</th>
+                                    <th class="px-3 py-3 font-medium">行</th>
+                                    <th class="px-3 py-3 font-medium">标题</th>
+                                    <th class="px-3 py-3 font-medium">提示词</th>
+                                    <th class="px-3 py-3 font-medium">素材</th>
+                                    <th class="px-3 py-3 font-medium">参数</th>
+                                    <th class="px-3 py-3 font-medium">状态</th>
+                                    <th class="px-3 py-3 font-medium">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in batchRows" :key="row.rowIndex" class="border-t border-gray-100 hover:bg-gray-50/60">
+                                    <td class="whitespace-nowrap px-3 py-3"><a-checkbox v-model="selectedBatchRowKeys" :value="batchRowKey(row)" /></td>
+                                    <td class="whitespace-nowrap px-3 py-3 text-gray-500">{{ row.rowIndex }}</td>
+                                    <td class="truncate whitespace-nowrap px-3 py-3 text-gray-700" :title="row.title">{{ row.title }}</td>
+                                    <td class="px-3 py-3 text-gray-700"><div class="line-clamp-2" :title="row.prompt">{{ row.prompt }}</div></td>
+                                    <td class="whitespace-nowrap px-3 py-3 text-gray-500">
+                                        图{{ batchAssetCountOf(row, 'image') + (row.firstFrame ? 1 : 0) + (row.lastFrame ? 1 : 0) }} / 视频{{ batchAssetCountOf(row, 'video') }} / 音频{{ batchAssetCountOf(row, 'audio') }}
+                                    </td>
+                                    <td class="truncate whitespace-nowrap px-3 py-3 text-gray-500" :title="`${row.model} · ${row.ratio} · ${batchDurationText(row)} · ${row.resolution}`">{{ row.model }} · {{ row.ratio }} · {{ batchDurationText(row) }} · {{ row.resolution }}</td>
+                                    <td class="whitespace-nowrap px-3 py-3">
+                                        <a-tag v-if="row.status === 'ready'">待提交</a-tag>
+                                        <a-tag v-else-if="row.status === 'submitting'" color="arcoblue">提交中</a-tag>
+                                        <a-tag v-else-if="row.status === 'success'" color="green">已提交 #{{ row.taskId }}</a-tag>
+                                        <a-tag v-else color="red">{{ row.error || "失败" }}</a-tag>
+                                    </td>
+                                    <td class="whitespace-nowrap px-3 py-3">
+                                        <a-button size="mini" @click="editBatchRow(row)">编辑</a-button>
+                                        <a-button size="mini" status="danger" class="ml-1" @click="removeBatchRow(row)">删除</a-button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div v-else class="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-center">
+                    <div class="text-lg font-semibold text-gray-800">还没有批量提示词</div>
+                    <div class="mt-2 text-sm text-gray-500">可以让 AI 生成，也可以导入 Excel / CSV 批量表。</div>
+                    <div class="mt-5 flex gap-2">
+                        <a-button type="primary" @click="batchWorkspaceView = 'generate'">AI 生成批量提示词</a-button>
+                        <a-button @click="pickBatchSpreadsheet">导入批量表</a-button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-else class="mx-auto max-w-[1180px] space-y-5">
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div class="space-y-2">
                         <div class="text-sm font-medium text-gray-700">生成主题</div>
@@ -2905,27 +3470,25 @@ const submit = async () => {
                     <div class="space-y-2">
                         <div class="text-sm font-medium text-gray-700">视频模型</div>
                         <a-select v-model="batchPromptGenerator.videoModel" class="!w-44">
-                            <a-option v-for="item in modelOptions" :key="item" :value="item">{{ item }}</a-option>
+                            <a-option v-for="item in availableVideoModelOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
                         </a-select>
                     </div>
                     <div class="space-y-2">
                         <div class="text-sm font-medium text-gray-700">比例</div>
                         <a-select v-model="batchPromptGenerator.ratio" class="!w-28">
-                            <a-option v-for="item in ratioOptions" :key="item" :value="item">{{ item }}</a-option>
+                            <a-option v-for="item in videoRatioOptions(batchPromptGenerator.videoModel)" :key="item" :value="item">{{ item }}</a-option>
                         </a-select>
                     </div>
                     <div class="space-y-2">
                         <div class="text-sm font-medium text-gray-700">时长</div>
                         <a-select v-model="batchPromptGenerator.duration" class="!w-24">
-                            <a-option v-for="item in batchDurationOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                            <a-option v-for="item in videoDurationOptions(batchPromptGenerator.videoModel, true)" :key="item.value" :value="item.value">{{ item.label }}</a-option>
                         </a-select>
                     </div>
                     <div class="space-y-2">
                         <div class="text-sm font-medium text-gray-700">清晰度</div>
                         <a-select v-model="batchPromptGenerator.resolution" class="!w-24">
-                            <a-option value="480p">480p</a-option>
-                            <a-option value="720p">720p</a-option>
-                            <a-option value="1080p" :disabled="batchPromptGenerator.videoModel === 'seedance-2.0-fast'">1080p</a-option>
+                            <a-option v-for="item in videoResolutionOptions(batchPromptGenerator.videoModel)" :key="item" :value="item">{{ item }}</a-option>
                         </a-select>
                     </div>
                     <div class="min-w-[280px] flex-1 space-y-2">
@@ -2964,7 +3527,7 @@ const submit = async () => {
                     </div>
                 </div>
                 <div class="flex justify-end gap-2 border-t border-gray-100 pt-4">
-                    <a-button @click="batchPromptGeneratorVisible = false">取消</a-button>
+                    <a-button @click="batchWorkspaceView = 'list'">返回批量清单</a-button>
                     <a-button type="primary" :loading="batchPromptGenerating" @click="generateBatchPrompts">生成并进入批量清单</a-button>
                 </div>
             </div>
@@ -2981,10 +3544,10 @@ const submit = async () => {
                     <a-textarea v-model="batchRowEditor.prompt" :auto-size="{ minRows: 8, maxRows: 16 }" placeholder="视频提示词；素材引用请使用 @（素材名）" />
                 </div>
                 <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <a-select v-model="batchRowEditor.model"><a-option v-for="item in modelOptions" :key="item" :value="item">{{ item }}</a-option></a-select>
-                    <a-select v-model="batchRowEditor.ratio"><a-option v-for="item in ratioOptions" :key="item" :value="item">{{ item }}</a-option></a-select>
+                    <a-select v-model="batchRowEditor.model"><a-option v-for="item in availableVideoModelOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option></a-select>
+                    <a-select v-model="batchRowEditor.ratio"><a-option v-for="item in videoRatioOptions(batchRowEditor.model)" :key="item" :value="item">{{ item }}</a-option></a-select>
                     <a-input-number v-model="batchRowEditor.totalDuration" :min="4" :max="180" placeholder="总时长" />
-                    <a-select v-model="batchRowEditor.resolution"><a-option value="480p">480p</a-option><a-option value="720p">720p</a-option><a-option value="1080p">1080p</a-option></a-select>
+                    <a-select v-model="batchRowEditor.resolution"><a-option v-for="item in videoResolutionOptions(batchRowEditor.model)" :key="item" :value="item">{{ item }}</a-option></a-select>
                 </div>
                 <div v-if="Number(batchRowEditor.totalDuration || 0) > 15" class="space-y-3 rounded border border-blue-100 bg-blue-50/40 p-3">
                     <div class="flex items-center justify-between gap-3">
@@ -3000,13 +3563,21 @@ const submit = async () => {
             </div>
         </a-modal>
 
-        <a-modal v-model:visible="batchAssetLibraryVisible" width="980px" title="批量素材库" :footer="false" title-align="start">
+        <a-modal
+            v-model:visible="batchAssetLibraryVisible"
+            width="980px"
+            :title="assetLibraryMode === 'firstFrame' ? '从素材库选择首帧' : assetLibraryMode === 'lastFrame' ? '从素材库选择尾帧' : 'Seedance 素材库'"
+            :footer="false"
+            title-align="start"
+        >
             <div class="space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="min-w-0">
-                        <div class="text-sm font-medium text-gray-800">供批量表提示词 @ 自动匹配</div>
+                        <div class="text-sm font-medium text-gray-800">
+                            {{ assetLibraryMode === 'manage' ? '普通生成与批量创作共用' : '当前仅显示可用作首尾帧的图片素材' }}
+                        </div>
                         <div class="mt-1 text-xs text-gray-500">
-                            文件名会作为匹配名，例如 尾帧图.png 可匹配 @（尾帧）或 @尾帧；未被某行 @ 到的素材不会提交。
+                            素材库长期保存、可重复使用；普通生成可直接在提示词中输入 @ 引用，未引用的素材不会提交。
                         </div>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
@@ -3023,10 +3594,10 @@ const submit = async () => {
                     <a-tag>音频 {{ batchAssetLibrary.filter(item => item.type === 'audio').length }}</a-tag>
                 </div>
 
-                <div v-if="batchAssetLibrary.length" class="max-h-[560px] overflow-auto rounded border border-gray-100 bg-gray-50 p-3">
+                <div v-if="visibleLibraryAssets.length" class="max-h-[560px] overflow-auto rounded border border-gray-100 bg-gray-50 p-3">
                     <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
                         <div
-                            v-for="asset in batchAssetLibrary"
+                            v-for="asset in visibleLibraryAssets"
                             :key="asset.id"
                             class="rounded-lg border border-gray-100 bg-white p-3"
                         >
@@ -3055,17 +3626,26 @@ const submit = async () => {
                             </a-popover>
                             <div class="mt-2 flex items-center gap-2">
                                 <a-tag>{{ assetTypeText(asset.type) }}</a-tag>
+                                <a-tag color="arcoblue">素材库</a-tag>
                                 <div class="min-w-0 flex-grow truncate text-xs text-gray-700" :title="shortName(asset.url)">
                                     {{ shortName(asset.url) }}
                                 </div>
-                                <a-button size="mini" status="danger" @click="removeBatchLibraryAsset(asset.id)">删除</a-button>
+                                <a-button
+                                    v-if="assetLibraryMode === 'firstFrame' || assetLibraryMode === 'lastFrame'"
+                                    size="mini"
+                                    type="primary"
+                                    @click="useLibraryAssetAsFrame(asset)"
+                                >
+                                    {{ assetLibraryMode === 'firstFrame' ? '设为首帧' : '设为尾帧' }}
+                                </a-button>
+                                <a-button v-else size="mini" status="danger" @click="removeBatchLibraryAsset(asset.id)">删除</a-button>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div v-else class="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-10 text-center text-sm text-gray-500">
-                    还没有素材。先上传所有可复用素材，再导入 Excel 批量生成。
+                    {{ assetLibraryMode === 'manage' ? '还没有素材。上传后即可在普通生成和批量创作中重复使用。' : '素材库里还没有图片，请先上传图片。' }}
                 </div>
             </div>
         </a-modal>

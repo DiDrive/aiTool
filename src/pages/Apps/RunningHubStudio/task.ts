@@ -170,6 +170,24 @@ const errorMessageOf = (e: any, fallback: string) => {
     return String(e?.message || e || fallback).trim() || fallback;
 };
 
+const isTransientQueryFailure = (res: any) => {
+    const status = Number(res?._diagnostics?.httpStatus || res?.code || 0);
+    return status === -1 || status === 408 || status === 425 || status === 429 || status >= 500;
+};
+
+const queryRetryDelayMs = (res: any) => {
+    const retryAfter = String(res?._diagnostics?.retryAfter || "").trim();
+    if (/^\d+(?:\.\d+)?$/.test(retryAfter)) {
+        return Math.max(1000, Math.min(5 * 60 * 1000, Math.ceil(Number(retryAfter) * 1000)));
+    }
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) {
+        return Math.max(1000, Math.min(5 * 60 * 1000, retryAt - Date.now()));
+    }
+    const status = Number(res?._diagnostics?.httpStatus || res?.code || 0);
+    return status === 429 ? 10000 : 5000;
+};
+
 const safeJsonPreview = (value: any, maxLength = 1200) => {
     try {
         const text = JSON.stringify(value, (key, child) => {
@@ -653,8 +671,7 @@ export const RunningHubRunModelConfigUntilDone = async (
         proxyUrl: modelConfig.proxyUrl || "",
     });
     if (submitRes?.code) {
-        const requestUrl = String(submitRes?._diagnostics?.requestUrl || "").trim();
-        throw new Error([responseMessageOf(submitRes, "任务提交失败"), requestUrl ? `Request URL: ${requestUrl}` : ""].filter(Boolean).join("\n"));
+        throw new Error(responseMessageOf(submitRes, "任务提交失败"));
     }
     const syncResults = normalizeDirectApiResults(submitRes);
     if (syncResults.length > 0) {
@@ -686,10 +703,14 @@ export const RunningHubRunModelConfigUntilDone = async (
             proxyUrl: modelConfig.proxyUrl || "",
         });
         if (queryRes?.code && !queryRes?.data?.status) {
+            if (isTransientQueryFailure(queryRes)) {
+                await new Promise(resolve => setTimeout(resolve, queryRetryDelayMs(queryRes)));
+                continue;
+            }
             throw new Error(queryRes?.msg || "RunningHub 状态查询失败");
         }
         const status = String(queryRes?.data?.status || "").toUpperCase();
-        if (status === "SUCCESS" || status === "SUCCEEDED" || status === "COMPLETED") {
+        if (status === "SUCCESS" || status === "SUCCEEDED" || status === "COMPLETED" || status === "DONE" || status === "DELIVERED") {
             const materialized = await materializeDirectApiResults(queryRes?.data?.results || []);
             const localFiles: string[] = [...materialized.localFiles];
             for (const item of materialized.results || []) {
@@ -865,8 +886,7 @@ export const RunningHubTask: TaskBiz = {
                 jobResult.Submit.responseDiagnostics = res?._diagnostics || {};
                 jobResult.Submit.responsePreview = safeJsonPreview(res);
                 if (res?.code) {
-                    const requestUrl = String(res?._diagnostics?.requestUrl || "").trim();
-                    throw new Error([responseMessageOf(res, "任务提交失败"), requestUrl ? `Request URL: ${requestUrl}` : ""].filter(Boolean).join("\n"));
+                    throw new Error(responseMessageOf(res, "任务提交失败"));
                 }
                 const taskId = extractDirectApiTaskId(res);
                 const syncResults = normalizeDirectApiResults(res);
@@ -890,7 +910,7 @@ export const RunningHubTask: TaskBiz = {
                 if (modelConfig.connectorType === "custom-api" && !taskId) {
                     const msg = responseMessageOf(
                         res,
-                        `Direct API 已返回，但没有可识别的产出结果。URL: ${jobResult.Submit.requestUrl || "-"}`
+                        "Direct API 已返回，但没有可识别的产出结果"
                     );
                     throw new Error(msg);
                 }
@@ -941,6 +961,11 @@ export const RunningHubTask: TaskBiz = {
         if (!taskId) {
             throw new Error("缺少 RunningHub taskId");
         }
+        const retryAfterAt = Number((jobResult.Query as any)?.retryAfterAt || 0);
+        if (retryAfterAt > Date.now()) {
+            return "running";
+        }
+        delete (jobResult.Query as any).retryAfterAt;
         const res: any = await callRunningHubHandle("runninghub:queryTask", {
             apiBaseUrl: normalizeBaseUrl(modelConfig.baseUrl || DEFAULT_BASE_URL),
             apiKey: modelConfig.apiKey,
@@ -950,19 +975,29 @@ export const RunningHubTask: TaskBiz = {
             proxyUrl: modelConfig.proxyUrl || "",
         });
         if (res?.code && !res?.data?.status) {
-            const requestUrl = String(res?._diagnostics?.requestUrl || "").trim();
+            if (isTransientQueryFailure(res)) {
+                jobResult.Query.status = "running";
+                (jobResult.Query as any).retryAfterAt = Date.now() + queryRetryDelayMs(res);
+                await TaskService.update(bizId, {
+                    status: "running",
+                    statusMsg: "平台暂时繁忙，正在自动重试",
+                    jobResult,
+                });
+                return "running";
+            }
             jobResult.Query.status = "fail";
-            jobResult.Query.error = [res?.msg || "RunningHub 状态查询失败", requestUrl ? `Request URL: ${requestUrl}` : ""].filter(Boolean).join("\n");
+            jobResult.Query.error = res?.msg || "任务状态查询失败";
             await TaskService.update(bizId, { jobResult });
             throw new Error(jobResult.Query.error);
         }
         const status = String(res?.data?.status || "").toUpperCase();
         jobResult.Query.status = "running";
+        delete (jobResult.Query as any).retryAfterAt;
         jobResult.Query.taskStatus = status;
         jobResult.Query.results = Array.isArray(res?.data?.results) ? res.data.results : [];
         jobResult.Query.usage = res?.data?.usage || {};
         jobResult.Query.promptTips = res?.data?.promptTips || "";
-        if (status === "SUCCESS" || status === "SUCCEEDED" || status === "COMPLETED") {
+        if (status === "SUCCESS" || status === "SUCCEEDED" || status === "COMPLETED" || status === "DONE" || status === "DELIVERED") {
             const localFiles: string[] = [];
             const downloadErrors: string[] = [];
             const materialized = await materializeDirectApiResults(jobResult.Query.results || []);
@@ -1005,7 +1040,7 @@ export const RunningHubTask: TaskBiz = {
             });
             return "success";
         }
-        if (status === "FAILED" || status === "CANCELLED" || status === "STOPPED") {
+        if (status === "FAILED" || status === "FAIL" || status === "ERROR" || status === "CANCELLED" || status === "CANCELED" || status === "STOPPED" || status === "REJECTED") {
             const detailParts = [
                 res?.data?.errorMessage || res?.msg || `RunningHub 任务失败: ${status}`,
                 res?.data?.failedReason && Object.keys(res.data.failedReason || {}).length
@@ -1020,7 +1055,7 @@ export const RunningHubTask: TaskBiz = {
             await TaskService.update(bizId, { jobResult });
             throw new Error(msg);
         }
-        await TaskService.update(bizId, { jobResult });
+        await TaskService.update(bizId, { statusMsg: "", jobResult });
         return "running";
     },
     successFunc: async (bizId) => {

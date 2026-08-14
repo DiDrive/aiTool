@@ -1,0 +1,23 @@
+{
+  "/(admin)/admin/ai-logs/page": "app/(admin)/admin/ai-logs/page.js",
+  "/(admin)/admin/assets/page": "app/(admin)/admin/assets/page.js",
+  "/(admin)/admin/credit-logs/page": "app/(admin)/admin/credit-logs/page.js",
+  "/(admin)/admin/page": "app/(admin)/admin/page.js",
+  "/(admin)/admin/prompts/page": "app/(admin)/admin/prompts/page.js",
+  "/(admin)/admin/settings/page": "app/(admin)/admin/settings/page.js",
+  "/(admin)/admin/users/page": "app/(admin)/admin/users/page.js",
+  "/(user)/asset-library/page": "app/(user)/asset-library/page.js",
+  "/(user)/assets/page": "app/(user)/assets/page.js",
+  "/(user)/canvas/[id]/page": "app/(user)/canvas/[id]/page.js",
+  "/(user)/canvas/page": "app/(user)/canvas/page.js",
+  "/(user)/image/page": "app/(user)/image/page.js",
+  "/(user)/login/page": "app/(user)/login/page.js",
+  "/(user)/page": "app/(user)/page.js",
+  "/(user)/prompts/page": "app/(user)/prompts/page.js",
+  "/(user)/video/page": "app/(user)/video/page.js",
+  "/(user)/workflows/page": "app/(user)/workflows/page.js",
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/[...path]/route": "app/api/[...path]/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js"
+}

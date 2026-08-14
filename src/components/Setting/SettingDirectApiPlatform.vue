@@ -17,12 +17,13 @@ const platformTypeOptions: Array<{ label: string; value: DirectApiPlatformType }
     { label: "ExchangeToken", value: "exchangetoken" },
     { label: "ModelTop", value: "modeltop" },
     { label: "KWJM", value: "kwjm" },
+    { label: "PIX", value: "pix" },
     { label: "自定义平台", value: "custom" },
 ];
 
 const capabilityOptions: Array<{ label: string; value: DirectApiCapability }> = [
-    { label: "Seedance 2.0", value: "seedance" },
-    { label: "GPT Image 2", value: "gpt-image-2" },
+    { label: "视频模型（Seedance / Veo / Sora 等）", value: "seedance" },
+    { label: "图片模型（GPT Image / Gemini / MJ）", value: "gpt-image-2" },
 ];
 
 const records = ref<DirectApiPlatformRecord[]>([]);
@@ -153,6 +154,13 @@ const useKwjmPreset = () => {
     form.value.title = "KWJM";
     form.value.content.platformType = "kwjm";
     form.value.content.baseUrl = "https://www.kwjm.com";
+    form.value.content.capabilities = ["seedance", "gpt-image-2"];
+};
+
+const usePixPreset = () => {
+    form.value.title = "PIX";
+    form.value.content.platformType = "pix";
+    form.value.content.baseUrl = "https://pix.token6688.com";
     form.value.content.capabilities = ["seedance", "gpt-image-2"];
 };
 
@@ -388,6 +396,7 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
             <div class="mb-3 flex justify-end">
                 <a-button size="small" @click="useModelTopPreset">使用 ModelTop 预设</a-button>
                 <a-button size="small" class="ml-2" @click="useKwjmPreset">使用 KWJM 预设</a-button>
+                <a-button size="small" class="ml-2" @click="usePixPreset">使用 PIX 预设</a-button>
             </div>
             <a-form-item label="平台名称" required>
                 <a-input v-model="form.title" placeholder="例如 ExchangeToken" />
@@ -402,10 +411,13 @@ const testPlatform = async (record: DirectApiPlatformRecord, key: string | numbe
             <a-form-item label="Base URL" required>
                 <a-input
                     v-model="form.content.baseUrl"
-                    :placeholder="form.content.platformType === 'kwjm' ? 'https://www.kwjm.com' : 'https://api.exchangetoken.ai'"
+                    :placeholder="form.content.platformType === 'kwjm' ? 'https://www.kwjm.com' : form.content.platformType === 'pix' ? 'https://pix.token6688.com' : 'https://api.exchangetoken.ai'"
                 />
                 <div v-if="form.content.platformType === 'kwjm'" class="mt-1 text-xs text-amber-600">
                     按 KWJM 文档填写基础 URL：只填 https://www.kwjm.com，不要带 /docs。
+                </div>
+                <div v-if="form.content.platformType === 'pix'" class="mt-1 text-xs text-blue-600">
+                    PIX 文档的接口示例使用 https://pix.token6688.com；这里只填基础 URL，不要追加 /v1。
                 </div>
             </a-form-item>
             <a-form-item label="API Key">

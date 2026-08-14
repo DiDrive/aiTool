@@ -1,0 +1,3 @@
+{
+  "/(user)/video/page": "app/(user)/video/page.js"
+}

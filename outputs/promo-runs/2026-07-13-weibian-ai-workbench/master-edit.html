@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>唯变AI工作台 - 10秒宣传片</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; background: #090b10; }
+    body { font-family: "Microsoft YaHei", "Noto Sans SC", Arial, sans-serif; color: #fff; }
+    .clip { position: absolute; inset: 0; width: 1080px; height: 1920px; visibility: hidden; overflow: hidden; }
+    .bg { background: #090b10; }
+    .eyebrow { color: #93a4bd; font-size: 31px; font-weight: 500; letter-spacing: 0; }
+    .title { font-size: 102px; font-weight: 700; line-height: 1.08; letter-spacing: 0; }
+    .sub { color: #aab3c2; font-size: 37px; line-height: 1.45; letter-spacing: 0; }
+    .cap { color: #fff; font-size: 42px; font-weight: 600; line-height: 1.25; letter-spacing: 0; }
+    .accent { color: #2f7bff; }
+    .scan { position: absolute; width: 4px; height: 0; left: 92px; top: 470px; background: #2f7bff; box-shadow: 0 0 28px rgba(47,123,255,.72); }
+    .tag { position: absolute; border: 1px solid rgba(170,179,194,.35); color: #aab3c2; padding: 16px 24px; font-size: 32px; font-weight: 600; background: rgba(9,11,16,.78); }
+    .tag-voice { left: 88px; top: 390px; }
+    .tag-video { right: 88px; top: 520px; }
+    .tag-avatar { left: 128px; bottom: 420px; }
+    .tag-live { right: 112px; bottom: 340px; }
+    .grid { position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(rgba(255,255,255,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.12) 1px, transparent 1px); background-size: 72px 72px; }
+    .frame { position: absolute; left: 55px; top: 250px; width: 970px; height: 1200px; border: 1px solid rgba(255,255,255,.18); background: #0f131c; overflow: hidden; }
+    .ui-image { position: absolute; width: 1840px; height: auto; max-width: none; transform-origin: center center; }
+    #seedance-img { left: -405px; top: 55px; }
+    #live-img { left: -420px; top: 85px; }
+    .ui-mask { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(9,11,16,.04), rgba(9,11,16,.68)); pointer-events: none; }
+    .label { position: absolute; left: 78px; bottom: 246px; padding: 12px 18px; border-left: 4px solid #2f7bff; color: #dbe7ff; background: rgba(9,11,16,.82); font-size: 28px; font-weight: 600; }
+    .bottom-copy { position: absolute; left: 78px; right: 78px; bottom: 106px; }
+    .brand-mark { position: absolute; width: 102px; height: 102px; left: 92px; top: 462px; object-fit: contain; }
+    .brand-ui { position: absolute; width: 600px; height: 740px; left: 240px; top: 610px; overflow: hidden; opacity: .42; filter: blur(7px) saturate(.7); border: 1px solid rgba(255,255,255,.14); }
+    .brand-ui img { position: absolute; width: 1140px; height: auto; left: -255px; top: 16px; }
+    .brand-copy { position: absolute; left: 92px; right: 92px; top: 820px; text-align: left; }
+    .brand-name { font-size: 88px; font-weight: 700; line-height: 1.1; }
+    .brand-line { width: 5px; height: 104px; background: #2f7bff; position: absolute; left: 92px; top: 814px; }
+    .brand-sub { margin-top: 30px; font-size: 39px; color: #aab3c2; font-weight: 500; }
+    .brand-cta { position: absolute; bottom: 196px; left: 92px; font-size: 35px; color: #fff; }
+    .transition { position: absolute; inset: 0; background: #2f7bff; transform: scaleX(0); transform-origin: left center; }
+  </style>
+</head>
+<body>
+  <main id="root" data-composition-id="weibian-promo" data-start="0" data-duration="10" data-fps="30" data-width="1080" data-height="1920">
+    <section id="shot-1" class="clip bg" data-start="0" data-duration="2.5" data-track-index="0">
+      <div id="s1-grid" class="grid"></div>
+      <div id="s1-voice" class="tag tag-voice">语音</div>
+      <div id="s1-video" class="tag tag-video">视频</div>
+      <div id="s1-avatar" class="tag tag-avatar">数字人</div>
+      <div id="s1-live" class="tag tag-live">直播</div>
+      <div id="s1-scan" class="scan"></div>
+      <div id="s1-copy" style="position:absolute;left:88px;right:88px;bottom:355px">
+        <div class="eyebrow">唯变AI工作台</div>
+        <div class="title" style="margin-top:24px">内容，别再<br><span class="accent">散着做。</span></div>
+      </div>
+    </section>
+
+    <section id="shot-2a" class="clip bg" data-start="2.5" data-duration="2.4" data-track-index="0">
+      <div id="seedance-frame" class="frame"><img id="seedance-img" class="ui-image" src="assets/pack-b/b-01-seedance-workflow.png" alt="Seedance 2.0 视频生成工作流" /><div class="ui-mask"></div></div>
+      <div id="seedance-label" class="label">视频生成工作流</div>
+      <div id="seedance-copy" class="bottom-copy"><div class="cap">从提示词到成片，<span class="accent">批量生成</span>。</div></div>
+    </section>
+
+    <section id="shot-2b" class="clip bg" data-start="4.9" data-duration="2.6" data-track-index="0">
+      <div id="live-frame" class="frame"><img id="live-img" class="ui-image" src="assets/pack-b/b-02-live-console.png" alt="数字人直播控制台" /><div class="ui-mask"></div></div>
+      <div id="live-label" class="label">数字人直播控制台</div>
+      <div id="live-copy" class="bottom-copy"><div class="cap">生成内容，接上<span class="accent">数字人直播</span>。</div></div>
+    </section>
+
+    <section id="shot-3" class="clip bg" data-start="7.5" data-duration="2.5" data-track-index="0">
+      <div id="brand-ui" class="brand-ui"><img src="assets/pack-b/b-02-live-console.png" alt="产品界面缩略图" /></div>
+      <div id="brand-line" class="brand-line"></div>
+      <img id="brand-logo" class="brand-mark" src="../../../public/logo-white.svg" alt="唯变AI工作台" />
+      <div id="brand-copy" class="brand-copy"><div class="brand-name">唯变AI工作台</div><div class="brand-sub">一站式AI数字人系统</div></div>
+      <div id="brand-cta" class="brand-cta">生成内容，开始直播。</div>
+    </section>
+
+    <div id="wipe-1" class="clip transition" data-start="2.15" data-duration="0.45" data-track-index="5"></div>
+    <div id="wipe-2" class="clip transition" data-start="4.58" data-duration="0.38" data-track-index="5"></div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set(["#shot-1", "#shot-2a", "#shot-2b", "#shot-3"], { autoAlpha: 0 });
+    tl.set("#shot-1", { autoAlpha: 1 }, 0);
+    tl.from(["#s1-voice", "#s1-video", "#s1-avatar", "#s1-live"], { opacity: 0, scale: .84, duration: .34, stagger: .1, ease: "power2.out" }, .12);
+    tl.to("#s1-voice", { x: 240, y: 200, duration: .72, ease: "power3.inOut" }, .84);
+    tl.to("#s1-video", { x: -255, y: 95, duration: .72, ease: "power3.inOut" }, .84);
+    tl.to("#s1-avatar", { x: 195, y: -220, duration: .72, ease: "power3.inOut" }, .84);
+    tl.to("#s1-live", { x: -210, y: -150, duration: .72, ease: "power3.inOut" }, .84);
+    tl.from("#s1-copy", { opacity: 0, y: 42, duration: .55, ease: "power2.out" }, .26);
+    tl.to("#s1-scan", { height: 690, duration: .48, ease: "power2.out" }, 1.54);
+    tl.set("#wipe-1", { autoAlpha: 1 }, 2.12);
+    tl.to("#wipe-1", { scaleX: 1, duration: .24, ease: "power2.in" }, 2.12);
+    tl.set("#shot-1", { autoAlpha: 0 }, 2.37);
+    tl.set("#shot-2a", { autoAlpha: 1 }, 2.38);
+    tl.to("#wipe-1", { scaleX: 0, transformOrigin: "right center", duration: .24, ease: "power2.out" }, 2.38);
+    tl.from("#seedance-frame", { opacity: 0, scale: .94, y: 42, duration: .45, ease: "power3.out" }, 2.43);
+    tl.from("#seedance-label", { opacity: 0, x: -24, duration: .35, ease: "power2.out" }, 2.72);
+    tl.from("#seedance-copy", { opacity: 0, y: 28, duration: .4, ease: "power2.out" }, 2.88);
+    tl.to("#seedance-img", { scale: 1.12, x: -24, duration: 2.15, ease: "none" }, 2.55);
+    tl.set("#wipe-2", { autoAlpha: 1 }, 4.58);
+    tl.to("#wipe-2", { scaleX: 1, duration: .2, ease: "power2.in" }, 4.58);
+    tl.set("#shot-2a", { autoAlpha: 0 }, 4.79);
+    tl.set("#shot-2b", { autoAlpha: 1 }, 4.8);
+    tl.to("#wipe-2", { scaleX: 0, transformOrigin: "right center", duration: .2, ease: "power2.out" }, 4.8);
+    tl.from("#live-frame", { opacity: 0, scale: .94, y: 42, duration: .45, ease: "power3.out" }, 4.86);
+    tl.from("#live-label", { opacity: 0, x: -24, duration: .35, ease: "power2.out" }, 5.12);
+    tl.from("#live-copy", { opacity: 0, y: 28, duration: .4, ease: "power2.out" }, 5.3);
+    tl.to("#live-img", { scale: 1.14, x: -32, duration: 2.35, ease: "none" }, 4.95);
+    tl.to("#shot-2b", { opacity: 0, scale: 1.04, filter: "blur(7px)", duration: .44, ease: "power2.in" }, 7.18);
+    tl.set("#shot-3", { autoAlpha: 1 }, 7.5);
+    tl.from("#brand-ui", { opacity: 0, scale: .88, duration: .55, ease: "power3.out" }, 7.52);
+    tl.from("#brand-logo", { opacity: 0, y: 18, duration: .35, ease: "power2.out" }, 7.67);
+    tl.from("#brand-line", { scaleY: 0, transformOrigin: "bottom center", duration: .36, ease: "power2.out" }, 7.68);
+    tl.from("#brand-copy", { opacity: 0, y: 24, duration: .48, ease: "power2.out" }, 7.78);
+    tl.from("#brand-cta", { opacity: 0, y: 16, duration: .34, ease: "power2.out" }, 8.42);
+    window.__timelines["weibian-promo"] = tl;
+  </script>
+</body>
+</html>

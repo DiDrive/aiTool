@@ -88,34 +88,66 @@ const segmentRecord = (param: SeedanceLongVideoChainTaskParam, state: SegmentSta
     const isLast = state.index === splitDurations(param.totalDuration).length - 1;
     const base = Array.isArray(param.baseContent) ? param.baseContent : [];
     const finalOnly = new Set(param.finalOnlyAssetUrls || []);
-    const content = base.filter(item => {
-        if (isLast) return true;
-        if (item?.role === "last_frame") return false;
-        const url = String(item?.image_url?.url || "");
-        return !finalOnly.has(url);
-    }).map(item => ({ ...item }));
-    const textIndex = content.findIndex(item => item?.type === "text");
     const continuity = previous
         ? "承接上一段尾帧的动作、人物、服装、车辆、光线与场景，镜头运动连续，不要重新开场或跳变。"
         : "";
-    if (textIndex >= 0) {
-        const originalText = String(content[textIndex]?.text || "");
-        const marker = "画面/动作要求：";
-        const markerIndex = originalText.indexOf(marker);
-        const masterBinding = markerIndex >= 0 ? originalText.slice(0, markerIndex + marker.length) : "";
-        content[textIndex] = {
-            ...content[textIndex],
-            text: [masterBinding, state.prompt, continuity].filter(Boolean).join("\n"),
-        };
+    const baseText = String(base.find(item => item?.type === "text")?.text || "");
+    const marker = "画面/动作要求：";
+    const markerIndex = baseText.indexOf(marker);
+    const masterBinding = markerIndex >= 0 ? baseText.slice(0, markerIndex + marker.length) : "";
+    const segmentPrompt = [masterBinding, state.prompt, continuity].filter(Boolean).join("\n");
+    if (param.modelConfig.providerType === "pix") {
+        const media = base
+            .filter(item => item?.type !== "text")
+            .map(item => ({
+                type: String(item?.type || "").replace(/_url$/, ""),
+                role: String(item?.role || ""),
+                url: String(item?.image_url?.url || item?.video_url?.url || item?.audio_url?.url || "").trim(),
+            }))
+            .filter(item => item.url);
+        const referenceImages = media
+            .filter(item => item.type === "image" && item.role !== "first_frame" && item.role !== "last_frame" && (isLast || !finalOnly.has(item.url)))
+            .map(item => item.url);
+        const firstFrame = media.find(item => item.role === "first_frame")?.url || "";
+        const lastFrame = media.find(item => item.role === "last_frame")?.url || "";
+        const images = previous?.tailFrame
+            ? [previous.tailFrame, ...(isLast && lastFrame ? [lastFrame] : []), ...referenceImages]
+            : [firstFrame, ...(isLast && lastFrame ? [lastFrame] : []), ...referenceImages].filter(Boolean);
+        body.prompt = segmentPrompt;
+        body.mode = previous?.tailFrame
+            ? isLast && lastFrame ? "first-last" : "first-frame"
+            : body.mode;
+        body.images = images;
+        if (!images.length) delete body.images;
+        body.duration = state.duration;
+        body.aspect_ratio = param.ratio;
+        body.resolution = param.resolution;
+    } else {
+        const content = base.filter(item => {
+            if (isLast) return true;
+            if (item?.role === "last_frame") return false;
+            const url = String(item?.image_url?.url || "");
+            return !finalOnly.has(url);
+        }).map(item => ({ ...item }));
+        const textIndex = content.findIndex(item => item?.type === "text");
+        if (textIndex >= 0) {
+            const originalText = String(content[textIndex]?.text || "");
+            const markerIndex = originalText.indexOf(marker);
+            const binding = markerIndex >= 0 ? originalText.slice(0, markerIndex + marker.length) : "";
+            content[textIndex] = {
+                ...content[textIndex],
+                text: [binding, state.prompt, continuity].filter(Boolean).join("\n"),
+            };
+        }
+        else content.unshift({ type: "text", text: [state.prompt, continuity].filter(Boolean).join("\n") });
+        if (previous?.tailFrame) content.splice(1, 0, { type: "image_url", image_url: { url: previous.tailFrame }, role: "first_frame" });
+        body.content = content;
+        body.duration = state.duration;
+        body.generate_audio = param.generateAudio;
+        body.ratio = param.ratio;
+        body.resolution = param.resolution;
+        body.watermark = param.watermark;
     }
-    else content.unshift({ type: "text", text: [state.prompt, continuity].filter(Boolean).join("\n") });
-    if (previous?.tailFrame) content.splice(1, 0, { type: "image_url", image_url: { url: previous.tailFrame }, role: "first_frame" });
-    body.content = content;
-    body.duration = state.duration;
-    body.generate_audio = param.generateAudio;
-    body.ratio = param.ratio;
-    body.resolution = param.resolution;
-    body.watermark = param.watermark;
     return {
         biz: "DirectApiTask",
         title: `片段_${param.title}_${String(state.index + 1).padStart(2, "0")}`,

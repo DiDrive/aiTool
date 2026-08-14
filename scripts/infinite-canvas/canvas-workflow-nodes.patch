@@ -1,0 +1,1732 @@
+diff --git a/web/src/app/(user)/canvas/[id]/canvas-client-page.tsx b/web/src/app/(user)/canvas/[id]/canvas-client-page.tsx
+index f679ed3..38ab7bf 100644
+--- a/web/src/app/(user)/canvas/[id]/canvas-client-page.tsx
++++ b/web/src/app/(user)/canvas/[id]/canvas-client-page.tsx
+@@ -51,2 +51,3 @@ import type { CanvasVideoResourceOption } from "../components/canvas-video-setti
+ import { CanvasToolbar } from "../components/canvas-toolbar";
++import { CanvasWorkflowDetailModal, missingShotAssets } from "../components/canvas-workflow-detail-modal";
+ import { AssetPickerModal, type AssetPickerTab } from "../components/asset-picker-modal";
+@@ -58,2 +59,4 @@ import { buildCanvasAgentContext } from "../agent/canvas-agent-context";
+ import type { CanvasAgentAction, CanvasAgentToolResult } from "../agent/canvas-agent-tools";
++import { inferWorkflowNodeKind, workflowNodePreset } from "../utils/canvas-workflow";
++import { ensureWorkflowGenerationContract, formatStoryboardShots, hasValidWorkflowStructure, workflowStructureRepairPrompt, workflowTextResultPatch } from "../utils/canvas-workflow-structure";
+ import {
+@@ -72,2 +75,4 @@ import {
+     type CanvasPendingAgentRequest,
++    type CanvasStoryboardShot,
++    type CanvasWorkflowNodeKind,
+     type ConnectionHandle,
+@@ -191,3 +196,3 @@ function CanvasRefreshShell() {
+ 
+-function ConnectionCreateMenu({ pending, onCreate, onClose }: { pending: PendingConnectionCreate; onCreate: (type: CanvasNodeType) => void; onClose: () => void }) {
++function ConnectionCreateMenu({ pending, onCreate, onCreateWorkflow, onClose }: { pending: PendingConnectionCreate; onCreate: (type: CanvasNodeType) => void; onCreateWorkflow: (kind: CanvasWorkflowNodeKind) => void; onClose: () => void }) {
+     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+@@ -209,3 +214,10 @@ function ConnectionCreateMenu({ pending, onCreate, onClose }: { pending: Pending
+             </div>
+-            <div className="grid gap-1">
++            <div className="grid max-h-[70vh] gap-1 overflow-y-auto">
++                <div className="px-2 pb-1 pt-1 text-xs font-medium" style={{ color: theme.node.muted }}>创作流程</div>
++                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="剧本" description="根据上游创意生成剧本" onClick={() => onCreateWorkflow("script")} />
++                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="分镜脚本" description="将剧本拆成镜头" onClick={() => onCreateWorkflow("storyboard_script")} />
++                <ConnectionCreateOption theme={theme} icon={<Bot className="size-5" />} title="人物素材" description="生成人物设定参考" onClick={() => onCreateWorkflow("character")} />
++                <ConnectionCreateOption theme={theme} icon={<Images className="size-5" />} title="分镜图" description="生成镜头画面" onClick={() => onCreateWorkflow("storyboard")} />
++                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频片段" description="根据上游分镜生成视频" onClick={() => onCreateWorkflow("video")} />
++                <div className="px-2 pb-1 pt-3 text-xs font-medium" style={{ color: theme.node.muted }}>基础节点</div>
+                 <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="文本生成" description="脚本、广告词、品牌文案" onClick={() => onCreate(CanvasNodeType.Text)} />
+@@ -239,2 +251,3 @@ function NodeCreateMenu({
+     onCreate,
++    onCreateWorkflow,
+     onUpload,
+@@ -245,2 +258,3 @@ function NodeCreateMenu({
+     onCreate: (type: CanvasNodeType) => void;
++    onCreateWorkflow: (kind: CanvasWorkflowNodeKind) => void;
+     onUpload: () => void;
+@@ -266,3 +280,11 @@ function NodeCreateMenu({
+             </div>
+-            <div className="grid gap-1">
++            <div className="grid max-h-[70vh] gap-1 overflow-y-auto">
++                <div className="px-2 pb-1 pt-1 text-xs font-medium" style={{ color: theme.node.muted }}>创作流程</div>
++                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="创意主题" description="输入题材、时长和风格" onClick={() => onCreateWorkflow("idea")} />
++                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="剧本" description="生成完整剧本或制作稿" onClick={() => onCreateWorkflow("script")} />
++                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="分镜脚本" description="拆成可生成的镜头" onClick={() => onCreateWorkflow("storyboard_script")} />
++                <ConnectionCreateOption theme={theme} icon={<Bot className="size-5" />} title="人物素材" description="生成角色设定参考" onClick={() => onCreateWorkflow("character")} />
++                <ConnectionCreateOption theme={theme} icon={<Images className="size-5" />} title="分镜图" description="生成镜头画面" onClick={() => onCreateWorkflow("storyboard")} />
++                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频片段" description="根据分镜生成视频" onClick={() => onCreateWorkflow("video")} />
++                <div className="px-2 pb-1 pt-3 text-xs font-medium" style={{ color: theme.node.muted }}>基础节点</div>
+                 <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="文本生成" description="脚本、广告词、品牌文案" onClick={() => onCreate(CanvasNodeType.Text)} />
+@@ -368,2 +390,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+     const [dialogNodeId, setDialogNodeId] = useState<string | null>(null);
++    const [workflowDetailNodeId, setWorkflowDetailNodeId] = useState<string | null>(null);
+     const [openDirectorNodeId, setOpenDirectorNodeId] = useState<string | null>(null);
+@@ -736,2 +759,23 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+ 
++    const createConnectedWorkflowNode = useCallback(
++        (kind: CanvasWorkflowNodeKind, pending: PendingConnectionCreate) => {
++            const preset = workflowNodePreset(kind);
++            const newNode = createCanvasNode(preset.type, pending.position, { ...preset.metadata });
++            newNode.title = preset.title;
++            const connection = normalizeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode], pending.connection.handleType);
++            if (!connection) {
++                message.warning("无法创建该创作节点连线");
++                return;
++            }
++            setNodes((prev) => [...prev, newNode]);
++            setConnections((prev) => [...prev, { id: nanoid(), ...connection }]);
++            setSelectedNodeIds(new Set([newNode.id]));
++            setSelectedConnectionId(null);
++            setDialogNodeId(newNode.id);
++            setPendingConnectionCreate(null);
++            setConnecting(null);
++        },
++        [message, setConnecting],
++    );
++
+     const cancelPendingConnectionCreate = useCallback(() => {
+@@ -950,2 +994,15 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+ 
++    const createWorkflowNode = useCallback(
++        (kind: CanvasWorkflowNodeKind, position?: Position) => {
++            const preset = workflowNodePreset(kind);
++            const newNode = createCanvasNode(preset.type, position || getCanvasCenter(), { ...preset.metadata });
++            newNode.title = preset.title;
++            setNodes((prev) => [...prev, newNode]);
++            setSelectedNodeIds(new Set([newNode.id]));
++            setSelectedConnectionId(null);
++            setDialogNodeId(newNode.id);
++        },
++        [getCanvasCenter],
++    );
++
+     const deleteCanvasTaskRecords = useCallback(
+@@ -2468,4 +2525,6 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+         event.preventDefault();
++        event.stopPropagation();
+         setContextMenu(null);
+-    }, []);
++        setNodeCreatePosition(screenToCanvas(event.clientX, event.clientY));
++    }, [screenToCanvas]);
+ 
+@@ -2482,6 +2541,18 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+             const sourceTextContent = sourceNode?.type === CanvasNodeType.Text ? sourceNode.metadata?.content?.trim() || "" : "";
+-            const editingTextNode = mode === "text" && Boolean(sourceTextContent);
+-            const generationContext = await hydrateNodeGenerationContext(
+-                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${prompt}` : prompt),
+-            );
++            const workflowTextNode = mode === "text" && Boolean(sourceNode?.metadata?.workflowKind === "script" || sourceNode?.metadata?.workflowKind === "storyboard_script");
++            const editingTextNode = mode === "text" && Boolean(sourceTextContent) && !workflowTextNode;
++            const contractedPrompt = ensureWorkflowGenerationContract(sourceNode?.metadata?.workflowKind, prompt);
++            let generationContext: NodeGenerationContext;
++            try {
++                generationContext = await hydrateNodeGenerationContext(
++                    buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${contractedPrompt}` : contractedPrompt),
++                    { analyzeVideos: mode === "text" },
++                );
++            } catch (error) {
++                const errorDetails = error instanceof Error ? error.message : "视频解析失败";
++                message.error(errorDetails);
++                setNodes((prev) => prev.map((node) => node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails } } : node));
++                setRunningNodeId(null);
++                return;
++            }
+             const effectivePrompt = generationContext.prompt.trim();
+@@ -2673,3 +2744,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                         type: CanvasNodeType.Image,
+-                        title: effectivePrompt.slice(0, 32) || "Generated Image",
++                        title: sourceNode?.metadata?.workflowKind ? sourceNode.title : effectivePrompt.slice(0, 32) || "Generated Image",
+                         position: {
+@@ -2752,3 +2823,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                             try {
+-                                const task = await createCanvasImageTask({ ...generationConfig, count: "1" }, requestPrompt, referenceImages, { nodeId: targetId, sourceId: projectId, clientTaskId: targetTaskIds[targetId] });
++                                const task: CanvasImageTask = await createCanvasImageTask({ ...generationConfig, count: "1" }, requestPrompt, referenceImages, { nodeId: targetId, sourceId: projectId, clientTaskId: targetTaskIds[targetId] });
+                                 if (task.image_url || task.url) {
+@@ -2819,3 +2890,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                         type: CanvasNodeType.Video,
+-                        title: effectivePrompt.slice(0, 32) || "Generated Video",
++                        title: sourceNode?.metadata?.workflowKind ? sourceNode.title : effectivePrompt.slice(0, 32) || "Generated Video",
+                         position: isEmptyVideoNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y },
+@@ -2823,3 +2894,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                         height: isEmptyVideoNode ? sourceNode.height : spec.height,
+-                        metadata: { prompt: effectivePrompt, cameraControl: sourceNode?.metadata?.cameraControl, status: NODE_STATUS_LOADING, model: videoGenerationConfig.model, channelId: videoGenerationConfig.videoChannelId || videoGenerationConfig.activeChannelId, size: videoGenerationConfig.size, seconds: videoGenerationConfig.videoSeconds, vquality: videoGenerationConfig.vquality, mode: videoGenerationConfig.videoMode, negativePrompt: videoGenerationConfig.videoNegativePrompt, multiShot: videoGenerationConfig.videoMultiShot, shotType: videoGenerationConfig.videoShotType, generateAudio: videoGenerationConfig.videoGenerateAudio, characterOrientation: videoGenerationConfig.videoCharacterOrientation, watermark: videoGenerationConfig.videoWatermark, references: generationReferenceUrls({ ...generationContext, referenceImages: videoReferenceImages, firstFrame, lastFrame }), firstFrameNodeId: sourceNode?.metadata?.firstFrameNodeId, lastFrameNodeId: sourceNode?.metadata?.lastFrameNodeId, klingImageNodeIds: sourceNode?.metadata?.klingImageNodeIds, klingMultiPrompt: sourceNode?.metadata?.klingMultiPrompt, klingElementList: sourceNode?.metadata?.klingElementList, startedAt: generationStartedAt, progress: 0, videoTaskId: clientTaskId },
++                        metadata: { workflowKind: sourceNode?.metadata?.workflowKind, prompt: effectivePrompt, cameraControl: sourceNode?.metadata?.cameraControl, status: NODE_STATUS_LOADING, model: videoGenerationConfig.model, channelId: videoGenerationConfig.videoChannelId || videoGenerationConfig.activeChannelId, size: videoGenerationConfig.size, seconds: videoGenerationConfig.videoSeconds, vquality: videoGenerationConfig.vquality, mode: videoGenerationConfig.videoMode, negativePrompt: videoGenerationConfig.videoNegativePrompt, multiShot: videoGenerationConfig.videoMultiShot, shotType: videoGenerationConfig.videoShotType, generateAudio: videoGenerationConfig.videoGenerateAudio, characterOrientation: videoGenerationConfig.videoCharacterOrientation, watermark: videoGenerationConfig.videoWatermark, references: generationReferenceUrls({ ...generationContext, referenceImages: videoReferenceImages, firstFrame, lastFrame }), firstFrameNodeId: sourceNode?.metadata?.firstFrameNodeId, lastFrameNodeId: sourceNode?.metadata?.lastFrameNodeId, klingImageNodeIds: sourceNode?.metadata?.klingImageNodeIds, klingMultiPrompt: sourceNode?.metadata?.klingMultiPrompt, klingElementList: sourceNode?.metadata?.klingElementList, startedAt: generationStartedAt, progress: 0, videoTaskId: clientTaskId },
+                     };
+@@ -2842,3 +2913,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                         type: CanvasNodeType.Audio,
+-                        title: effectivePrompt.slice(0, 32) || "Generated Audio",
++                        title: sourceNode?.metadata?.workflowKind ? sourceNode.title : effectivePrompt.slice(0, 32) || "Generated Audio",
+                         position: isEmptyAudioNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y + ((sourceNode?.height || spec.height) - spec.height) / 2 },
+@@ -2881,3 +2952,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+ 
+-                const answers = await Promise.all(
++                let answers = await Promise.all(
+                     (childIds.length ? childIds : [nodeId]).map((targetNodeId) => {
+@@ -2892,13 +2963,23 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                 );
++                const workflowKind = sourceNode?.metadata?.workflowKind;
++                if (workflowKind === "script" || workflowKind === "storyboard_script") {
++                    answers = await Promise.all(answers.map(async (item) => {
++                        if (hasValidWorkflowStructure(workflowKind, item.content)) return item;
++                        const repaired = await requestImageQuestion(generationConfig, buildNodeChatMessages({ ...generationContext, prompt: workflowStructureRepairPrompt(workflowKind, item.content) }), () => undefined);
++                        return { ...item, content: repaired || item.content };
++                    }));
++                    if (answers.some((item) => !hasValidWorkflowStructure(workflowKind, item.content))) message.warning("模型未能返回完整结构，已保留原文，请在详情中重新结构化");
++                }
+                 const answerByNodeId = new Map(answers.map((item) => [item.nodeId, item.content]));
+                 setNodes((prev) =>
+-                    prev.map((node) =>
+-                        childIds.includes(node.id)
+-                            ? { ...node, metadata: { ...node.metadata, content: answerByNodeId.get(node.id) || streamed, status: NODE_STATUS_SUCCESS } }
+-                            : node.id === nodeId && isConfigNode
+-                                ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } }
+-                                : node.id === nodeId && !editingTextNode
+-                                    ? { ...node, type: CanvasNodeType.Text, title: prompt.slice(0, 32) || "Generated Text", metadata: { ...node.metadata, content: answerByNodeId.get(node.id) || streamed, status: NODE_STATUS_SUCCESS } }
+-                                    : node,
+-                    ),
++                    prev.map((node) => {
++                        const answer = answerByNodeId.get(node.id) || streamed;
++                        if (childIds.includes(node.id)) return { ...node, metadata: { ...node.metadata, content: answer, status: NODE_STATUS_SUCCESS } };
++                        if (node.id === nodeId && isConfigNode) return { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } };
++                        if (node.id === nodeId && !editingTextNode) {
++                            const structuredPatch = workflowTextResultPatch(node.metadata?.workflowKind, answer);
++                            return { ...node, type: CanvasNodeType.Text, title: node.metadata?.workflowKind ? node.title : prompt.slice(0, 32) || "Generated Text", metadata: { ...node.metadata, ...structuredPatch, status: NODE_STATUS_SUCCESS } };
++                        }
++                        return node;
++                    }),
+                 );
+@@ -2917,2 +2998,238 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+ 
++    const handleRunWorkflowNode = useCallback(
++        (node: CanvasNodeData) => {
++            const mode = node.metadata?.generationMode || (node.type === CanvasNodeType.Video ? "video" : isCanvasImageNodeType(node.type) ? "image" : "text");
++            const prompt = (node.metadata?.prompt || node.metadata?.content || "").trim();
++            if (!prompt) {
++                message.warning("请先填写该节点的生成要求");
++                return;
++            }
++            void handleGenerateNode(node.id, mode, prompt);
++        },
++        [handleGenerateNode, message],
++    );
++
++    const handleWorkflowMetadataChange = useCallback((nodeId: string, patch: Partial<CanvasNodeMetadata>) => {
++        const currentNode = nodesRef.current.find((node) => node.id === nodeId);
++        if (!currentNode) return;
++        if (Array.isArray(patch.storyboardShots)) {
++            const nextConnections = synchronizeWorkflowShotConnections(nodeId, currentNode.metadata?.storyboardShots || [], patch.storyboardShots, connectionsRef.current, nodesRef.current);
++            connectionsRef.current = nextConnections;
++            setConnections(nextConnections);
++        }
++        const nextNodes = nodesRef.current.map((node) => node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...patch } } : node);
++        nodesRef.current = nextNodes;
++        setNodes(nextNodes);
++    }, []);
++
++    const handleCreateStoryboardScript = useCallback((scriptNode: CanvasNodeData) => {
++        const existingConnection = connectionsRef.current.find((connection) => connection.fromNodeId === scriptNode.id && nodesRef.current.find((node) => node.id === connection.toNodeId)?.metadata?.workflowKind === "storyboard_script");
++        const existing = existingConnection ? nodesRef.current.find((node) => node.id === existingConnection.toNodeId) : undefined;
++        if (existing) {
++            setWorkflowDetailNodeId(existing.id);
++            if (!existing.metadata?.storyboardShots?.length) window.setTimeout(() => void handleGenerateNode(existing.id, "text", existing.metadata?.prompt || workflowNodePreset("storyboard_script").metadata.prompt || ""), 0);
++            return;
++        }
++        const preset = workflowNodePreset("storyboard_script");
++        const node = createCanvasNode(preset.type, { x: scriptNode.position.x + scriptNode.width + 120, y: scriptNode.position.y }, { ...preset.metadata, workflowSourceNodeId: scriptNode.id });
++        node.title = preset.title;
++        const nextNodes = [...nodesRef.current, node];
++        const nextConnections = [...connectionsRef.current, { id: nanoid(), fromNodeId: scriptNode.id, toNodeId: node.id }];
++        nodesRef.current = nextNodes;
++        connectionsRef.current = nextConnections;
++        setNodes(nextNodes);
++        setConnections(nextConnections);
++        setWorkflowDetailNodeId(node.id);
++        window.setTimeout(() => void handleGenerateNode(node.id, "text", node.metadata?.prompt || ""), 0);
++    }, [handleGenerateNode]);
++
++    const handleAdaptWorkflowScript = useCallback((scriptNode: CanvasNodeData, requirement: string) => {
++        const sourceText = (scriptNode.metadata?.content || "").trim();
++        if (!sourceText || scriptNode.metadata?.workflowStructureValid === false) {
++            message.warning("请先生成或结构化完整剧本，再进行改编");
++            return;
++        }
++        const preset = workflowNodePreset("script");
++        const adaptationPrompt = ensureWorkflowGenerationContract("script", [
++            "你是一名专业中文编剧。请以【原始剧本】为唯一底稿，根据【用户改编要求】生成一份完整的改编剧本。",
++            "必须完整输出改编后的全部场次，不能只给修改建议、摘要或差异说明。",
++            "未被用户要求修改的剧情主线、人物关系和关键信息应保持一致；用户要求的变化必须贯穿相关场次，保证前后逻辑、人物动机和时长连贯。",
++            "不要在结果中解释改编过程，也不要提及“原始剧本”或“用户要求”。",
++            `【用户改编要求】\n${requirement}`,
++            `【原始剧本】\n${sourceText}`,
++        ].join("\n\n"));
++        const node = createCanvasNode(
++            preset.type,
++            { x: scriptNode.position.x + scriptNode.width + 120, y: scriptNode.position.y + Math.min(220, scriptNode.height * 0.35) },
++            {
++                ...preset.metadata,
++                prompt: adaptationPrompt,
++                excludeUpstreamText: true,
++                workflowSourceNodeId: scriptNode.id,
++                workflowAdaptationSourceNodeId: scriptNode.id,
++                workflowAdaptationRequirement: requirement,
++            },
++        );
++        node.title = "改编剧本";
++        const nextNodes = [...nodesRef.current, node];
++        const nextConnections = [...connectionsRef.current, { id: nanoid(), fromNodeId: scriptNode.id, toNodeId: node.id }];
++        nodesRef.current = nextNodes;
++        connectionsRef.current = nextConnections;
++        setNodes(nextNodes);
++        setConnections(nextConnections);
++        setWorkflowDetailNodeId(node.id);
++        setSelectedNodeIds(new Set([node.id]));
++        setSelectedConnectionId(null);
++        window.setTimeout(() => void handleGenerateNode(node.id, "text", adaptationPrompt), 0);
++    }, [handleGenerateNode, message]);
++
++    const handleBindWorkflowAsset = useCallback((storyboardNode: CanvasNodeData, shotId: string, kind: "character" | "scene" | "prop" | "storyboard", name: string, assetNodeId: string) => {
++        const shots = storyboardNode.metadata?.storyboardShots || [];
++        const nextShots = shots.map((shot) => {
++            if (shot.id !== shotId) return shot;
++            const assetNodeIds = { ...shot.assetNodeIds };
++            if (kind === "character") {
++                const characters = { ...assetNodeIds.characters };
++                if (assetNodeId) characters[name] = assetNodeId; else delete characters[name];
++                assetNodeIds.characters = characters;
++            }
++            if (kind === "scene") assetNodeIds.scene = assetNodeId || undefined;
++            if (kind === "prop") {
++                const props = { ...assetNodeIds.props };
++                if (assetNodeId) props[name] = assetNodeId; else delete props[name];
++                assetNodeIds.props = props;
++            }
++            if (kind === "storyboard") assetNodeIds.storyboard = assetNodeId || undefined;
++            return { ...shot, assetNodeIds };
++        });
++        handleWorkflowMetadataChange(storyboardNode.id, { storyboardShots: nextShots, content: formatStoryboardShots(nextShots) });
++    }, [handleWorkflowMetadataChange]);
++
++    const handleGenerateWorkflowAssets = useCallback((storyboardNode: CanvasNodeData, shotIds: string[]) => {
++        const shots = storyboardNode.metadata?.storyboardShots || [];
++        const targetSet = new Set(shotIds);
++        const nameToNodeId = new Map<string, string>();
++        shots.forEach((shot) => {
++            Object.entries(shot.assetNodeIds?.characters || {}).forEach(([name, id]) => { if (id) nameToNodeId.set(`character:${name}`, id); });
++            if (shot.scene && shot.assetNodeIds?.scene) nameToNodeId.set(`scene:${shot.scene}`, shot.assetNodeIds.scene);
++            Object.entries(shot.assetNodeIds?.props || {}).forEach(([name, id]) => { if (id) nameToNodeId.set(`prop:${name}`, id); });
++        });
++        const created: CanvasNodeData[] = [];
++        const runIds = new Set<string>();
++        const ensureAsset = (kind: "character" | "scene" | "prop", name: string, shot: CanvasStoryboardShot) => {
++            const key = `${kind}:${name}`;
++            const existingId = nameToNodeId.get(key);
++            if (existingId) {
++                if (!nodesRef.current.find((node) => node.id === existingId)?.metadata?.content) runIds.add(existingId);
++                return existingId;
++            }
++            const preset = workflowNodePreset(kind);
++            const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
++            const prompt = `${preset.metadata.prompt || ""}\n素材名称：${name}\n相关镜头：${shot.visual}；${shot.action}\n场景：${shot.scene}。`;
++            const node = createCanvasNode(CanvasNodeType.Image, { x: storyboardNode.position.x + storyboardNode.width + 140 + (created.length % 3) * (spec.width + 36), y: storyboardNode.position.y + Math.floor(created.length / 3) * (spec.height + 70) }, { ...preset.metadata, prompt, workflowSourceNodeId: storyboardNode.id, workflowShotId: shot.id });
++            node.title = `${preset.title} · ${name}`;
++            created.push(node);
++            nameToNodeId.set(key, node.id);
++            runIds.add(node.id);
++            return node.id;
++        };
++        const nextShots = shots.map((shot) => {
++            if (!targetSet.has(shot.id)) return shot;
++            const characters = { ...shot.assetNodeIds?.characters };
++            shot.characters.forEach((name) => { characters[name] = ensureAsset("character", name, shot); });
++            const props = { ...shot.assetNodeIds?.props };
++            shot.props.forEach((name) => { props[name] = ensureAsset("prop", name, shot); });
++            const scene = shot.scene ? ensureAsset("scene", shot.scene, shot) : shot.assetNodeIds?.scene;
++            return { ...shot, assetNodeIds: { ...shot.assetNodeIds, characters, props, scene } };
++        });
++        const nextNodes = [...nodesRef.current, ...created];
++        const baseConnections = [...connectionsRef.current, ...created.map((node) => ({ id: nanoid(), fromNodeId: storyboardNode.id, toNodeId: node.id }))];
++        const nextConnections = synchronizeWorkflowShotConnections(storyboardNode.id, shots, nextShots, baseConnections, nextNodes);
++        nodesRef.current = nextNodes.map((node) => node.id === storyboardNode.id ? { ...node, metadata: { ...node.metadata, storyboardShots: nextShots, content: formatStoryboardShots(nextShots) } } : node);
++        connectionsRef.current = nextConnections;
++        setNodes(nodesRef.current);
++        setConnections(nextConnections);
++        window.setTimeout(() => runIds.forEach((nodeId) => {
++            const node = nodesRef.current.find((item) => item.id === nodeId);
++            if (node) void handleGenerateNode(node.id, "image", node.metadata?.prompt || "");
++        }), 0);
++    }, [handleGenerateNode]);
++
++    const handleGenerateWorkflowStoryboards = useCallback((storyboardNode: CanvasNodeData, shotIds: string[]) => {
++        const currentStoryboard = nodesRef.current.find((node) => node.id === storyboardNode.id) || storyboardNode;
++        const targetSet = new Set(shotIds);
++        const created: CanvasNodeData[] = [];
++        const runIds = new Set<string>();
++        const shots = currentStoryboard.metadata?.storyboardShots || [];
++        const nextShots = shots.map((shot, index) => {
++            if (!targetSet.has(shot.id)) return shot;
++            const existingId = shot.assetNodeIds?.storyboard;
++            const existingNode = existingId ? nodesRef.current.find((node) => node.id === existingId) : undefined;
++            if (existingNode && !existingNode.metadata?.content) {
++                runIds.add(existingNode.id);
++                return shot;
++            }
++            const preset = workflowNodePreset("storyboard");
++            const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
++            const prompt = `${preset.metadata.prompt || ""}\n镜头 ${shot.shotNumber}，${shot.shotSize}，${shot.durationSeconds} 秒。\n场景：${shot.scene}\n人物：${shot.characters.join("、")}\n道具：${shot.props.join("、")}\n额外参考：${(shot.extraAssets || []).map((asset) => `${asset.name}（${asset.kind}）`).join("、") || "无"}\n画面：${shot.visual}\n动作：${shot.action}\n运镜与光线：${shot.camera}；${shot.lighting}\n连续性：${shot.continuity}`;
++            const node = createCanvasNode(CanvasNodeType.Image, { x: storyboardNode.position.x + storyboardNode.width + 140 + (index % 3) * (spec.width + 36), y: storyboardNode.position.y + 520 + Math.floor(index / 3) * (spec.height + 70) }, { ...preset.metadata, prompt, workflowSourceNodeId: storyboardNode.id, workflowShotId: shot.id });
++            node.title = `分镜图 · 镜头 ${shot.shotNumber}`;
++            created.push(node);
++            runIds.add(node.id);
++            return { ...shot, assetNodeIds: { ...shot.assetNodeIds, storyboard: node.id } };
++        });
++        nodesRef.current = [...nodesRef.current, ...created].map((node) => node.id === storyboardNode.id ? { ...node, metadata: { ...node.metadata, storyboardShots: nextShots, content: formatStoryboardShots(nextShots) } } : node);
++        connectionsRef.current = synchronizeWorkflowShotConnections(storyboardNode.id, shots, nextShots, connectionsRef.current, nodesRef.current);
++        setNodes(nodesRef.current);
++        setConnections(connectionsRef.current);
++        window.setTimeout(() => runIds.forEach((nodeId) => {
++            const node = nodesRef.current.find((item) => item.id === nodeId);
++            if (node) void handleGenerateNode(node.id, "image", node.metadata?.prompt || "");
++        }), 0);
++    }, [handleGenerateNode]);
++
++    const handleGenerateWorkflowVideos = useCallback((storyboardNode: CanvasNodeData, shotIds: string[]) => {
++        const currentStoryboard = nodesRef.current.find((node) => node.id === storyboardNode.id) || storyboardNode;
++        const shots = currentStoryboard.metadata?.storyboardShots || [];
++        const targetSet = new Set(shotIds);
++        const blocked = shots.filter((shot) => targetSet.has(shot.id) && missingShotAssets(shot, nodesRef.current).length);
++        if (blocked.length) {
++            message.warning(`还有 ${blocked.length} 个镜头缺少素材，暂不能生成视频`);
++            return;
++        }
++        const created: CanvasNodeData[] = [];
++        const runIds = new Set<string>();
++        const promptByNodeId = new Map<string, string>();
++        const nextShots = shots.map((shot, index) => {
++            if (!targetSet.has(shot.id)) return shot;
++            const preset = workflowNodePreset("video");
++            const prompt = `${preset.metadata.prompt || ""}\n镜头 ${shot.shotNumber}，时长 ${shot.durationSeconds} 秒。\n画面与动作：${shot.visual}；${shot.action}\n额外参考：${(shot.extraAssets || []).map((asset) => `${asset.name}（${asset.kind}）`).join("、") || "无"}\n运镜：${shot.camera}\n对白与声音：${shot.dialogue}；${shot.sound}\n连续性：${shot.continuity}`;
++            const existingId = shot.assetNodeIds?.video;
++            if (existingId) {
++                promptByNodeId.set(existingId, prompt);
++                if (!nodesRef.current.find((node) => node.id === existingId)?.metadata?.content) runIds.add(existingId);
++                return shot;
++            }
++            const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
++            const node = createCanvasNode(CanvasNodeType.Video, { x: storyboardNode.position.x + storyboardNode.width + 160 + (index % 3) * (spec.width + 36), y: storyboardNode.position.y + 1080 + Math.floor(index / 3) * (spec.height + 70) }, { ...preset.metadata, prompt, excludeUpstreamText: true, seconds: String(Math.max(1, Math.round(shot.durationSeconds))), workflowSourceNodeId: storyboardNode.id, workflowShotId: shot.id });
++            node.title = `视频片段 · 镜头 ${shot.shotNumber}`;
++            created.push(node);
++            promptByNodeId.set(node.id, prompt);
++            runIds.add(node.id);
++            return { ...shot, assetNodeIds: { ...shot.assetNodeIds, video: node.id } };
++        });
++        nodesRef.current = [...nodesRef.current, ...created].map((node) => node.id === storyboardNode.id
++            ? { ...node, metadata: { ...node.metadata, storyboardShots: nextShots, content: formatStoryboardShots(nextShots) } }
++            : promptByNodeId.has(node.id)
++                ? { ...node, metadata: { ...node.metadata, prompt: promptByNodeId.get(node.id), excludeUpstreamText: true } }
++                : node);
++        connectionsRef.current = synchronizeWorkflowShotConnections(storyboardNode.id, shots, nextShots, connectionsRef.current, nodesRef.current);
++        setNodes(nodesRef.current);
++        setConnections(connectionsRef.current);
++        window.setTimeout(() => runIds.forEach((nodeId) => {
++            const node = nodesRef.current.find((item) => item.id === nodeId);
++            if (node) void handleGenerateNode(node.id, "video", node.metadata?.prompt || "");
++        }), 0);
++    }, [handleGenerateNode, message]);
++
+     const getCanvasAgentContext = useCallback(
+@@ -3090,4 +3407,7 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                     const nodeCenter = nextNodeCenter(CanvasNodeType.Text, sourceNodes, nodeSize);
++                    const nodeTitle = stringValue("title") || content.slice(0, 32) || "文本";
++                    const workflowKind = action.name === "create_primary_script_node" ? "script" : inferWorkflowNodeKind(nodeTitle, CanvasNodeType.Text);
+                     const node = createCanvasNode(CanvasNodeType.Text, nodeCenter, {
+-                        content,
++                        workflowKind,
++                        ...workflowTextResultPatch(workflowKind, content),
+                         prompt: content,
+@@ -3100,3 +3420,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                     }
+-                    node.title = stringValue("title") || content.slice(0, 32) || "文本";
++                    node.title = nodeTitle;
+                     const createdConnections = sourceNodeIds.map((sourceNodeId) => ({ id: nanoid(), fromNodeId: sourceNodeId, toNodeId: node.id }));
+@@ -3124,3 +3444,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                                 title: title || item.title,
+-                                metadata: content ? { ...item.metadata, content, prompt: content, status: NODE_STATUS_SUCCESS, errorDetails: undefined } : item.metadata,
++                                metadata: content ? { ...item.metadata, ...workflowTextResultPatch(item.metadata?.workflowKind, content), prompt: content, status: NODE_STATUS_SUCCESS, errorDetails: undefined } : item.metadata,
+                             }
+@@ -3239,2 +3559,9 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                     const sourceNodes = sourceNodeIds.map((nodeId) => getNode(nodeId)!);
++                    const requestedWorkflowShotId = stringValue("workflowShotId");
++                    const requestedWorkflowSource = sourceNodes.find((source) => source.metadata?.workflowKind === "storyboard_script");
++                    if (mode === "video" && requestedWorkflowShotId && requestedWorkflowSource) {
++                        const shot = requestedWorkflowSource.metadata?.storyboardShots?.find((item) => item.id === requestedWorkflowShotId);
++                        const missing = missingShotAssets(shot, nodesRef.current);
++                        if (missing.length) return { ok: false, code: "workflow_assets_missing", message: `该镜头缺少素材：${missing.join("、")}` };
++                    }
+                     if (action.name === "edit_image" && !sourceNodes.some((node) => isCanvasImageNodeType(node.type) && Boolean(node.metadata?.content))) {
+@@ -3249,3 +3576,9 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                     const prompt = stringValue("prompt");
++                    const nodeTitle = stringValue("title") || prompt.slice(0, 32) || (mode === "video" ? "视频" : mode === "audio" ? "音频" : "图片");
++                    const workflowShotId = requestedWorkflowShotId;
++                    const workflowAssetKind = stringValue("workflowAssetKind") as "character" | "scene" | "prop" | "storyboard" | "";
++                    const workflowAssetName = stringValue("workflowAssetName");
+                     const metadata: CanvasNodeMetadata = {
++                        workflowKind: mode === "video" && workflowShotId ? "video" : workflowAssetKind || inferWorkflowNodeKind(nodeTitle, targetType),
++                        workflowShotId: workflowShotId || undefined,
+                         prompt,
+@@ -3280,5 +3613,23 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                     const node = createCanvasNode(targetType, nextNodeCenter(targetType, layoutSourceNodes), metadata);
+-                    node.title = stringValue("title") || prompt.slice(0, 32) || (mode === "video" ? "视频" : mode === "audio" ? "音频" : "图片");
++                    node.title = nodeTitle;
+                     const createdConnections = sourceNodeIds.map((sourceNodeId) => ({ id: nanoid(), fromNodeId: sourceNodeId, toNodeId: node.id }));
+-                    commitNodes([...nodesRef.current, node]);
++                    let nextNodes = [...nodesRef.current, node];
++                    const workflowSource = requestedWorkflowSource;
++                    if (workflowSource && workflowShotId) {
++                        nextNodes = nextNodes.map((item) => {
++                            if (item.id !== workflowSource.id) return item;
++                            const storyboardShots = (item.metadata?.storyboardShots || []).map((shot) => {
++                                if (shot.id !== workflowShotId) return shot;
++                                const assetNodeIds = { ...shot.assetNodeIds };
++                                if (mode === "video") assetNodeIds.video = node.id;
++                                if (workflowAssetKind === "storyboard") assetNodeIds.storyboard = node.id;
++                                if (workflowAssetKind === "scene") assetNodeIds.scene = node.id;
++                                if (workflowAssetKind === "character" && workflowAssetName) assetNodeIds.characters = { ...assetNodeIds.characters, [workflowAssetName]: node.id };
++                                if (workflowAssetKind === "prop" && workflowAssetName) assetNodeIds.props = { ...assetNodeIds.props, [workflowAssetName]: node.id };
++                                return { ...shot, assetNodeIds };
++                            });
++                            return { ...item, metadata: { ...item.metadata, storyboardShots, content: formatStoryboardShots(storyboardShots) } };
++                        });
++                    }
++                    commitNodes(nextNodes);
+                     commitConnections([...connectionsRef.current, ...createdConnections]);
+@@ -3346,3 +3697,11 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+ 
+-            const context = hasSavedImageMetadata ? null : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, sourceNode.metadata?.prompt || node.metadata?.prompt || ""));
++            let context: NodeGenerationContext | null = null;
++            try {
++                context = hasSavedImageMetadata ? null : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, sourceNode.metadata?.prompt || node.metadata?.prompt || ""), { analyzeVideos: node.type === CanvasNodeType.Text });
++            } catch (error) {
++                const errorDetails = error instanceof Error ? error.message : "视频解析失败";
++                message.error(errorDetails);
++                setNodes((prev) => prev.map((item) => item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails } } : item));
++                return;
++            }
+             const prompt = (isPanorama ? savedImageMetadata?.panoramaFinalPrompt || "" : savedImageMetadata?.prompt || context?.prompt || "").trim();
+@@ -3379,3 +3738,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                     });
+-                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: answer || streamed, prompt, status: NODE_STATUS_SUCCESS } } : item)));
++                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, ...workflowTextResultPatch(item.metadata?.workflowKind, answer || streamed), prompt, status: NODE_STATUS_SUCCESS } } : item)));
+                     return;
+@@ -3764,2 +4123,5 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                             onGenerateImage={generateImageFromTextNode}
++                            onRunWorkflow={handleRunWorkflowNode}
++                            onOpenWorkflow={(node) => setDialogNodeId((current) => (current === node.id ? null : node.id))}
++                            onOpenWorkflowDetail={(node) => setWorkflowDetailNodeId(node.id)}
+                             onViewImage={(node) => setPreviewNodeId(node.id)}
+@@ -3786,3 +4148,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                     ) : null}
+-                    {pendingConnectionCreate ? <ConnectionCreateMenu pending={pendingConnectionCreate} onCreate={(type) => createConnectedNode(type, pendingConnectionCreate)} onClose={cancelPendingConnectionCreate} /> : null}
++                    {pendingConnectionCreate ? <ConnectionCreateMenu pending={pendingConnectionCreate} onCreate={(type) => createConnectedNode(type, pendingConnectionCreate)} onCreateWorkflow={(kind) => createConnectedWorkflowNode(kind, pendingConnectionCreate)} onClose={cancelPendingConnectionCreate} /> : null}
+                     {nodeCreatePosition ? (
+@@ -3794,2 +4156,6 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                             }}
++                            onCreateWorkflow={(kind) => {
++                                createWorkflowNode(kind, nodeCreatePosition);
++                                setNodeCreatePosition(null);
++                            }}
+                             onUpload={() => {
+@@ -3833,2 +4199,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                     onGenerateImage={generateImageFromTextNode}
++                    onRunWorkflow={handleRunWorkflowNode}
+                     onUpload={(node) => handleUploadRequest(node.id)}
+@@ -3869,2 +4236,3 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+                     onAddConfig={() => createNode(CanvasNodeType.Config)}
++                    onAddWorkflow={(kind) => createWorkflowNode(kind)}
+                     onUndo={undoCanvas}
+@@ -3945,2 +4313,21 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
+ 
++                <CanvasWorkflowDetailModal
++                    node={workflowDetailNodeId ? nodes.find((node) => node.id === workflowDetailNodeId) || null : null}
++                    nodes={nodes}
++                    onClose={() => setWorkflowDetailNodeId(null)}
++                    onMetadataChange={handleWorkflowMetadataChange}
++                    onRegenerate={handleRunWorkflowNode}
++                    onStructureRaw={(node) => {
++                        const kind = node.metadata?.workflowKind;
++                        if (kind !== "script" && kind !== "storyboard_script") return;
++                        void handleGenerateNode(node.id, "text", workflowStructureRepairPrompt(kind, node.metadata?.workflowRawText || node.metadata?.content || ""));
++                    }}
++                    onCreateStoryboardScript={handleCreateStoryboardScript}
++                    onAdaptScript={handleAdaptWorkflowScript}
++                    onGenerateAssets={handleGenerateWorkflowAssets}
++                    onGenerateStoryboards={handleGenerateWorkflowStoryboards}
++                    onGenerateVideos={handleGenerateWorkflowVideos}
++                    onBindAsset={handleBindWorkflowAsset}
++                />
++
+                 {cropNode?.metadata?.content ? <CanvasNodeCropDialog dataUrl={cropNode.metadata.content} open={Boolean(cropNode)} onClose={() => setCropNodeId(null)} onConfirm={(crop) => cropImageNode(cropNode!, crop)} /> : null}
+@@ -4670,3 +5057,3 @@ function canvasVideoTaskId(metadata?: CanvasNodeMetadata) {
+ function canvasVideoTaskCompleted(task: VideoResponse) {
+-    return Boolean(task.video_url || task.url) || ["completed", "complete", "done", "succeeded", "success"].includes((task.status || "").toLowerCase());
++    return Boolean(task.video_url || task.url) || ["completed", "complete", "done", "succeeded", "success", "已完成", "完成", "成功", "生成成功"].includes((task.status || "").toLowerCase());
+ }
+@@ -4674,3 +5061,3 @@ function canvasVideoTaskCompleted(task: VideoResponse) {
+ function canvasVideoTaskFailed(task: VideoResponse) {
+-    return ["failed", "fail", "error", "cancelled", "canceled"].includes((task.status || "").toLowerCase());
++    return ["failed", "fail", "error", "cancelled", "canceled", "失败", "生成失败", "已取消", "取消"].includes((task.status || "").toLowerCase());
+ }
+@@ -4791,2 +5178,67 @@ function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefine
+ 
++function synchronizeWorkflowShotConnections(storyboardNodeId: string, previousShots: CanvasStoryboardShot[], nextShots: CanvasStoryboardShot[], connections: CanvasConnection[], nodes: CanvasNodeData[]) {
++    const previousById = new Map(previousShots.map((shot) => [shot.id, shot]));
++    const nextById = new Map(nextShots.map((shot) => [shot.id, shot]));
++    const shotIds = new Set([...previousById.keys(), ...nextById.keys()]);
++    const managedSourcesByTarget = new Map<string, Set<string>>();
++    const desiredSourcesByTarget = new Map<string, Set<string>>();
++
++    const registerTarget = (targetNodeId: string | undefined, managedSources: string[], desiredSources: string[]) => {
++        if (!targetNodeId) return;
++        const managed = managedSourcesByTarget.get(targetNodeId) || new Set<string>();
++        managedSources.filter((sourceId) => sourceId && sourceId !== targetNodeId).forEach((sourceId) => managed.add(sourceId));
++        managedSourcesByTarget.set(targetNodeId, managed);
++        const desired = desiredSourcesByTarget.get(targetNodeId) || new Set<string>();
++        desiredSources.filter((sourceId) => sourceId && sourceId !== targetNodeId).forEach((sourceId) => desired.add(sourceId));
++        desiredSourcesByTarget.set(targetNodeId, desired);
++    };
++
++    shotIds.forEach((shotId) => {
++        const previous = previousById.get(shotId);
++        const next = nextById.get(shotId);
++        const previousAssets = workflowShotAssetSourceIds(previous);
++        const nextAssets = workflowShotAssetSourceIds(next);
++        const managedAssets = [...new Set([storyboardNodeId, ...previousAssets, ...nextAssets])];
++        const previousStoryboardId = previous?.assetNodeIds?.storyboard;
++        const nextStoryboardId = next?.assetNodeIds?.storyboard;
++        const previousVideoId = previous?.assetNodeIds?.video;
++        const nextVideoId = next?.assetNodeIds?.video;
++
++        registerTarget(previousStoryboardId, managedAssets, previousStoryboardId === nextStoryboardId ? [storyboardNodeId, ...nextAssets] : []);
++        registerTarget(nextStoryboardId, managedAssets, [storyboardNodeId, ...nextAssets]);
++        const managedVideoSources = [...managedAssets, previousStoryboardId || "", nextStoryboardId || ""];
++        registerTarget(previousVideoId, managedVideoSources, previousVideoId === nextVideoId ? [storyboardNodeId, ...nextAssets, nextStoryboardId || ""] : []);
++        registerTarget(nextVideoId, managedVideoSources, [storyboardNodeId, ...nextAssets, nextStoryboardId || ""]);
++    });
++
++    const kept = connections.filter((connection) => {
++        const managed = managedSourcesByTarget.get(connection.toNodeId);
++        if (!managed) return true;
++        const sourceNode = nodes.find((node) => node.id === connection.fromNodeId);
++        if (!managed.has(connection.fromNodeId) && !isCanvasImageNodeType(sourceNode?.type)) return true;
++        return desiredSourcesByTarget.get(connection.toNodeId)?.has(connection.fromNodeId) || false;
++    });
++    const existing = new Set(kept.map((connection) => `${connection.fromNodeId}:${connection.toNodeId}`));
++    const added: CanvasConnection[] = [];
++    desiredSourcesByTarget.forEach((sources, targetNodeId) => {
++        sources.forEach((fromNodeId) => {
++            const key = `${fromNodeId}:${targetNodeId}`;
++            if (existing.has(key)) return;
++            existing.add(key);
++            added.push({ id: nanoid(), fromNodeId, toNodeId: targetNodeId });
++        });
++    });
++    return [...kept, ...added];
++}
++
++function workflowShotAssetSourceIds(shot: CanvasStoryboardShot | undefined) {
++    if (!shot) return [];
++    return [
++        ...Object.values(shot.assetNodeIds?.characters || {}),
++        shot.assetNodeIds?.scene,
++        ...Object.values(shot.assetNodeIds?.props || {}),
++        ...(shot.extraAssets || []).map((asset) => asset.nodeId),
++    ].filter(Boolean) as string[];
++}
++
+ function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
+diff --git a/web/src/app/(user)/canvas/agent/canvas-agent-context.ts b/web/src/app/(user)/canvas/agent/canvas-agent-context.ts
+index e0793a5..e2daf7b 100644
+--- a/web/src/app/(user)/canvas/agent/canvas-agent-context.ts
++++ b/web/src/app/(user)/canvas/agent/canvas-agent-context.ts
+@@ -2,3 +2,3 @@ import { supportsVideoAudioGeneration } from "@/lib/video-model-capabilities";
+ import type { AiConfig } from "@/stores/use-config-store";
+-import { CanvasNodeType, type CanvasAgentState, type CanvasConnection, type CanvasNodeData } from "../types";
++import { CanvasNodeType, type CanvasAgentState, type CanvasConnection, type CanvasNodeData, type CanvasScriptScene, type CanvasStoryboardShot, type CanvasWorkflowNodeKind } from "../types";
+ 
+@@ -20,2 +20,5 @@ export type CanvasAgentContextNode = {
+     groupId?: string;
++    workflowKind?: CanvasWorkflowNodeKind;
++    scriptScenes?: CanvasScriptScene[];
++    storyboardShots?: CanvasStoryboardShot[];
+ };
+@@ -164,2 +167,5 @@ function summarizeNode(node: CanvasNodeData): CanvasAgentContextNode {
+         groupId: node.metadata?.groupId,
++        workflowKind: node.metadata?.workflowKind,
++        scriptScenes: node.metadata?.scriptScenes,
++        storyboardShots: node.metadata?.storyboardShots,
+     };
+diff --git a/web/src/app/(user)/canvas/agent/canvas-agent-tools.ts b/web/src/app/(user)/canvas/agent/canvas-agent-tools.ts
+index 355ecd0..b6ab79a 100644
+--- a/web/src/app/(user)/canvas/agent/canvas-agent-tools.ts
++++ b/web/src/app/(user)/canvas/agent/canvas-agent-tools.ts
+@@ -67,2 +67,3 @@ const STRING = { type: "string" };
+ const STRING_ARRAY = { type: "array", items: { type: "string" }, maxItems: 50 };
++const WORKFLOW_ASSET_KIND = { type: "string", enum: ["character", "scene", "prop", "storyboard"] };
+ const PHASES: CanvasAgentPhase[] = ["intake", "concept", "script", "breakdown", "references", "storyboard", "video", "audio", "review", "complete"];
+@@ -136,2 +137,5 @@ export const CANVAS_AGENT_TOOLS: CanvasAgentToolDefinition[] = [
+             count: { type: "number", minimum: 1, maximum: 15 },
++            workflowShotId: STRING,
++            workflowAssetKind: WORKFLOW_ASSET_KIND,
++            workflowAssetName: STRING,
+         },
+@@ -142,3 +146,3 @@ export const CANVAS_AGENT_TOOLS: CanvasAgentToolDefinition[] = [
+         "调用现有图片编辑链路，必须提供至少一个真实图片来源节点；图片按 sourceNodeIds 顺序编号。",
+-        { prompt: STRING, title: STRING, sourceNodeIds: STRING_ARRAY, size: STRING, count: { type: "number", minimum: 1, maximum: 15 } },
++        { prompt: STRING, title: STRING, sourceNodeIds: STRING_ARRAY, size: STRING, count: { type: "number", minimum: 1, maximum: 15 }, workflowShotId: STRING, workflowAssetKind: WORKFLOW_ASSET_KIND, workflowAssetName: STRING },
+         ["prompt", "sourceNodeIds"],
+@@ -155,2 +159,3 @@ export const CANVAS_AGENT_TOOLS: CanvasAgentToolDefinition[] = [
+             generateAudio: { type: "boolean" },
++            workflowShotId: STRING,
+         },
+@@ -253,2 +258,5 @@ export function normalizeCanvasAgentAction(name: unknown, args: unknown, id = na
+                 ...(boundedInteger(input.count, 1, 15) ? { count: boundedInteger(input.count, 1, 15) } : {}),
++                ...(optionalString(input.workflowShotId) ? { workflowShotId: optionalString(input.workflowShotId) } : {}),
++                ...(optionalString(input.workflowAssetKind) ? { workflowAssetKind: optionalString(input.workflowAssetKind) } : {}),
++                ...(optionalString(input.workflowAssetName) ? { workflowAssetName: optionalString(input.workflowAssetName) } : {}),
+             };
+@@ -266,2 +274,3 @@ export function normalizeCanvasAgentAction(name: unknown, args: unknown, id = na
+                 ...(typeof input.generateAudio === "boolean" ? { generateAudio: input.generateAudio } : {}),
++                ...(optionalString(input.workflowShotId) ? { workflowShotId: optionalString(input.workflowShotId) } : {}),
+             };
+diff --git a/web/src/app/(user)/canvas/agent/skills/core.ts b/web/src/app/(user)/canvas/agent/skills/core.ts
+index d52828a..e882e78 100644
+--- a/web/src/app/(user)/canvas/agent/skills/core.ts
++++ b/web/src/app/(user)/canvas/agent/skills/core.ts
+@@ -235,2 +235,13 @@ sourceNodeIds 同时承担两件事：
+ - 不为追求“自动化”跳过真实审美决策、素材歧义、模型能力限制或依赖任务等待。
++
++【可视化创作节点】
++- 面向用户的回复、剧本、分镜脚本、人物/场景/道具描述和生成提示词默认全部使用简体中文；英文输入必须先准确翻译为中文，仅必要专有名词可在中文后用括号保留英文。
++- 当前画布支持 workflowKind：idea、script、storyboard_script、character、storyboard、video。
++- 这些节点仍分别是 text、image、video 基础类型；连线表示真实直接依赖。
++- 读取上下文时优先识别 workflowKind。右侧 Agent 创建剧本、分镜脚本、人物素材、分镜图或视频后，执行层会自动标记对应创作角色。
++- 不得为了 Agent 自动流程删除或绕开用户手工创建的创作节点；应复用选中节点和已有连线继续操作。
++- 正式生产顺序固定为：剧本 → 分镜脚本 → 人物/场景/道具/分镜图素材补全 → 视频。分镜脚本是素材依赖和镜头状态的唯一检查中心。
++- scriptScenes 与 storyboardShots 是结构化详情数据。创建或更新剧本、分镜脚本时使用明确的场次/镜头结构，不得只给一段无法拆分的说明文字。
++- 生成视频前必须检查对应 storyboardShots 的 assetNodeIds 和 extraAssets，人物、场景、道具、分镜图以及用户手动增加的素材缺失或尚未生成完成时，先补素材并向用户说明，不能跳过检查。
++- 为某个镜头调用 generate_image/edit_image 时必须传 workflowShotId、workflowAssetKind 和 workflowAssetName；分镜图的 workflowAssetKind 使用 storyboard。生成镜头视频时传 workflowShotId。执行层会把真实节点 ID 回写到该镜头的素材绑定。
+ `.trim();
+diff --git a/web/src/app/(user)/canvas/components/canvas-node-generation.ts b/web/src/app/(user)/canvas/components/canvas-node-generation.ts
+index dd0d22b..c892f00 100644
+--- a/web/src/app/(user)/canvas/components/canvas-node-generation.ts
++++ b/web/src/app/(user)/canvas/components/canvas-node-generation.ts
+@@ -9,2 +9,3 @@ import { isCanvasImageNodeType } from "../utils/canvas-panorama";
+ import { getGenerationResourceNodes } from "../utils/canvas-resource-references";
++import { extractCanvasVideoAnalysisFrames } from "../utils/canvas-video-analysis";
+ 
+@@ -219,7 +220,27 @@ export function buildNodeChatMessages(context: NodeGenerationContext): ChatCompl
+ 
+-export async function hydrateNodeGenerationContext(context: NodeGenerationContext) {
++export async function hydrateNodeGenerationContext(context: NodeGenerationContext, options: { analyzeVideos?: boolean } = {}) {
+     const { imageToDataUrl } = await import("@/services/image-storage");
++    const referenceImages = await Promise.all(context.referenceImages.map(async (image) => ({ ...image, dataUrl: await imageToDataUrl(image) })));
++    if (!options.analyzeVideos || !context.referenceVideos.length) {
++        return {
++            ...context,
++            referenceImages,
++            firstFrame: context.firstFrame ? { ...context.firstFrame, dataUrl: await imageToDataUrl(context.firstFrame) } : null,
++            lastFrame: context.lastFrame ? { ...context.lastFrame, dataUrl: await imageToDataUrl(context.lastFrame) } : null,
++        };
++    }
++
++    const videoAnalysis = await extractCanvasVideoAnalysisFrames(context.referenceVideos);
++    if (!videoAnalysis.frames.length) throw new Error("没有从上游视频中提取到可分析的关键帧");
++    const analysisContract = [
++        "【视频倒推要求】",
++        `系统已按时间顺序从上传视频中提取 ${videoAnalysis.frames.length} 张关键帧：${videoAnalysis.timeline.join("、")}。`,
++        "必须根据这些关键帧还原原视频实际发生的剧情、人物、场景、动作顺序、情绪变化、镜头变化和可见字幕，不得根据视频标题或常见套路另编故事。",
++        "相邻关键帧之间无法确认的动作要保守描述；没有可见字幕或语音转写时，不得虚构具体对白，应写“无明确对白”或“对白待转写”。",
++        "输出的场次顺序和时长必须覆盖原视频时间线。",
++    ].join("\n");
+     return {
+         ...context,
+-        referenceImages: await Promise.all(context.referenceImages.map(async (image) => ({ ...image, dataUrl: await imageToDataUrl(image) }))),
++        prompt: `${context.prompt.trim()}\n\n${analysisContract}`,
++        referenceImages: [...referenceImages, ...videoAnalysis.frames],
+         firstFrame: context.firstFrame ? { ...context.firstFrame, dataUrl: await imageToDataUrl(context.firstFrame) } : null,
+diff --git a/web/src/app/(user)/canvas/components/canvas-node-hover-toolbar.tsx b/web/src/app/(user)/canvas/components/canvas-node-hover-toolbar.tsx
+index 8b2fc9f..84ece4c 100644
+--- a/web/src/app/(user)/canvas/components/canvas-node-hover-toolbar.tsx
++++ b/web/src/app/(user)/canvas/components/canvas-node-hover-toolbar.tsx
+@@ -4,3 +4,3 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
+ import { App, Modal, Segmented, Tooltip } from "antd";
+-import { Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Pencil, Plus, RefreshCw, Settings2, Trash2, Upload, Video } from "lucide-react";
++import { Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Pencil, Play, Plus, RefreshCw, Settings2, Trash2, Upload, Video } from "lucide-react";
+ 
+@@ -26,2 +26,3 @@ type CanvasNodeHoverToolbarProps = {
+     onGenerateImage: (node: CanvasNodeData) => void;
++    onRunWorkflow: (node: CanvasNodeData) => void;
+     onUpload: (node: CanvasNodeData) => void;
+@@ -65,2 +66,3 @@ export function CanvasNodeHoverToolbar({
+     onGenerateImage,
++    onRunWorkflow,
+     onUpload,
+@@ -159,2 +161,3 @@ export function CanvasNodeHoverToolbar({
+     const nodeToolbarTools: ToolbarTool[] = [
++        ...(node.metadata?.workflowKind ? [{ id: "runWorkflow", title: "运行当前创作节点", label: "运行", icon: <Play className="size-4" />, onClick: () => onRunWorkflow(node) }] : []),
+         ...(canRetry ? [{ id: "retry", title: "重新生成", label: "重试", icon: <RefreshCw className="size-4" />, onClick: () => onRetry(node) }] : []),
+diff --git a/web/src/app/(user)/canvas/components/canvas-node.tsx b/web/src/app/(user)/canvas/components/canvas-node.tsx
+index 5e4a5e5..11e66c4 100644
+--- a/web/src/app/(user)/canvas/components/canvas-node.tsx
++++ b/web/src/app/(user)/canvas/components/canvas-node.tsx
+@@ -5,3 +5,3 @@ import type { ReactNode } from "react";
+ import dynamic from "next/dynamic";
+-import { ChevronRight, Image as ImageIcon, Music2, RefreshCw, Star, Video } from "lucide-react";
++import { ChevronRight, Image as ImageIcon, Music2, RefreshCw, Settings2, Sparkles, Star, Video } from "lucide-react";
+ 
+@@ -13,2 +13,3 @@ import { CanvasNodeType, type CanvasNodeData, type Position } from "../types";
+ import { isCanvasImageNodeType } from "../utils/canvas-panorama";
++import { workflowNodeLabel, workflowNodePreset } from "../utils/canvas-workflow";
+ import type { CanvasResourceReference } from "../utils/canvas-resource-references";
+@@ -54,2 +55,5 @@ type CanvasNodeProps = {
+     onGenerateImage?: (node: CanvasNodeData) => void;
++    onRunWorkflow?: (node: CanvasNodeData) => void;
++    onOpenWorkflow?: (node: CanvasNodeData) => void;
++    onOpenWorkflowDetail?: (node: CanvasNodeData) => void;
+     onViewImage?: (node: CanvasNodeData) => void;
+@@ -75,2 +79,4 @@ type NodeContentRendererProps = {
+     onGenerateImage?: (node: CanvasNodeData) => void;
++    onRunWorkflow?: (node: CanvasNodeData) => void;
++    onOpenWorkflow?: (node: CanvasNodeData) => void;
+     onViewImage?: (node: CanvasNodeData) => void;
+@@ -116,2 +122,5 @@ export const CanvasNode = React.memo(function CanvasNode({
+     onGenerateImage,
++    onRunWorkflow,
++    onOpenWorkflow,
++    onOpenWorkflowDetail,
+     onViewImage,
+@@ -346,2 +355,7 @@ export const CanvasNode = React.memo(function CanvasNode({
+             ) : null}
++            {!isGroup && data.metadata?.workflowKind ? (
++                <div className="pointer-events-none absolute left-3 top-3 z-[64] rounded-full border px-2 py-1 text-[10px] font-semibold tracking-wide" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: selectionBlue }}>
++                    {workflowNodeLabel(data.metadata.workflowKind)}
++                </div>
++            ) : null}
+ 
+@@ -356,2 +370,7 @@ export const CanvasNode = React.memo(function CanvasNode({
+                 onDoubleClick={(event) => {
++                    if (data.metadata?.workflowKind === "script" || data.metadata?.workflowKind === "storyboard_script") {
++                        event.stopPropagation();
++                        onOpenWorkflowDetail?.(data);
++                        return;
++                    }
+                     if (isBatchRoot) {
+@@ -402,2 +421,4 @@ export const CanvasNode = React.memo(function CanvasNode({
+                             onGenerateImage={onGenerateImage}
++                            onRunWorkflow={onRunWorkflow}
++                            onOpenWorkflow={onOpenWorkflow}
+                             onViewImage={onViewImage}
+@@ -439,2 +460,3 @@ function NodeContent(props: NodeContentRendererProps) {
+     if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
++    if (props.node.metadata?.workflowKind && !props.node.metadata?.content) return <WorkflowNodeReadyContent node={props.node} theme={props.theme} onRunWorkflow={props.onRunWorkflow} onOpenWorkflow={props.onOpenWorkflow} />;
+ 
+@@ -444,2 +466,41 @@ function NodeContent(props: NodeContentRendererProps) {
+ 
++function WorkflowNodeReadyContent({ node, theme, onRunWorkflow, onOpenWorkflow }: Pick<NodeContentRendererProps, "node" | "theme" | "onRunWorkflow" | "onOpenWorkflow">) {
++    const kind = node.metadata?.workflowKind;
++    if (!kind) return null;
++    const preset = workflowNodePreset(kind);
++    return (
++        <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-5 pb-5 pt-12 text-center">
++            <span className="grid size-12 place-items-center rounded-2xl" style={{ background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}>
++                <Sparkles className="size-5" />
++            </span>
++            <div className="min-w-0">
++                <div className="text-sm font-semibold" style={{ color: theme.node.text }}>AI 生成{preset.title}</div>
++                <div className="mt-1 line-clamp-2 text-xs leading-5" style={{ color: theme.node.muted }}>{preset.description}</div>
++            </div>
++            <div className="flex items-center gap-2">
++                <button
++                    type="button"
++                    className="inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-xs font-semibold transition hover:scale-[1.02]"
++                    style={{ background: theme.toolbar.activeBg, color: theme.toolbar.activeText }}
++                    onMouseDown={(event) => event.stopPropagation()}
++                    onPointerDown={(event) => event.stopPropagation()}
++                    onClick={(event) => { event.stopPropagation(); onRunWorkflow?.(node); }}
++                >
++                    <Sparkles className="size-3.5" />AI 生成
++                </button>
++                <button
++                    type="button"
++                    className="inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition hover:opacity-80"
++                    style={{ borderColor: theme.node.stroke, color: theme.node.text }}
++                    onMouseDown={(event) => event.stopPropagation()}
++                    onPointerDown={(event) => event.stopPropagation()}
++                    onClick={(event) => { event.stopPropagation(); onOpenWorkflow?.(node); }}
++                >
++                    <Settings2 className="size-3.5" />生成要求
++                </button>
++            </div>
++        </div>
++    );
++}
++
+ const nodeContentRenderers = {
+diff --git a/web/src/app/(user)/canvas/components/canvas-toolbar.tsx b/web/src/app/(user)/canvas/components/canvas-toolbar.tsx
+index ac6d36a..67d0203 100644
+--- a/web/src/app/(user)/canvas/components/canvas-toolbar.tsx
++++ b/web/src/app/(user)/canvas/components/canvas-toolbar.tsx
+@@ -3,3 +3,3 @@ import { useRef, useState } from "react";
+ import { Button, Segmented, Switch } from "antd";
+-import { CircleDot, Eraser, FolderOpen, Globe2, Grid2x2, Hand, Image as ImageIcon, Info, Layers3, Library, Moon, Music2, Palette, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
++import { CircleDot, Clapperboard, Eraser, FolderOpen, Globe2, Grid2x2, Hand, Image as ImageIcon, Info, Layers3, Library, Moon, Music2, Palette, PanelsTopLeft, Redo2, Rows3, ScrollText, Settings2, Sparkles, Square, Sun, Trash2, Type, Undo2, Upload, UserRound, Video } from "lucide-react";
+ 
+@@ -8,2 +8,3 @@ import { useThemeStore } from "@/stores/use-theme-store";
+ import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
++import type { CanvasWorkflowNodeKind } from "../types";
+ 
+@@ -22,2 +23,3 @@ export function CanvasToolbar({
+     onAddConfig,
++    onAddWorkflow,
+     onUndo,
+@@ -45,2 +47,3 @@ export function CanvasToolbar({
+     onAddConfig: () => void;
++    onAddWorkflow: (kind: CanvasWorkflowNodeKind) => void;
+     onUndo: () => void;
+@@ -83,2 +86,21 @@ export function CanvasToolbar({
+                 <Divider theme={theme} />
++                <ToolbarButton id="tool-idea" label="创意" wide hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={() => onAddWorkflow("idea")}>
++                    <span className="inline-flex items-center gap-1.5"><Sparkles className="size-4" />创意</span>
++                </ToolbarButton>
++                <ToolbarButton id="tool-script" label="剧本" wide hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={() => onAddWorkflow("script")}>
++                    <span className="inline-flex items-center gap-1.5"><ScrollText className="size-4" />剧本</span>
++                </ToolbarButton>
++                <ToolbarButton id="tool-storyboard-script" label="分镜脚本" wide hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={() => onAddWorkflow("storyboard_script")}>
++                    <span className="inline-flex items-center gap-1.5"><Rows3 className="size-4" />分镜脚本</span>
++                </ToolbarButton>
++                <ToolbarButton id="tool-character" label="人物素材" wide hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={() => onAddWorkflow("character")}>
++                    <span className="inline-flex items-center gap-1.5"><UserRound className="size-4" />人物素材</span>
++                </ToolbarButton>
++                <ToolbarButton id="tool-storyboard" label="分镜图" wide hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={() => onAddWorkflow("storyboard")}>
++                    <span className="inline-flex items-center gap-1.5"><PanelsTopLeft className="size-4" />分镜图</span>
++                </ToolbarButton>
++                <ToolbarButton id="tool-video-clip" label="视频片段" wide hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={() => onAddWorkflow("video")}>
++                    <span className="inline-flex items-center gap-1.5"><Clapperboard className="size-4" />视频片段</span>
++                </ToolbarButton>
++                <Divider theme={theme} />
+                 <ToolbarButton id="tool-text" label="文本" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddText}>
+@@ -221,2 +243,3 @@ function ToolbarButton({
+     danger = false,
++    wide = false,
+     children,
+@@ -235,2 +258,3 @@ function ToolbarButton({
+     danger?: boolean;
++    wide?: boolean;
+     children: ReactNode;
+@@ -243,3 +267,3 @@ function ToolbarButton({
+             aria-label={label}
+-            className="!h-8 !w-8 !min-w-8 !p-0"
++            className={wide ? "!h-8 !w-auto !min-w-fit !px-2.5 !text-xs" : "!h-8 !w-8 !min-w-8 !p-0"}
+             disabled={disabled}
+@@ -293,2 +317,8 @@ function toolLabel(id: string) {
+     if (id === "tool-redo") return "重做";
++    if (id === "tool-idea") return "AI 创意";
++    if (id === "tool-script") return "AI 剧本";
++    if (id === "tool-storyboard-script") return "AI 分镜脚本";
++    if (id === "tool-character") return "AI 人物素材";
++    if (id === "tool-storyboard") return "AI 分镜图";
++    if (id === "tool-video-clip") return "AI 视频片段";
+     if (id === "tool-text") return "文本";
+diff --git a/web/src/app/(user)/canvas/types.ts b/web/src/app/(user)/canvas/types.ts
+index 772ec0b..99a1fe5 100644
+--- a/web/src/app/(user)/canvas/types.ts
++++ b/web/src/app/(user)/canvas/types.ts
+@@ -25,2 +25,48 @@ export type CanvasGenerationMode = "text" | "image" | "video" | "audio";
+ export type CanvasImageGenerationType = "generation" | "edit";
++export type CanvasWorkflowNodeKind = "idea" | "script" | "storyboard_script" | "character" | "scene" | "prop" | "storyboard" | "video";
++
++export type CanvasScriptScene = {
++    id: string;
++    sceneNumber: string;
++    location: string;
++    timeOfDay: string;
++    characters: string[];
++    action: string;
++    dialogue: string;
++    durationSeconds: number;
++};
++
++export type CanvasStoryboardAssetNodeIds = {
++    characters?: Record<string, string>;
++    scene?: string;
++    props?: Record<string, string>;
++    storyboard?: string;
++    video?: string;
++};
++
++export type CanvasStoryboardExtraAsset = {
++    id: string;
++    kind: "character" | "scene" | "prop" | "reference";
++    name: string;
++    nodeId?: string;
++};
++
++export type CanvasStoryboardShot = {
++    id: string;
++    shotNumber: string;
++    durationSeconds: number;
++    shotSize: string;
++    scene: string;
++    characters: string[];
++    props: string[];
++    visual: string;
++    action: string;
++    camera: string;
++    lighting: string;
++    dialogue: string;
++    sound: string;
++    continuity: string;
++    assetNodeIds?: CanvasStoryboardAssetNodeIds;
++    extraAssets?: CanvasStoryboardExtraAsset[];
++};
+ 
+@@ -35,2 +81,11 @@ export type CameraControlOptions = {
+ export type CanvasNodeMetadata = {
++    workflowKind?: CanvasWorkflowNodeKind;
++    scriptScenes?: CanvasScriptScene[];
++    storyboardShots?: CanvasStoryboardShot[];
++    workflowSourceNodeId?: string;
++    workflowAdaptationSourceNodeId?: string;
++    workflowAdaptationRequirement?: string;
++    workflowShotId?: string;
++    workflowRawText?: string;
++    workflowStructureValid?: boolean;
+     content?: string;
+diff --git a/web/src/app/(user)/canvas/utils/canvas-workflow.ts b/web/src/app/(user)/canvas/utils/canvas-workflow.ts
+new file mode 100644
+index 0000000..bd24a10
+--- /dev/null
++++ b/web/src/app/(user)/canvas/utils/canvas-workflow.ts
+@@ -0,0 +1,93 @@
++import { CanvasNodeType, type CanvasNodeMetadata, type CanvasWorkflowNodeKind } from "../types";
++
++export type CanvasWorkflowNodePreset = {
++    kind: CanvasWorkflowNodeKind;
++    type: CanvasNodeType.Text | CanvasNodeType.Image | CanvasNodeType.Video;
++    title: string;
++    description: string;
++    metadata: CanvasNodeMetadata;
++};
++
++export const CANVAS_WORKFLOW_NODE_PRESETS: Record<CanvasWorkflowNodeKind, CanvasWorkflowNodePreset> = {
++    idea: {
++        kind: "idea",
++        type: CanvasNodeType.Text,
++        title: "创意主题",
++        description: "输入题材、时长、风格和核心要求",
++        metadata: { workflowKind: "idea", generationMode: "text", content: "", prompt: "请使用简体中文把上游内容整理为清晰的创作 Brief，包括题材、目标时长、人物、冲突、风格、画幅和声音要求。除必要的专有名词外，不要输出英文。", status: "idle" },
++    },
++    script: {
++        kind: "script",
++        type: CanvasNodeType.Text,
++        title: "剧本",
++        description: "根据创意生成完整剧本或制作稿",
++        metadata: { workflowKind: "script", generationMode: "text", prompt: "根据上游创意或 Brief 生成可直接制作的结构化剧本。所有字段内容必须使用简体中文，除必要的专有名词外禁止使用英文。严格遵守题材、目标时长、画幅、风格、人物和声音参数；所有场次 durationSeconds 总和必须等于目标时长。只输出 JSON，不要 Markdown。格式：{\"scenes\":[{\"sceneNumber\":\"1\",\"location\":\"场景\",\"timeOfDay\":\"日/夜\",\"characters\":[\"人物\"],\"action\":\"动作与剧情\",\"dialogue\":\"对白或旁白\",\"durationSeconds\":8}]}。", status: "idle" },
++    },
++    storyboard_script: {
++        kind: "storyboard_script",
++        type: CanvasNodeType.Text,
++        title: "分镜脚本",
++        description: "把剧本拆成可生成的镜头列表",
++        metadata: { workflowKind: "storyboard_script", generationMode: "text", prompt: "把上游结构化剧本拆成可制作的分镜脚本。所有字段内容必须使用简体中文，除必要的专有名词外禁止使用英文。镜头总时长必须等于剧本总时长；保持剧情顺序、人物、场景、道具和原始台词，每个字段必须与该镜头内容对应，禁止输出教程或创作建议。只输出 JSON，不要 Markdown。格式：{\"shots\":[{\"shotNumber\":\"1\",\"durationSeconds\":4,\"shotSize\":\"中景\",\"scene\":\"场景\",\"characters\":[\"人物\"],\"props\":[\"道具\"],\"visual\":\"画面描述\",\"action\":\"动作\",\"camera\":\"运镜\",\"lighting\":\"光线\",\"dialogue\":\"对白/旁白\",\"sound\":\"声音\",\"continuity\":\"连续性要求\"}]}。", status: "idle" },
++    },
++    character: {
++        kind: "character",
++        type: CanvasNodeType.Image,
++        title: "人物素材",
++        description: "根据剧本生成人物设定参考",
++        metadata: { workflowKind: "character", generationMode: "image", prompt: "根据上游剧本和人物描述生成生产级人物设定图。保持同一身份、脸型、体型、年龄、发型和服装；横向四栏依次为正面全身、侧面全身、背面全身、头肩近景；纯视觉、无文字、无水印。", status: "idle" },
++    },
++    scene: {
++        kind: "scene",
++        type: CanvasNodeType.Image,
++        title: "场景素材",
++        description: "根据分镜生成无人物场景参考",
++        metadata: { workflowKind: "scene", generationMode: "image", prompt: "根据上游分镜描述生成生产级场景设定图。保持空间结构、时代、天气、光线和美术风格一致；画面中不要出现人物、文字或水印。", status: "idle" },
++    },
++    prop: {
++        kind: "prop",
++        type: CanvasNodeType.Image,
++        title: "道具素材",
++        description: "根据分镜生成关键道具参考",
++        metadata: { workflowKind: "prop", generationMode: "image", prompt: "根据上游分镜描述生成生产级关键道具设定图。主体完整清晰，多角度展示，背景简洁；不要出现人物、文字或水印。", status: "idle" },
++    },
++    storyboard: {
++        kind: "storyboard",
++        type: CanvasNodeType.Image,
++        title: "分镜图",
++        description: "根据分镜脚本和人物参考生成画面",
++        metadata: { workflowKind: "storyboard", generationMode: "image", prompt: "根据上游分镜脚本、人物与场景参考生成电影分镜图。严格遵循镜头构图、动作、景别、光线和连续性；人物身份与服装保持一致；只呈现画面，不添加解释文字或水印。", status: "idle" },
++    },
++    video: {
++        kind: "video",
++        type: CanvasNodeType.Video,
++        title: "视频片段",
++        description: "根据分镜图与脚本生成视频",
++        metadata: { workflowKind: "video", generationMode: "video", prompt: "根据上游分镜图、人物参考和分镜脚本生成视频。保持人物身份、场景、服装、光线和动作连续，严格执行镜头运动与节奏，不显示分镜边框、编号或说明文字。", status: "idle" },
++    },
++};
++
++export function workflowNodePreset(kind: CanvasWorkflowNodeKind) {
++    return CANVAS_WORKFLOW_NODE_PRESETS[kind];
++}
++
++export function workflowNodeLabel(kind?: CanvasWorkflowNodeKind) {
++    return kind ? CANVAS_WORKFLOW_NODE_PRESETS[kind]?.title || "创作节点" : "";
++}
++
++export function inferWorkflowNodeKind(title: string, type: CanvasNodeType): CanvasWorkflowNodeKind | undefined {
++    if (type === CanvasNodeType.Video) return "video";
++    if (type === CanvasNodeType.Image || type === CanvasNodeType.Panorama) {
++        if (/角色|人物|设定表|四视图/.test(title)) return "character";
++        if (/场景|环境|地点/.test(title)) return "scene";
++        if (/道具|物件/.test(title)) return "prop";
++        if (/分镜|故事板|storyboard/i.test(title)) return "storyboard";
++        return undefined;
++    }
++    if (type !== CanvasNodeType.Text) return undefined;
++    if (/分镜脚本|镜头\s*\d+|镜头拆解/.test(title)) return "storyboard_script";
++    if (/剧本|制作稿|脚本/.test(title)) return "script";
++    if (/创意|主题|brief|梗概/i.test(title)) return "idea";
++    if (/角色|人物/.test(title)) return "character";
++    return undefined;
++}
+diff --git a/web/src/app/(user)/canvas/utils/canvas-workflow-structure.ts b/web/src/app/(user)/canvas/utils/canvas-workflow-structure.ts
+new file mode 100644
+index 0000000..e66939e
+--- /dev/null
++++ b/web/src/app/(user)/canvas/utils/canvas-workflow-structure.ts
+@@ -0,0 +1,178 @@
++import { nanoid } from "nanoid";
++
++import type { CanvasNodeMetadata, CanvasScriptScene, CanvasStoryboardExtraAsset, CanvasStoryboardShot, CanvasWorkflowNodeKind } from "../types";
++
++export function workflowTextResultPatch(kind: CanvasWorkflowNodeKind | undefined, rawText: string): Partial<CanvasNodeMetadata> {
++    if (kind === "script") {
++        const strictScenes = tryParseScriptScenes(rawText);
++        const scriptScenes = strictScenes || parseScriptScenes(rawText);
++        return { content: formatScriptScenes(scriptScenes), scriptScenes, workflowRawText: rawText, workflowStructureValid: Boolean(strictScenes) };
++    }
++    if (kind === "storyboard_script") {
++        const strictShots = tryParseStoryboardShots(rawText);
++        const storyboardShots = strictShots || parseStoryboardShots(rawText);
++        return { content: formatStoryboardShots(storyboardShots), storyboardShots, workflowRawText: rawText, workflowStructureValid: Boolean(strictShots) };
++    }
++    return { content: rawText };
++}
++
++export function tryParseScriptScenes(rawText: string): CanvasScriptScene[] | null {
++    const parsed = parseJsonObject(rawText);
++    const rows = Array.isArray(parsed?.scenes) ? parsed.scenes : [];
++    if (!rows.length) return null;
++    const normalized = rows.map((row, index) => normalizeScriptScene(row, index));
++    return isValidScriptScenes(normalized) ? normalized : null;
++}
++
++export function tryParseStoryboardShots(rawText: string): CanvasStoryboardShot[] | null {
++    const parsed = parseJsonObject(rawText);
++    const rows = Array.isArray(parsed?.shots) ? parsed.shots : [];
++    if (!rows.length) return null;
++    const normalized = rows.map((row, index) => normalizeStoryboardShot(row, index));
++    return isValidStoryboardShots(normalized) ? normalized : null;
++}
++
++export function isValidScriptScenes(rows: CanvasScriptScene[]) {
++    return rows.length > 0 && rows.every((row) => row.sceneNumber && row.location && row.durationSeconds > 0 && Boolean(row.action || row.dialogue) && allPopulatedFieldsContainChinese([row.location, row.timeOfDay, row.action, row.dialogue]));
++}
++
++export function isValidStoryboardShots(rows: CanvasStoryboardShot[]) {
++    return rows.length > 0 && rows.every((row) => row.shotNumber && row.durationSeconds > 0 && row.shotSize && row.scene && row.visual && row.camera && allPopulatedFieldsContainChinese([row.shotSize, row.scene, row.visual, row.action, row.camera, row.lighting, row.dialogue, row.sound, row.continuity]));
++}
++
++export function hasValidWorkflowStructure(kind: CanvasWorkflowNodeKind | undefined, rawText: string) {
++    if (kind === "script") return Boolean(tryParseScriptScenes(rawText));
++    if (kind === "storyboard_script") return Boolean(tryParseStoryboardShots(rawText));
++    return true;
++}
++
++export function ensureWorkflowGenerationContract(kind: CanvasWorkflowNodeKind | undefined, prompt: string) {
++    if (kind !== "script" && kind !== "storyboard_script") return prompt;
++    const key = kind === "script" ? '"scenes"' : '"shots"';
++    if (prompt.includes(key) && prompt.includes("简体中文")) return prompt;
++    const contract = kind === "script"
++        ? '只输出合法 JSON，不要 Markdown、解释或代码围栏。所有字段值必须使用简体中文，英文原文必须翻译成中文，仅必要专有名词可以在中文后括号保留英文。根对象必须是 {"scenes":[...]}，每个场次包含 sceneNumber、location、timeOfDay、characters、action、dialogue、durationSeconds；字段内容必须互相对应，所有场次时长之和必须等于需求目标时长。'
++        : '只输出合法 JSON，不要 Markdown、解释或代码围栏。所有字段值必须使用简体中文，英文原文必须翻译成中文，仅必要专有名词可以在中文后括号保留英文。根对象必须是 {"shots":[...]}，每个镜头包含 shotNumber、durationSeconds、shotSize、scene、characters、props、visual、action、camera、lighting、dialogue、sound、continuity；字段内容必须互相对应，镜头总时长必须等于上游剧本总时长。';
++    return `${prompt}\n\n【强制输出契约】${contract}`;
++}
++
++export function workflowStructureRepairPrompt(kind: CanvasWorkflowNodeKind, rawText: string) {
++    const contract = ensureWorkflowGenerationContract(kind, "把下面内容翻译成简体中文并转换成结构化制作数据，保持原剧情、人物、对白和顺序，不要新增解释。即使原文是英文，输出字段内容也必须是中文。");
++    return `${contract}\n\n待转换内容：\n${rawText}`;
++}
++
++export function parseScriptScenes(rawText: string): CanvasScriptScene[] {
++    const strict = tryParseScriptScenes(rawText);
++    if (strict) return strict;
++    const text = rawText.trim();
++    return text ? [normalizeScriptScene({ sceneNumber: "1", action: text }, 0)] : [];
++}
++
++export function parseStoryboardShots(rawText: string): CanvasStoryboardShot[] {
++    const strict = tryParseStoryboardShots(rawText);
++    if (strict) return strict;
++    const lines = rawText.split(/\n+/).map((line) => line.trim()).filter(Boolean);
++    return lines.map((visual, index) => normalizeStoryboardShot({ shotNumber: String(index + 1), visual }, index));
++}
++
++export function normalizeScriptScene(row: unknown, index: number): CanvasScriptScene {
++    const value = record(row);
++    return {
++        id: stringValue(value.id) || nanoid(),
++        sceneNumber: stringValue(value.sceneNumber) || String(index + 1),
++        location: stringValue(value.location),
++        timeOfDay: stringValue(value.timeOfDay),
++        characters: stringArray(value.characters),
++        action: stringValue(value.action),
++        dialogue: stringValue(value.dialogue),
++        durationSeconds: positiveNumber(value.durationSeconds, 5),
++    };
++}
++
++export function normalizeStoryboardShot(row: unknown, index: number): CanvasStoryboardShot {
++    const value = record(row);
++    return {
++        id: stringValue(value.id) || nanoid(),
++        shotNumber: stringValue(value.shotNumber) || String(index + 1),
++        durationSeconds: positiveNumber(value.durationSeconds, 4),
++        shotSize: stringValue(value.shotSize),
++        scene: stringValue(value.scene),
++        characters: stringArray(value.characters),
++        props: stringArray(value.props),
++        visual: stringValue(value.visual),
++        action: stringValue(value.action),
++        camera: stringValue(value.camera),
++        lighting: stringValue(value.lighting),
++        dialogue: stringValue(value.dialogue),
++        sound: stringValue(value.sound),
++        continuity: stringValue(value.continuity),
++        assetNodeIds: record(value.assetNodeIds),
++        extraAssets: Array.isArray(value.extraAssets) ? value.extraAssets.map(normalizeExtraAsset).filter((asset): asset is CanvasStoryboardExtraAsset => Boolean(asset)) : [],
++    };
++}
++
++function normalizeExtraAsset(value: unknown): CanvasStoryboardExtraAsset | null {
++    const item = record(value);
++    const kind = stringValue(item.kind);
++    const name = stringValue(item.name);
++    if (!name || !["character", "scene", "prop", "reference"].includes(kind)) return null;
++    return { id: stringValue(item.id) || nanoid(), kind: kind as CanvasStoryboardExtraAsset["kind"], name, nodeId: stringValue(item.nodeId) || undefined };
++}
++
++export function formatScriptScenes(rows: CanvasScriptScene[]) {
++    return rows.map((row) => `场次 ${row.sceneNumber}｜${row.location || "未定场景"}｜${row.timeOfDay || "时间未定"}\n人物：${row.characters.join("、") || "未定"}\n${row.action}${row.dialogue ? `\n对白/旁白：${row.dialogue}` : ""}`).join("\n\n");
++}
++
++export function formatStoryboardShots(rows: CanvasStoryboardShot[]) {
++    return rows.map((row) => `镜头 ${row.shotNumber}｜${row.durationSeconds}s｜${row.shotSize || "景别未定"}\n${row.visual}${row.action ? `；${row.action}` : ""}${row.dialogue ? `\n对白/旁白：${row.dialogue}` : ""}`).join("\n\n");
++}
++
++function parseJsonObject(text: string): Record<string, unknown> | null {
++    const candidates = [text.trim(), text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim(), text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)].filter(Boolean) as string[];
++    for (const candidate of candidates) {
++        try {
++            const parsed = JSON.parse(candidate);
++            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
++        } catch {
++            // Continue to the fallback representation.
++        }
++    }
++    return null;
++}
++
++function record(value: unknown): Record<string, any> {
++    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
++}
++
++function stringValue(value: unknown) {
++    return typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
++}
++
++function stringArray(value: unknown) {
++    if (Array.isArray(value)) return uniqueStrings(value.map(stringValue).filter(Boolean));
++    const text = stringValue(value);
++    return text ? uniqueStrings(text.split(/[、,，/]/).map((item) => item.trim()).filter(Boolean)) : [];
++}
++
++function uniqueStrings(values: string[]) {
++    const seen = new Set<string>();
++    return values.filter((value) => {
++        const key = value.toLocaleLowerCase();
++        if (seen.has(key)) return false;
++        seen.add(key);
++        return true;
++    });
++}
++
++function positiveNumber(value: unknown, fallback: number) {
++    const number = typeof value === "number" ? value : Number(value);
++    return Number.isFinite(number) && number > 0 ? number : fallback;
++}
++
++function containsChinese(value: string) {
++    return /[\u3400-\u9fff]/.test(value);
++}
++
++function allPopulatedFieldsContainChinese(values: string[]) {
++    return values.every((value) => !value.trim() || containsChinese(value));
++}
+diff --git a/web/src/app/(user)/canvas/utils/canvas-video-analysis.ts b/web/src/app/(user)/canvas/utils/canvas-video-analysis.ts
+new file mode 100644
+index 0000000..8b21557
+--- /dev/null
++++ b/web/src/app/(user)/canvas/utils/canvas-video-analysis.ts
+@@ -0,0 +1,108 @@
++import { resolveMediaUrl } from "@/services/file-storage";
++import type { ReferenceImage } from "@/types/image";
++import type { ReferenceVideo } from "@/types/media";
++
++export type CanvasVideoAnalysisResult = {
++    frames: ReferenceImage[];
++    timeline: string[];
++};
++
++const MAX_ANALYSIS_FRAMES = 20;
++
++export async function extractCanvasVideoAnalysisFrames(videos: ReferenceVideo[]): Promise<CanvasVideoAnalysisResult> {
++    if (!videos.length) return { frames: [], timeline: [] };
++    const frames: ReferenceImage[] = [];
++    const timeline: string[] = [];
++    const perVideoLimit = Math.max(6, Math.floor(MAX_ANALYSIS_FRAMES / videos.length));
++
++    for (let videoIndex = 0; videoIndex < videos.length; videoIndex += 1) {
++        const video = videos[videoIndex];
++        const result = await extractSingleVideoFrames(video, videoIndex, perVideoLimit);
++        frames.push(...result.frames.slice(0, Math.max(0, MAX_ANALYSIS_FRAMES - frames.length)));
++        timeline.push(...result.timeline.slice(0, Math.max(0, MAX_ANALYSIS_FRAMES - timeline.length)));
++        if (frames.length >= MAX_ANALYSIS_FRAMES) break;
++    }
++    return { frames, timeline };
++}
++
++async function extractSingleVideoFrames(reference: ReferenceVideo, videoIndex: number, limit: number): Promise<CanvasVideoAnalysisResult> {
++    const sourceUrl = await resolveMediaUrl(reference.storageKey, reference.url || "");
++    if (!sourceUrl) throw new Error(`视频“${reference.name}”缺少可读取的本地内容，请重新上传后再倒推剧本`);
++
++    const video = document.createElement("video");
++    video.preload = "auto";
++    video.muted = true;
++    video.playsInline = true;
++    video.crossOrigin = "anonymous";
++    video.src = sourceUrl;
++
++    try {
++        await waitForVideoReady(video, "loadedmetadata");
++        const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : Math.max(1, Number(reference.durationMs || 0) / 1000);
++        const desiredCount = Math.min(limit, duration <= 15 ? 12 : duration <= 60 ? 18 : 20);
++        const sampleCount = Math.max(4, desiredCount);
++        const times = Array.from({ length: sampleCount }, (_, index) => duration * ((index + 1) / (sampleCount + 1)));
++        const canvas = document.createElement("canvas");
++        const sourceWidth = video.videoWidth || reference.width || 720;
++        const sourceHeight = video.videoHeight || reference.height || 1280;
++        const scale = Math.min(1, 640 / Math.max(sourceWidth, sourceHeight));
++        canvas.width = Math.max(1, Math.round(sourceWidth * scale));
++        canvas.height = Math.max(1, Math.round(sourceHeight * scale));
++        const context = canvas.getContext("2d");
++        if (!context) throw new Error("无法创建视频关键帧画布");
++
++        const frames: ReferenceImage[] = [];
++        const timeline: string[] = [];
++        for (let frameIndex = 0; frameIndex < times.length; frameIndex += 1) {
++            const time = times[frameIndex];
++            await seekVideo(video, time);
++            context.drawImage(video, 0, 0, canvas.width, canvas.height);
++            const label = `视频${videoIndex + 1}关键帧${frameIndex + 1}（${formatTimestamp(time)}）`;
++            frames.push({
++                id: `${reference.id}:analysis:${frameIndex}`,
++                name: `${label}.jpg`,
++                type: "image/jpeg",
++                dataUrl: canvas.toDataURL("image/jpeg", 0.78),
++            });
++            timeline.push(label);
++        }
++        return { frames, timeline };
++    } catch (error) {
++        const detail = error instanceof Error ? error.message : String(error || "未知错误");
++        throw new Error(`无法解析视频“${reference.name}”的关键帧：${detail}`);
++    } finally {
++        video.removeAttribute("src");
++        video.load();
++    }
++}
++
++async function seekVideo(video: HTMLVideoElement, time: number) {
++    const target = Math.min(Math.max(time, 0), Math.max(video.duration - 0.05, 0));
++    if (Math.abs(video.currentTime - target) < 0.01 && video.readyState >= 2) return;
++    const ready = waitForVideoReady(video, "seeked");
++    video.currentTime = target;
++    await ready;
++}
++
++function waitForVideoReady(video: HTMLVideoElement, eventName: "loadedmetadata" | "seeked") {
++    if (eventName === "loadedmetadata" && video.readyState >= 1) return Promise.resolve();
++    return new Promise<void>((resolve, reject) => {
++        const timeout = window.setTimeout(() => finish(() => reject(new Error("视频读取超时"))), 20_000);
++        const onReady = () => finish(resolve);
++        const onError = () => finish(() => reject(new Error("视频加载或解码失败")));
++        const finish = (done: () => void) => {
++            window.clearTimeout(timeout);
++            video.removeEventListener(eventName, onReady);
++            video.removeEventListener("error", onError);
++            done();
++        };
++        video.addEventListener(eventName, onReady, { once: true });
++        video.addEventListener("error", onError, { once: true });
++    });
++}
++
++function formatTimestamp(seconds: number) {
++    const minutes = Math.floor(seconds / 60);
++    const remain = seconds - minutes * 60;
++    return `${String(minutes).padStart(2, "0")}:${remain.toFixed(1).padStart(4, "0")}`;
++}
+diff --git a/web/src/app/(user)/canvas/components/canvas-workflow-detail-modal.tsx b/web/src/app/(user)/canvas/components/canvas-workflow-detail-modal.tsx
+new file mode 100644
+index 0000000..dda26d8
+--- /dev/null
++++ b/web/src/app/(user)/canvas/components/canvas-workflow-detail-modal.tsx
+@@ -0,0 +1,328 @@
++"use client";
++
++import { useEffect, useMemo, useState } from "react";
++import { Button, Image as AntImage, Input, Modal } from "antd";
++import { Boxes, Clapperboard, Image as ImageIcon, Link2, Plus, RefreshCw, Sparkles, Trash2, Unlink, Users } from "lucide-react";
++import { nanoid } from "nanoid";
++
++import { canvasThemes } from "@/lib/canvas-theme";
++import { useThemeStore } from "@/stores/use-theme-store";
++import { CanvasNodeType, type CanvasNodeData, type CanvasScriptScene, type CanvasStoryboardExtraAsset, type CanvasStoryboardShot } from "../types";
++import { formatScriptScenes, formatStoryboardShots, isValidScriptScenes, isValidStoryboardShots, normalizeScriptScene, normalizeStoryboardShot, parseScriptScenes, parseStoryboardShots } from "../utils/canvas-workflow-structure";
++
++type AssetKind = "character" | "scene" | "prop" | "storyboard";
++type AssetPickerTarget = { shotId: string; kind: AssetKind; name: string; value?: string; extraAssetId?: string };
++
++type Props = {
++    node: CanvasNodeData | null;
++    nodes: CanvasNodeData[];
++    onClose: () => void;
++    onMetadataChange: (nodeId: string, patch: Partial<NonNullable<CanvasNodeData["metadata"]>>) => void;
++    onRegenerate: (node: CanvasNodeData) => void;
++    onStructureRaw: (node: CanvasNodeData) => void;
++    onCreateStoryboardScript: (node: CanvasNodeData) => void;
++    onAdaptScript: (node: CanvasNodeData, requirement: string) => void;
++    onGenerateAssets: (node: CanvasNodeData, shotIds: string[]) => void;
++    onGenerateStoryboards: (node: CanvasNodeData, shotIds: string[]) => void;
++    onGenerateVideos: (node: CanvasNodeData, shotIds: string[]) => void;
++    onBindAsset: (node: CanvasNodeData, shotId: string, kind: AssetKind, name: string, assetNodeId: string) => void;
++};
++
++export function CanvasWorkflowDetailModal({ node, nodes, onClose, onMetadataChange, onRegenerate, onStructureRaw, onCreateStoryboardScript, onAdaptScript, onGenerateAssets, onGenerateStoryboards, onGenerateVideos, onBindAsset }: Props) {
++    const theme = canvasThemes[useThemeStore((state) => state.theme)];
++    const [selectedShotIds, setSelectedShotIds] = useState<string[]>([]);
++    const [assetPickerTarget, setAssetPickerTarget] = useState<AssetPickerTarget | null>(null);
++    const [extraAssetShotId, setExtraAssetShotId] = useState<string | null>(null);
++    const [extraAssetKind, setExtraAssetKind] = useState<CanvasStoryboardExtraAsset["kind"]>("reference");
++    const [extraAssetName, setExtraAssetName] = useState("");
++    const [adaptationOpen, setAdaptationOpen] = useState(false);
++    const [adaptationRequirement, setAdaptationRequirement] = useState("");
++    const kind = node?.metadata?.workflowKind;
++    const isScript = kind === "script";
++    const isStoryboard = kind === "storyboard_script";
++    const scenes = node?.metadata?.scriptScenes?.length ? node.metadata.scriptScenes : node?.metadata?.status === "loading" ? [] : parseScriptScenes(node?.metadata?.content || "");
++    const shots = node?.metadata?.storyboardShots?.length ? node.metadata.storyboardShots : node?.metadata?.status === "loading" ? [] : parseStoryboardShots(node?.metadata?.content || "");
++    const structureValid = node?.metadata?.workflowStructureValid === false ? false : isScript ? isValidScriptScenes(scenes) : isValidStoryboardShots(shots);
++    const rawText = node?.metadata?.workflowRawText || node?.metadata?.content || "";
++    const mediaNodes = useMemo(() => nodes.filter((item) => (item.type === CanvasNodeType.Image || item.type === CanvasNodeType.Panorama) && item.id !== node?.id), [node?.id, nodes]);
++
++    useEffect(() => {
++        setSelectedShotIds([]);
++        setAssetPickerTarget(null);
++        setExtraAssetShotId(null);
++        setAdaptationOpen(false);
++        setAdaptationRequirement("");
++        if (node?.metadata?.workflowKind === "storyboard_script" && node.metadata.storyboardShots?.length) {
++            const deduplicatedShots = node.metadata.storyboardShots.map(deduplicateShotAssets);
++            onMetadataChange(node.id, { storyboardShots: deduplicatedShots, content: formatStoryboardShots(deduplicatedShots) });
++        }
++    }, [node?.id]);
++
++    if (!node || (!isScript && !isStoryboard)) return null;
++
++    const updateScenes = (next: CanvasScriptScene[]) => onMetadataChange(node.id, { scriptScenes: next, content: formatScriptScenes(next), workflowStructureValid: true, workflowRawText: undefined });
++    const updateShots = (next: CanvasStoryboardShot[]) => onMetadataChange(node.id, { storyboardShots: next, content: formatStoryboardShots(next), workflowStructureValid: true, workflowRawText: undefined });
++    const targetShotIds = selectedShotIds.length ? selectedShotIds : shots.map((shot) => shot.id);
++    const allTargetsReady = targetShotIds.length > 0 && targetShotIds.every((shotId) => !missingShotAssets(shots.find((shot) => shot.id === shotId), nodes).length);
++    const bindTargetAsset = (target: AssetPickerTarget, assetNodeId: string) => {
++        if (target.extraAssetId) {
++            updateShots(shots.map((shot) => shot.id !== target.shotId ? shot : { ...shot, extraAssets: (shot.extraAssets || []).map((asset) => asset.id === target.extraAssetId ? { ...asset, nodeId: assetNodeId || undefined } : asset) }));
++        } else {
++            onBindAsset(node, target.shotId, target.kind, target.name, assetNodeId);
++        }
++    };
++    const bindPickerAsset = (assetNodeId: string) => {
++        if (!assetPickerTarget) return;
++        bindTargetAsset(assetPickerTarget, assetNodeId);
++        setAssetPickerTarget(null);
++    };
++    const addExtraAsset = () => {
++        const name = extraAssetName.trim();
++        if (!extraAssetShotId || !name) return;
++        const extraAsset: CanvasStoryboardExtraAsset = { id: nanoid(), kind: extraAssetKind, name };
++        updateShots(shots.map((shot) => shot.id === extraAssetShotId ? { ...shot, extraAssets: [...(shot.extraAssets || []), extraAsset] } : shot));
++        setExtraAssetShotId(null);
++        setExtraAssetName("");
++        setAssetPickerTarget({ shotId: extraAssetShotId, kind: "storyboard", name, extraAssetId: extraAsset.id });
++    };
++
++    return (
++        <>
++        <Modal
++            open
++            centered
++            footer={null}
++            width="calc(100vw - 48px)"
++            styles={{ body: { height: "calc(100vh - 112px)", overflow: "hidden", padding: 0 } }}
++            title={<div className="flex items-center gap-2"><Sparkles className="size-4 text-blue-500" />{isScript ? "剧本详情" : "分镜脚本与素材检查"}</div>}
++            onCancel={onClose}
++        >
++            <div className="flex h-full flex-col" style={{ color: theme.node.text }}>
++                <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3" style={{ borderColor: theme.node.stroke }}>
++                    <Button icon={<RefreshCw className="size-4" />} onClick={() => onRegenerate(node)}>AI 重新生成</Button>
++                    {!structureValid && rawText ? <Button type="primary" icon={<Sparkles className="size-4" />} onClick={() => onStructureRaw(node)}>AI 结构化原文</Button> : null}
++                    {isScript ? (
++                        <>
++                            <Button disabled={!structureValid} icon={<Sparkles className="size-4" />} onClick={() => setAdaptationOpen(true)}>AI 改编</Button>
++                            <Button type="primary" disabled={!structureValid} icon={<Clapperboard className="size-4" />} onClick={() => onCreateStoryboardScript(node)}>生成分镜脚本</Button>
++                        </>
++                    ) : (
++                        <>
++                            <Button disabled={!structureValid} icon={<Users className="size-4" />} onClick={() => onGenerateAssets(node, targetShotIds)}>补全人物/场景/道具</Button>
++                            <Button disabled={!structureValid} icon={<ImageIcon className="size-4" />} onClick={() => onGenerateStoryboards(node, targetShotIds)}>生成分镜图</Button>
++                            <Button type="primary" disabled={!allTargetsReady} icon={<Clapperboard className="size-4" />} onClick={() => onGenerateVideos(node, targetShotIds)}>生成视频</Button>
++                            <span className="text-xs opacity-60">{selectedShotIds.length ? `已选 ${selectedShotIds.length} 个镜头` : "未勾选时操作全部镜头"}</span>
++                        </>
++                    )}
++                </div>
++                <div className="thin-scrollbar min-h-0 flex-1 overflow-auto p-4">
++                    {!structureValid && rawText ? (
++                        <RawWorkflowContent value={rawText} label={isScript ? "当前剧本原文（尚未结构化）" : "当前分镜原文（尚未结构化）"} onChange={(value) => onMetadataChange(node.id, { content: value, workflowRawText: value, workflowStructureValid: false })} />
++                    ) : isScript ? <ScriptTable rows={scenes} onChange={updateScenes} /> : <StoryboardTable rows={shots} nodes={nodes} mediaNodes={mediaNodes} selectedIds={selectedShotIds} onSelectedIdsChange={setSelectedShotIds} onChange={updateShots} onGenerateAssets={(shotId) => onGenerateAssets(node, [shotId])} onGenerateStoryboard={(shotId) => onGenerateStoryboards(node, [shotId])} onGenerateVideo={(shotId) => onGenerateVideos(node, [shotId])} onChooseAsset={setAssetPickerTarget} onClearAsset={(target) => bindTargetAsset(target, "")} onAddExtraAsset={(shotId) => { setExtraAssetShotId(shotId); setExtraAssetKind("reference"); setExtraAssetName(""); }} onRemoveBaseAsset={(shotId, assetKind, name) => updateShots(shots.map((shot) => shot.id !== shotId ? shot : removeBaseShotAsset(shot, assetKind, name)))} onRemoveExtraAsset={(shotId, extraAssetId) => updateShots(shots.map((shot) => shot.id === shotId ? { ...shot, extraAssets: (shot.extraAssets || []).filter((asset) => asset.id !== extraAssetId) } : shot))} />}
++                </div>
++            </div>
++        </Modal>
++        <Modal
++            open={adaptationOpen}
++            centered
++            title="AI 改编剧情"
++            okText="生成改编版本"
++            cancelText="取消"
++            okButtonProps={{ disabled: !adaptationRequirement.trim() }}
++            onCancel={() => setAdaptationOpen(false)}
++            onOk={() => {
++                const requirement = adaptationRequirement.trim();
++                if (!requirement) return;
++                onAdaptScript(node, requirement);
++                setAdaptationOpen(false);
++                setAdaptationRequirement("");
++            }}
++        >
++            <div className="space-y-3">
++                <p className="text-sm opacity-70">原倒推剧本会保留，AI 将按你的要求生成一个独立的新剧本节点。</p>
++                <Input.TextArea
++                    autoFocus
++                    rows={6}
++                    value={adaptationRequirement}
++                    placeholder="例如：把背景改为民国上海，保留核心冲突；女主改为侦探；结局更有反转；总时长控制在 60 秒。"
++                    onChange={(event) => setAdaptationRequirement(event.target.value)}
++                />
++            </div>
++        </Modal>
++        <AssetPickerModal target={assetPickerTarget} options={mediaNodes} onClose={() => setAssetPickerTarget(null)} onSelect={bindPickerAsset} />
++        <Modal open={Boolean(extraAssetShotId)} title="手动增加素材" okText="添加并选择素材" cancelText="取消" okButtonProps={{ disabled: !extraAssetName.trim() }} onOk={addExtraAsset} onCancel={() => setExtraAssetShotId(null)}>
++            <div className="space-y-4 py-2">
++                <label className="block text-sm"><span className="mb-1 block opacity-70">素材类型</span><select className="h-10 w-full rounded-lg border border-black/15 bg-transparent px-3 dark:border-white/15" value={extraAssetKind} onChange={(event) => setExtraAssetKind(event.target.value as CanvasStoryboardExtraAsset["kind"])}><option value="character">人物参考</option><option value="scene">场景参考</option><option value="prop">道具参考</option><option value="reference">其他参考</option></select></label>
++                <label className="block text-sm"><span className="mb-1 block opacity-70">素材名称</span><input autoFocus className="h-10 w-full rounded-lg border border-black/15 bg-transparent px-3 outline-none focus:border-blue-500 dark:border-white/15" placeholder="例如：女主角冬季服装、夜景街道、品牌标志" value={extraAssetName} onChange={(event) => setExtraAssetName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addExtraAsset(); }} /></label>
++                <div className="text-xs opacity-60">添加后将打开可视化素材选择器。该素材会参与当前镜头的缺失检查和后续生成。</div>
++            </div>
++        </Modal>
++        </>
++    );
++}
++
++function RawWorkflowContent({ value, label, onChange }: { value: string; label: string; onChange: (value: string) => void }) {
++    return <div className="flex min-h-[560px] flex-col rounded-xl border border-amber-400/40 bg-amber-400/5 p-4"><div className="mb-3 text-sm font-semibold text-amber-600">{label}</div><div className="mb-3 text-xs opacity-65">模型返回的内容未匹配场次/镜头字段，因此先完整保留原文，不再错误拆表。点击上方“AI 结构化原文”后再进入表格。</div><textarea className="thin-scrollbar min-h-0 flex-1 resize-none rounded-lg border border-black/10 bg-transparent p-4 font-mono text-sm leading-7 outline-none dark:border-white/10" value={value} onChange={(event) => onChange(event.target.value)} /></div>;
++}
++
++function ScriptTable({ rows, onChange }: { rows: CanvasScriptScene[]; onChange: (rows: CanvasScriptScene[]) => void }) {
++    const update = (index: number, patch: Partial<CanvasScriptScene>) => onChange(rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row));
++    return (
++        <div className="min-w-[1180px] overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
++            <div className="grid grid-cols-[72px_150px_90px_180px_2fr_2fr_80px_44px] bg-black/5 px-2 py-2 text-xs font-semibold dark:bg-white/5"><span>场次</span><span>场景</span><span>时间</span><span>人物</span><span>动作/剧情</span><span>对白/旁白</span><span>时长</span><span /></div>
++            {rows.map((row, index) => (
++                <div key={row.id} className="grid grid-cols-[72px_150px_90px_180px_2fr_2fr_80px_44px] items-stretch border-t border-black/10 p-2 text-xs dark:border-white/10">
++                    <Cell value={row.sceneNumber} onChange={(value) => update(index, { sceneNumber: value })} />
++                    <Cell value={row.location} onChange={(value) => update(index, { location: value })} />
++                    <Cell value={row.timeOfDay} onChange={(value) => update(index, { timeOfDay: value })} />
++                    <Cell value={row.characters.join("、")} onChange={(value) => update(index, { characters: splitList(value) })} />
++                    <Cell value={row.action} multiline onChange={(value) => update(index, { action: value })} />
++                    <Cell value={row.dialogue} multiline onChange={(value) => update(index, { dialogue: value })} />
++                    <Cell value={String(row.durationSeconds)} onChange={(value) => update(index, { durationSeconds: Math.max(1, Number(value) || 1) })} />
++                    <button className="grid place-items-center text-red-400" onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}><Trash2 className="size-4" /></button>
++                </div>
++            ))}
++            <button className="flex w-full items-center justify-center gap-1 border-t border-black/10 py-3 text-xs text-blue-500 dark:border-white/10" onClick={() => onChange([...rows, normalizeScriptScene({}, rows.length)])}><Plus className="size-4" />添加场次</button>
++        </div>
++    );
++}
++
++function StoryboardTable({ rows, nodes, mediaNodes, selectedIds, onSelectedIdsChange, onChange, onGenerateAssets, onGenerateStoryboard, onGenerateVideo, onChooseAsset, onClearAsset, onAddExtraAsset, onRemoveBaseAsset, onRemoveExtraAsset }: { rows: CanvasStoryboardShot[]; nodes: CanvasNodeData[]; mediaNodes: CanvasNodeData[]; selectedIds: string[]; onSelectedIdsChange: (ids: string[]) => void; onChange: (rows: CanvasStoryboardShot[]) => void; onGenerateAssets: (shotId: string) => void; onGenerateStoryboard: (shotId: string) => void; onGenerateVideo: (shotId: string) => void; onChooseAsset: (target: AssetPickerTarget) => void; onClearAsset: (target: AssetPickerTarget) => void; onAddExtraAsset: (shotId: string) => void; onRemoveBaseAsset: (shotId: string, kind: "character" | "scene" | "prop", name: string) => void; onRemoveExtraAsset: (shotId: string, extraAssetId: string) => void }) {
++    const update = (index: number, patch: Partial<CanvasStoryboardShot>) => onChange(rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row));
++    const toggle = (id: string) => onSelectedIdsChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
++    return (
++        <div className="min-w-[1990px] overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
++            <div className="grid grid-cols-[42px_58px_68px_90px_130px_130px_130px_240px_170px_130px_180px_440px_220px] bg-black/5 px-2 py-2 text-xs font-semibold dark:bg-white/5"><span /><span>镜号</span><span>时长</span><span>景别</span><span>场景</span><span>人物</span><span>道具</span><span>画面/动作</span><span>运镜/光线</span><span>对白/声音</span><span>连续性</span><span>素材预览与绑定</span><span>操作</span></div>
++            {rows.map((row, index) => {
++                const missing = missingShotAssets(row, nodes);
++                return (
++                    <div key={row.id} className="grid grid-cols-[42px_58px_68px_90px_130px_130px_130px_240px_170px_130px_180px_440px_220px] items-stretch border-t border-black/10 p-2 text-xs dark:border-white/10">
++                        <label className="grid place-items-center"><input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggle(row.id)} /></label>
++                        <Cell value={row.shotNumber} onChange={(value) => update(index, { shotNumber: value })} />
++                        <Cell value={String(row.durationSeconds)} onChange={(value) => update(index, { durationSeconds: Math.max(1, Number(value) || 1) })} />
++                        <Cell value={row.shotSize} onChange={(value) => update(index, { shotSize: value })} />
++                        <Cell value={row.scene} onChange={(value) => update(index, { scene: value })} />
++                        <Cell value={row.characters.join("、")} onChange={(value) => update(index, { characters: splitList(value) })} />
++                        <Cell value={row.props.join("、")} onChange={(value) => update(index, { props: splitList(value) })} />
++                        <Cell value={[row.visual, row.action].filter(Boolean).join("\n")} multiline onChange={(value) => update(index, { visual: value, action: "" })} />
++                        <Cell value={[row.camera, row.lighting].filter(Boolean).join("\n")} multiline onChange={(value) => update(index, { camera: value, lighting: "" })} />
++                        <Cell value={[row.dialogue, row.sound].filter(Boolean).join("\n")} multiline onChange={(value) => update(index, { dialogue: value, sound: "" })} />
++                        <Cell value={row.continuity} multiline onChange={(value) => update(index, { continuity: value })} />
++                        <div className="space-y-2 px-1">
++                            {row.characters.map((name) => { const target = { shotId: row.id, kind: "character" as const, name, value: row.assetNodeIds?.characters?.[name] }; return <AssetBindingCard key={`character-${name}`} label={`人物：${name}`} value={target.value} options={mediaNodes} removable onChoose={() => onChooseAsset(target)} onClear={() => onClearAsset(target)} onRemove={() => onRemoveBaseAsset(row.id, "character", name)} />; })}
++                            {row.scene ? (() => { const target = { shotId: row.id, kind: "scene" as const, name: row.scene, value: row.assetNodeIds?.scene }; return <AssetBindingCard label={`场景：${row.scene}`} value={target.value} options={mediaNodes} removable onChoose={() => onChooseAsset(target)} onClear={() => onClearAsset(target)} onRemove={() => onRemoveBaseAsset(row.id, "scene", row.scene)} />; })() : null}
++                            {row.props.map((name) => { const target = { shotId: row.id, kind: "prop" as const, name, value: row.assetNodeIds?.props?.[name] }; return <AssetBindingCard key={`prop-${name}`} label={`道具：${name}`} value={target.value} options={mediaNodes} removable onChoose={() => onChooseAsset(target)} onClear={() => onClearAsset(target)} onRemove={() => onRemoveBaseAsset(row.id, "prop", name)} />; })}
++                            {(() => { const target = { shotId: row.id, kind: "storyboard" as const, name: "分镜图", value: row.assetNodeIds?.storyboard }; return <AssetBindingCard label="分镜图" value={target.value} options={mediaNodes} onChoose={() => onChooseAsset(target)} onClear={() => onClearAsset(target)} />; })()}
++                            {(row.extraAssets || []).map((asset) => { const target = { shotId: row.id, kind: "storyboard" as const, name: asset.name, value: asset.nodeId, extraAssetId: asset.id }; return <AssetBindingCard key={asset.id} label={`${extraAssetKindLabel(asset.kind)}：${asset.name}`} value={asset.nodeId} options={mediaNodes} removable onChoose={() => onChooseAsset(target)} onClear={() => onClearAsset(target)} onRemove={() => onRemoveExtraAsset(row.id, asset.id)} />; })}
++                            <Button block size="small" icon={<Plus className="size-3" />} onClick={() => onAddExtraAsset(row.id)}>手动增加素材</Button>
++                            <div className={missing.length ? "text-red-400" : "text-emerald-500"}>{missing.length ? `缺失：${missing.join("、")}` : "素材齐全，可生成视频"}</div>
++                        </div>
++                        <div className="flex flex-wrap content-start gap-1 px-1">
++                            <Button size="small" icon={<Boxes className="size-3" />} onClick={() => onGenerateAssets(row.id)}>补素材</Button>
++                            <Button size="small" icon={<ImageIcon className="size-3" />} onClick={() => onGenerateStoryboard(row.id)}>分镜图</Button>
++                            <Button size="small" type="primary" disabled={missing.length > 0} icon={<Clapperboard className="size-3" />} onClick={() => onGenerateVideo(row.id)}>视频</Button>
++                            <Button size="small" danger icon={<Trash2 className="size-3" />} onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))} />
++                        </div>
++                    </div>
++                );
++            })}
++            <button className="flex w-full items-center justify-center gap-1 border-t border-black/10 py-3 text-xs text-blue-500 dark:border-white/10" onClick={() => onChange([...rows, normalizeStoryboardShot({}, rows.length)])}><Plus className="size-4" />添加镜头</button>
++        </div>
++    );
++}
++
++function AssetBindingCard({ label, value, options, removable = false, onChoose, onClear, onRemove }: { label: string; value?: string; options: CanvasNodeData[]; removable?: boolean; onChoose: () => void; onClear: () => void; onRemove?: () => void }) {
++    const selected = options.find((node) => node.id === value);
++    const previewUrl = selected?.metadata?.content || "";
++    const status = selected ? selected.metadata?.status === "loading" ? "生成中" : previewUrl ? "已就绪" : "暂无图片" : "未绑定";
++    return (
++        <div className="flex min-h-16 items-center gap-2 rounded-lg border border-black/10 bg-black/[0.02] p-2 dark:border-white/10 dark:bg-white/[0.03]">
++            <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-md bg-black/5 dark:bg-white/5">
++                {previewUrl ? <AntImage src={previewUrl} alt={selected?.title || label} width={48} height={48} className="object-cover" preview={{ mask: <span className="text-[10px]">预览</span> }} /> : <ImageIcon className="size-5 opacity-35" />}
++            </div>
++            <div className="min-w-0 flex-1">
++                <div className="truncate text-[11px] opacity-65" title={label}>{label}</div>
++                <div className="truncate font-medium" title={selected?.title || "未绑定"}>{selected?.title || "未绑定"}</div>
++                <div className={previewUrl ? "text-[10px] text-emerald-500" : "text-[10px] text-amber-500"}>{status}</div>
++            </div>
++            <div className="flex shrink-0 flex-col gap-1">
++                <Button size="small" icon={<Link2 className="size-3" />} onClick={onChoose}>{selected ? "更换" : "选择"}</Button>
++                {selected ? <Button size="small" icon={<Unlink className="size-3" />} onClick={onClear}>解绑</Button> : null}
++                {removable && onRemove ? <Button size="small" danger icon={<Trash2 className="size-3" />} onClick={onRemove}>移除</Button> : null}
++            </div>
++        </div>
++    );
++}
++
++function AssetPickerModal({ target, options, onClose, onSelect }: { target: AssetPickerTarget | null; options: CanvasNodeData[]; onClose: () => void; onSelect: (nodeId: string) => void }) {
++    return (
++        <Modal open={Boolean(target)} width={900} footer={null} title={target ? `选择素材 · ${target.name}` : "选择素材"} onCancel={onClose}>
++            <div className="mb-3 text-xs opacity-60">从当前画布已有图片中选择。缩略图可直接确认内容，名称用于区分不同版本。</div>
++            {options.length ? <div className="grid max-h-[60vh] grid-cols-3 gap-3 overflow-auto pr-1 sm:grid-cols-4">
++                {options.map((node) => {
++                    const previewUrl = node.metadata?.content || "";
++                    const selected = node.id === target?.value;
++                    return <button key={node.id} type="button" className={`overflow-hidden rounded-xl border-2 text-left transition ${selected ? "border-blue-500 bg-blue-500/5" : "border-black/10 hover:border-blue-400 dark:border-white/10"}`} onClick={() => onSelect(node.id)}>
++                        <div className="aspect-[4/3] w-full overflow-hidden bg-black/5 dark:bg-white/5">{previewUrl ? <img src={previewUrl} alt={node.title} className="size-full object-cover" /> : <span className="grid size-full place-items-center"><ImageIcon className="size-8 opacity-30" /></span>}</div>
++                        <div className="p-2"><div className="truncate text-sm font-medium" title={node.title}>{node.title}</div><div className={previewUrl ? "text-[11px] text-emerald-500" : "text-[11px] text-amber-500"}>{node.metadata?.status === "loading" ? "生成中" : previewUrl ? "已就绪" : "暂无图片"}</div></div>
++                    </button>;
++                })}
++            </div> : <div className="grid min-h-56 place-items-center rounded-xl border border-dashed border-black/15 text-sm opacity-55 dark:border-white/15">画布中还没有图片素材，请先上传或生成素材</div>}
++        </Modal>
++    );
++}
++
++function extraAssetKindLabel(kind: CanvasStoryboardExtraAsset["kind"]) {
++    return kind === "character" ? "额外人物" : kind === "scene" ? "额外场景" : kind === "prop" ? "额外道具" : "额外参考";
++}
++
++function deduplicateShotAssets(shot: CanvasStoryboardShot): CanvasStoryboardShot {
++    return { ...shot, characters: uniqueAssetNames(shot.characters), props: uniqueAssetNames(shot.props) };
++}
++
++function uniqueAssetNames(values: string[]) {
++    const seen = new Set<string>();
++    return values.filter((value) => {
++        const key = value.trim().toLocaleLowerCase();
++        if (!key || seen.has(key)) return false;
++        seen.add(key);
++        return true;
++    });
++}
++
++function removeBaseShotAsset(shot: CanvasStoryboardShot, kind: "character" | "scene" | "prop", name: string): CanvasStoryboardShot {
++    const assetNodeIds = { ...shot.assetNodeIds };
++    if (kind === "character") {
++        const characters = { ...assetNodeIds.characters };
++        delete characters[name];
++        return { ...shot, characters: shot.characters.filter((item) => item !== name), assetNodeIds: { ...assetNodeIds, characters } };
++    }
++    if (kind === "prop") {
++        const props = { ...assetNodeIds.props };
++        delete props[name];
++        return { ...shot, props: shot.props.filter((item) => item !== name), assetNodeIds: { ...assetNodeIds, props } };
++    }
++    return { ...shot, scene: "", assetNodeIds: { ...assetNodeIds, scene: undefined } };
++}
++
++function Cell({ value, onChange, multiline = false }: { value: string; onChange: (value: string) => void; multiline?: boolean }) {
++    const className = "m-0 min-h-9 w-full resize-none border-0 bg-transparent px-1.5 py-1 text-xs outline-none focus:bg-blue-500/5";
++    const rows = Math.min(16, Math.max(4, value.split("\n").reduce((total, line) => total + Math.max(1, Math.ceil(line.length / 34)), 0)));
++    return multiline ? <textarea rows={rows} className={className} value={value} onChange={(event) => onChange(event.target.value)} /> : <input className={className} value={value} onChange={(event) => onChange(event.target.value)} />;
++}
++
++export function missingShotAssets(shot: CanvasStoryboardShot | undefined, nodes: CanvasNodeData[]) {
++    if (!shot) return ["镜头不存在"];
++    const nodeReady = (nodeId?: string) => Boolean(nodeId && nodes.find((node) => node.id === nodeId)?.metadata?.content);
++    const missing: string[] = [];
++    shot.characters.forEach((name) => { if (!nodeReady(shot.assetNodeIds?.characters?.[name])) missing.push(`人物 ${name}`); });
++    if (shot.scene && !nodeReady(shot.assetNodeIds?.scene)) missing.push(`场景 ${shot.scene}`);
++    shot.props.forEach((name) => { if (!nodeReady(shot.assetNodeIds?.props?.[name])) missing.push(`道具 ${name}`); });
++    if (!nodeReady(shot.assetNodeIds?.storyboard)) missing.push("分镜图");
++    (shot.extraAssets || []).forEach((asset) => { if (!nodeReady(asset.nodeId)) missing.push(`${extraAssetKindLabel(asset.kind)} ${asset.name}`); });
++    return missing;
++}
++
++function splitList(value: string) {
++    return value.split(/[、,，/]/).map((item) => item.trim()).filter(Boolean);
++}
+

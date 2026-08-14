@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1080, initial-scale=1">
+  <title>唯变 AI 工作台 - 宣传片画面</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; background: #090b10; color: #f7f9ff; font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+    .scene { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: #090b10; }
+    .grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(73, 102, 145, .14) 1px, transparent 1px), linear-gradient(90deg, rgba(73, 102, 145, .14) 1px, transparent 1px); background-size: 54px 54px; mask-image: linear-gradient(to bottom, black, rgba(0,0,0,.25)); }
+    .topline { position: absolute; top: 1030px; left: 90px; right: 90px; height: 1px; background: #2d3542; }
+    .brand { position: absolute; top: 1085px; left: 90px; font-size: 30px; color: #aab4c6; letter-spacing: 0; }
+    .accent { position: absolute; top: 1185px; left: 90px; width: 8px; height: 152px; background: #3478f6; }
+    .headline { position: absolute; top: 1170px; left: 128px; font-size: 74px; font-weight: 700; line-height: 1.25; }
+    .tags { position: absolute; top: 1365px; left: 128px; color: #70a2ff; font-size: 30px; }
+    .dot { position: absolute; width: 20px; height: 20px; border-radius: 50%; background: #3478f6; box-shadow: 0 0 28px #3478f6; }
+    .d1 { left: 884px; top: 566px; } .d2 { left: 924px; top: 606px; opacity: .42; } .d3 { left: 847px; top: 642px; opacity: .25; }
+    .shot { background: #e9eef6; }
+    .shot img { position: absolute; height: 1920px; width: auto; object-fit: cover; transform: translateX(-480px); }
+    .shade { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 48%, rgba(5, 9, 17, .13) 56%, rgba(5, 9, 17, .97) 78%); }
+    .kicker { position: absolute; top: 1335px; left: 72px; padding: 10px 20px; border: 1px solid rgba(112,162,255,.8); color: #8db5ff; font-size: 28px; }
+    .shot-title { position: absolute; top: 1425px; left: 72px; right: 72px; font-weight: 700; font-size: 58px; line-height: 1.28; }
+    .shot-desc { position: absolute; top: 1598px; left: 72px; right: 72px; color: #cbd4e5; font-size: 30px; line-height: 1.55; }
+    .cta-bg { position: absolute; inset: 0; background: radial-gradient(circle at 46% 34%, #344c78 0, #172136 26%, #090b10 67%); filter: saturate(.8); }
+    .cta-line { position: absolute; top: 1000px; left: 90px; height: 4px; width: 124px; background: #3478f6; }
+    .cta-brand { position: absolute; top: 1084px; left: 90px; font-size: 74px; font-weight: 700; }
+    .cta-sub { position: absolute; top: 1198px; left: 90px; font-size: 38px; color: #c1cad9; }
+    .cta-footer { position: absolute; top: 1530px; left: 90px; right: 90px; padding-top: 28px; border-top: 1px solid #3b4556; color: #7e8ba1; font-size: 29px; }
+  </style>
+</head>
+<body>
+  <main id="scene1" class="scene">
+    <div class="grid"></div><div class="topline"></div><div class="brand">唯变AI工作台</div>
+    <div class="accent"></div><div class="headline">内容，别再散着做。</div>
+    <div class="tags">语音 · 视频 · 数字人 · 直播</div><i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i>
+  </main>
+  <main id="scene2" class="scene shot">
+    <img src="assets/pack-b/b-01-seedance-workflow.png" alt="Seedance 工作流">
+    <div class="shade"></div><div class="kicker">视频生产</div>
+    <div class="shot-title">从提示词到成片，<br>一条工作流跑完。</div>
+    <div class="shot-desc">Seedance 2.0 批量任务、素材与参数集中管理。</div>
+  </main>
+  <main id="scene3" class="scene shot">
+    <img src="assets/pack-b/b-02-live-console.png" alt="直播控制台">
+    <div class="shade"></div><div class="kicker">数字人直播</div>
+    <div class="shot-title">数字人直播，<br>状态一眼看清。</div>
+    <div class="shot-desc">预览、推流与任务运行状态，集中在同一个控制台。</div>
+  </main>
+  <main id="scene4" class="scene">
+    <div class="cta-bg"></div><div class="grid"></div><div class="cta-line"></div>
+    <div class="cta-brand">唯变AI工作台</div><div class="cta-sub">一站式 AI 数字人系统</div>
+    <div class="cta-footer">让内容生产，持续运转。</div>
+  </main>
+</body>
+</html>

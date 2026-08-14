@@ -16,6 +16,7 @@ import runninghub from "./runninghub/main";
 import douyin from "./douyin/main";
 import hottrend from "./hottrend/main";
 import watermark from "./watermark/main";
+import infiniteCanvas from "./infiniteCanvas/main";
 
 const $mapi = {
     app,
@@ -36,6 +37,7 @@ const $mapi = {
     douyin,
     hottrend,
     watermark,
+    infiniteCanvas,
 };
 
 export const MAPI = {
@@ -49,5 +51,6 @@ export const MAPI = {
     },
     destroy() {
         $mapi.keys.destroy();
+        void $mapi.infiniteCanvas.destroy();
     },
 };

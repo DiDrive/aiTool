@@ -1,0 +1,3 @@
+{
+  "/(user)/canvas/page": "app/(user)/canvas/page.js"
+}

@@ -276,13 +276,14 @@ const marketingChainProgress = computed(() => {
 });
 
 const supportedToolTask = computed(() => {
+    const capability = String((props.record as any)?.modelConfig?.capability || "").toLowerCase();
     const title = String((props.record as any)?.modelConfig?.templateTitle || "").toLowerCase();
     const body = String((props.record as any)?.modelConfig?.requestBodyJson || "").toLowerCase();
     const isCloudTemplateTask = props.record.biz === "RunningHubTask" && !!(props.record as any)?.modelConfig?.templateId;
     return (
         isCloudTemplateTask ||
         props.record.biz === "DirectApiTask" &&
-        (title.includes("seedance") || title.includes("gpt image 2") || body.includes("seedance-2.0") || body.includes("kw-video-v2") || body.includes("gpt-image-2"))
+        (capability === "video" || capability === "image" || title.includes("seedance") || title.includes("gpt image 2") || body.includes("seedance-2.0") || body.includes("kw-video-v2") || body.includes("gpt-image-2"))
     );
 });
 
@@ -367,13 +368,22 @@ const statusMeta = computed(() => {
     return mapping[props.displayStatus] || mapping.queue;
 });
 
+const sanitizePublicTaskError = (value: unknown) => {
+    return String(value || "")
+        .split(/\r?\n/)
+        .filter(line => !/^\s*(?:Request URL|请求(?:地址|URL))\s*[:：]/i.test(line))
+        .join("\n")
+        .replace(/https?:\/\/[^\s<>"']+/gi, "[平台地址已隐藏]")
+        .trim();
+};
+
 const failDetail = computed(() => {
     const parts = [
-        String(props.record.statusMsg || "").trim(),
-        String((props.record as any)?.jobResult?.Submit?.error || "").trim(),
-        String((props.record as any)?.jobResult?.Prepare?.error || "").trim(),
-        String((props.record as any)?.jobResult?.Query?.error || "").trim(),
-        String((props.record as any)?.jobResult?.End?.error || "").trim(),
+        sanitizePublicTaskError(props.record.statusMsg),
+        sanitizePublicTaskError((props.record as any)?.jobResult?.Submit?.error),
+        sanitizePublicTaskError((props.record as any)?.jobResult?.Prepare?.error),
+        sanitizePublicTaskError((props.record as any)?.jobResult?.Query?.error),
+        sanitizePublicTaskError((props.record as any)?.jobResult?.End?.error),
     ].filter(Boolean);
     return Array.from(new Set(parts)).join("\n");
 });

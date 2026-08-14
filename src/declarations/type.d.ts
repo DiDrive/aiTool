@@ -1,3 +1,5 @@
+import type {InfiniteCanvasStatus} from "../types/infiniteCanvas";
+
 type DefsPage = {
     onShow: (cb: Function) => void;
     onHide: (cb: Function) => void;
@@ -18,6 +20,13 @@ type DefsPage = {
     ipcSend: (channel: string, type: string, data?: any) => void;
 };
 type DefsMapi = {
+    infiniteCanvas: {
+        status: () => Promise<InfiniteCanvasStatus>;
+        configure: (patch: {mode?: "external" | "bundled"; externalUrl?: string}) => Promise<InfiniteCanvasStatus>;
+        start: () => Promise<InfiniteCanvasStatus>;
+        stop: () => Promise<InfiniteCanvasStatus>;
+        open: (options?: {modelConfig?: Record<string, unknown>}) => Promise<InfiniteCanvasStatus>;
+    };
     app: {
         getPreload: () => Promise<string>;
         resourcePathResolve: (filePath: string) => Promise<string>;

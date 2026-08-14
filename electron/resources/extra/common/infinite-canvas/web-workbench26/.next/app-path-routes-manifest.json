@@ -1,0 +1,23 @@
+{
+  "/(admin)/admin/ai-logs/page": "/admin/ai-logs",
+  "/(admin)/admin/assets/page": "/admin/assets",
+  "/(admin)/admin/credit-logs/page": "/admin/credit-logs",
+  "/(admin)/admin/page": "/admin",
+  "/(admin)/admin/prompts/page": "/admin/prompts",
+  "/(admin)/admin/settings/page": "/admin/settings",
+  "/(admin)/admin/users/page": "/admin/users",
+  "/(user)/asset-library/page": "/asset-library",
+  "/(user)/assets/page": "/assets",
+  "/(user)/canvas/[id]/page": "/canvas/[id]",
+  "/(user)/canvas/page": "/canvas",
+  "/(user)/image/page": "/image",
+  "/(user)/login/page": "/login",
+  "/(user)/page": "/",
+  "/(user)/prompts/page": "/prompts",
+  "/(user)/video/page": "/video",
+  "/(user)/workflows/page": "/workflows",
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/[...path]/route": "/api/[...path]",
+  "/favicon.ico/route": "/favicon.ico"
+}

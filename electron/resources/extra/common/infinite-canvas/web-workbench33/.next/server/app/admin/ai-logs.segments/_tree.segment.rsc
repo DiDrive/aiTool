@@ -1,0 +1,3 @@
+:HL["/_next/static/chunks/2yjbugow9h8yj.css","style"]
+:HL["/_next/static/chunks/076821w10d53_.css","style"]
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"(admin)","param":null,"prefetchHints":0,"slots":{"children":{"name":"admin","param":null,"prefetchHints":0,"slots":{"children":{"name":"ai-logs","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}}}},"staleTime":300,"buildId":"Rrvnr86L6SfqxVlAHr-a0"}

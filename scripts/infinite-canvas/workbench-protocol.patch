@@ -1,0 +1,666 @@
+diff --git a/handler/apimart_video.go b/handler/apimart_video.go
+index c9014fe..b3a85e3 100644
+--- a/handler/apimart_video.go
++++ b/handler/apimart_video.go
+@@ -1507,3 +1507,7 @@ func uploadAPIMartImageBytes(channel model.ModelChannel, data []byte, filename s
+ 
+-	request, err := http.NewRequest(http.MethodPost, service.BuildModelChannelURL(channel, apimartImageUploadPath), &requestBody)
++	uploadPath := apimartImageUploadPath
++	if workbenchProtocol(channel) == "pix" {
++		uploadPath = "/files"
++	}
++	request, err := http.NewRequest(http.MethodPost, service.BuildModelChannelURL(channel, uploadPath), &requestBody)
+ 	if err != nil {
+@@ -1527,9 +1531,16 @@ func uploadAPIMartImageBytes(channel model.ModelChannel, data []byte, filename s
+ 
+-	var result struct {
+-		URL string `json:"url"`
++	var result map[string]any
++	if json.Unmarshal(body, &result) != nil {
++		return "", errors.New("APIMart image upload failed: no URL returned")
+ 	}
+-	if json.Unmarshal(body, &result) != nil || strings.TrimSpace(result.URL) == "" {
++	uploadedURL := firstNonEmpty(
++		readStringPath(result, "url"),
++		readStringPath(result, "data.url"),
++		readStringPath(result, "file.url"),
++		readStringPath(result, "data.file.url"),
++	)
++	if uploadedURL == "" {
+ 		return "", errors.New("APIMart image upload failed: no URL returned")
+ 	}
+-	return strings.TrimSpace(result.URL), nil
++	return uploadedURL, nil
+ }
+diff --git a/handler/ai.go b/handler/ai.go
+index a7f99bc..1804e03 100644
+--- a/handler/ai.go
++++ b/handler/ai.go
+@@ -147,2 +147,9 @@ func proxyAIRequest(w http.ResponseWriter, r *http.Request, path string) {
+ 		}
++	} else if isWorkbenchChannel(channel) {
++		body, contentType, err = normalizeWorkbenchRequestBody(body, contentType, modelName, channel, upstreamPath)
++		if err != nil {
++			log.Printf("AI proxy normalize workbench request failed: model=%s err=%v", modelName, err)
++			Fail(w, err.Error())
++			return
++		}
+ 	} else if isAPIMartChannel(channel, modelName) && upstreamPath == "/videos/generations" {
+@@ -501,2 +508,32 @@ func agnesVideoQueryID(modelName string, path string) (string, bool) {
+ func resolveAIProxyPath(channel model.ModelChannel, modelName string, path string) string {
++	if protocol := workbenchProtocol(channel); protocol != "" {
++		switch protocol {
++		case "pix":
++			if path == "/videos" {
++				return "/videos/generations"
++			}
++			if path == "/images/edits" {
++				return "/images/generations"
++			}
++			if strings.HasPrefix(path, "/videos/") && !strings.HasSuffix(path, "/content") {
++				id := strings.TrimSpace(strings.TrimPrefix(path, "/videos/"))
++				return "/skills/task-status?task_id=" + url.QueryEscape(id)
++			}
++		case "kwjm":
++			if path == "/videos" {
++				return "/videos/generations"
++			}
++			if strings.HasPrefix(path, "/videos/") && !strings.HasSuffix(path, "/content") {
++				return "/videos/generations/" + strings.TrimPrefix(path, "/videos/")
++			}
++		default:
++			if path == "/videos" {
++				return "/contents/generations/tasks"
++			}
++			if strings.HasPrefix(path, "/videos/") && !strings.HasSuffix(path, "/content") {
++				return "/contents/generations/tasks/" + strings.TrimPrefix(path, "/videos/")
++			}
++		}
++		return path
++	}
+ 	if isKIEChannel(channel, modelName) {
+diff --git a/handler/video_task.go b/handler/video_task.go
+index 1e3e109..ca400ce 100644
+--- a/handler/video_task.go
++++ b/handler/video_task.go
+@@ -163,3 +163,3 @@ func proxyAIVideoTaskRequest(w http.ResponseWriter, r *http.Request) {
+ 		SourceID:        readVideoTaskSourceID(r),
+-		ClientTaskID:     readClientVideoTaskID(r),
++		ClientTaskID:    readClientVideoTaskID(r),
+ 		UpstreamTaskID:  parsed.UpstreamTaskID,
+@@ -301,2 +301,5 @@ func pollVideoTaskFromUpstream(task model.VideoTask) (service.VideoTaskPollUpdat
+ func normalizeVideoCreateBody(body []byte, contentType string, modelName string, channel model.ModelChannel, upstreamPath string) ([]byte, string, error) {
++	if isWorkbenchChannel(channel) {
++		return normalizeWorkbenchRequestBody(body, contentType, modelName, channel, upstreamPath)
++	}
+ 	if isKIEChannel(channel, modelName) && upstreamPath == "/jobs/createTask" {
+diff --git a/service/settings.go b/service/settings.go
+index c4f3b48..e4060b1 100644
+--- a/service/settings.go
++++ b/service/settings.go
+@@ -321,2 +321,10 @@ func BuildModelChannelURL(channel model.ModelChannel, path string) string {
+ 	baseURL := normalizeModelChannelBaseURL(channel.BaseURL)
++	protocol := strings.ToLower(strings.TrimSpace(channel.Protocol))
++	if protocol == "workbench-exchangetoken" || protocol == "workbench-modeltop" || protocol == "workbench-custom" {
++		baseURL = strings.TrimSuffix(strings.TrimSuffix(baseURL, "/v1"), "/api/v3")
++		if strings.HasPrefix(path, "/contents/generations/tasks") {
++			return baseURL + "/api/v3" + path
++		}
++		return baseURL + "/v1" + path
++	}
+ 	lowerBaseURL := strings.ToLower(baseURL)
+diff --git a/service/settings_test.go b/service/settings_test.go
+index abcae5c..7117e3e 100644
+--- a/service/settings_test.go
++++ b/service/settings_test.go
+@@ -62 +62,11 @@ func TestBuildModelChannelURLNormalizesArkPlanTaskPath(t *testing.T) {
+ }
++
++func TestBuildModelChannelURLUsesWorkbenchProtocolRoots(t *testing.T) {
++	channel := model.ModelChannel{BaseURL: "https://api.example.com", Protocol: "workbench-exchangetoken"}
++	if got, want := BuildModelChannelURL(channel, "/contents/generations/tasks"), "https://api.example.com/api/v3/contents/generations/tasks"; got != want {
++		t.Fatalf("video URL = %q, want %q", got, want)
++	}
++	if got, want := BuildModelChannelURL(channel, "/images/edits"), "https://api.example.com/v1/images/edits"; got != want {
++		t.Fatalf("image URL = %q, want %q", got, want)
++	}
++}
+diff --git a/service/user_data.go b/service/user_data.go
+index d185fde..b8cc4a1 100644
+--- a/service/user_data.go
++++ b/service/user_data.go
+@@ -45,7 +45,8 @@ type userModelConfigInput struct {
+ type userLocalModelChannelInput struct {
+-	ID      string   `json:"id"`
+-	Name    string   `json:"name"`
+-	BaseURL string   `json:"baseUrl"`
+-	APIKey  string   `json:"apiKey"`
+-	Models  []string `json:"models"`
++	ID       string   `json:"id"`
++	Name     string   `json:"name"`
++	BaseURL  string   `json:"baseUrl"`
++	APIKey   string   `json:"apiKey"`
++	Models   []string `json:"models"`
++	Protocol string   `json:"protocol"`
+ }
+@@ -90,10 +91,11 @@ func SelectUserLocalModelChannelForModel(userID string, modelName string, channe
+ 		return model.ModelChannel{
+-			ID:      channelID,
+-			Name:    firstVideoTaskValue(strings.TrimSpace(channel.Name), "本地直连"),
+-			BaseURL: baseURL,
+-			APIKey:  apiKey,
+-			Models:  models,
+-			Weight:  1,
+-			Timeout: 600,
+-			Enabled: true,
++			ID:       channelID,
++			Name:     firstVideoTaskValue(strings.TrimSpace(channel.Name), "本地直连"),
++			BaseURL:  baseURL,
++			APIKey:   apiKey,
++			Models:   models,
++			Protocol: strings.TrimSpace(channel.Protocol),
++			Weight:   1,
++			Timeout:  600,
++			Enabled:  true,
+ 		}, nil
+diff --git a/service/video_task.go b/service/video_task.go
+index 0bf00d1..a7de7c6 100644
+--- a/service/video_task.go
++++ b/service/video_task.go
+@@ -307,9 +307,9 @@ func NormalizeVideoTaskStatus(status string) string {
+ 	switch strings.ToLower(strings.TrimSpace(status)) {
+-	case "completed", "complete", "done", "succeeded", "success":
++	case "completed", "complete", "done", "succeeded", "success", "已完成", "完成", "成功", "生成成功":
+ 		return "completed"
+-	case "failed", "fail", "error", "cancelled", "canceled":
++	case "failed", "fail", "error", "cancelled", "canceled", "失败", "生成失败", "已取消", "取消":
+ 		return "failed"
+-	case "running", "processing", "in_progress", "in-progress":
++	case "running", "processing", "in_progress", "in-progress", "生成中", "处理中", "执行中", "创作中":
+ 		return "processing"
+-	case "queued", "queue", "pending", "":
++	case "queued", "queue", "pending", "排队中", "等待中", "待处理", "":
+ 		return "queued"
+diff --git a/repository/video_task.go b/repository/video_task.go
+index 62c9b59..347d9e2 100644
+--- a/repository/video_task.go
++++ b/repository/video_task.go
+@@ -4,2 +4,4 @@ import "github.com/tigerowo/infinite-canvas/model"
+ 
++var activeVideoTaskStatuses = []string{"queued", "in_progress", "processing", "running", "生成中", "处理中", "执行中", "创作中", "排队中", "等待中", "待处理"}
++
+ func SaveVideoTask(task model.VideoTask) (model.VideoTask, error) {
+@@ -56,3 +58,3 @@ func ListUserVideoTasks(userID string, source string, limit int) ([]model.VideoT
+ 	err = query.
+-		Where("status IN ?", []string{"queued", "in_progress", "processing", "running"}).
++		Where("status IN ?", activeVideoTaskStatuses).
+ 		Order("created_at DESC").
+@@ -80,3 +82,3 @@ func ListDueVideoTasks(limit int) ([]model.VideoTask, error) {
+ 	var tasks []model.VideoTask
+-	err = db.Where("status IN ?", []string{"queued", "in_progress", "processing", "running"}).
++	err = db.Where("status IN ?", activeVideoTaskStatuses).
+ 		Order("created_at ASC").
+diff --git a/web/src/services/api/video.ts b/web/src/services/api/video.ts
+index a60c346..95ec387 100644
+--- a/web/src/services/api/video.ts
++++ b/web/src/services/api/video.ts
+@@ -632,3 +632,3 @@ function firstString(...values: unknown[]) {
+ function isCompletedVideoStatus(status?: string) {
+-    return ["completed", "complete", "done", "succeeded", "success"].includes((status || "").toLowerCase());
++    return ["completed", "complete", "done", "succeeded", "success", "已完成", "完成", "成功", "生成成功"].includes((status || "").toLowerCase());
+ }
+@@ -636,3 +636,3 @@ function isCompletedVideoStatus(status?: string) {
+ function isFailedVideoStatus(status?: string) {
+-    return ["failed", "fail", "error", "cancelled", "canceled"].includes((status || "").toLowerCase());
++    return ["failed", "fail", "error", "cancelled", "canceled", "失败", "生成失败", "已取消", "取消"].includes((status || "").toLowerCase());
+ }
+diff --git a/web/src/app/(user)/canvas/components/asset-picker-modal.tsx b/web/src/app/(user)/canvas/components/asset-picker-modal.tsx
+index 3205a0e..7b80ba2 100644
+--- a/web/src/app/(user)/canvas/components/asset-picker-modal.tsx
++++ b/web/src/app/(user)/canvas/components/asset-picker-modal.tsx
+@@ -5,3 +5,3 @@ import { useQuery } from "@tanstack/react-query";
+ import { App, Button, Empty, Input, Modal, Pagination, Spin, Tabs, Tag } from "antd";
+-import { ImagePlus, Plus, Search } from "lucide-react";
++import { ImagePlus, Plus, Search, Trash2 } from "lucide-react";
+ 
+@@ -152,10 +152,6 @@ function LibraryTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => v
+ 
+-function PickerCard({ title, kind, cover, loading, onClick }: { title: string; kind: string; cover: string; loading?: boolean; onClick: () => void }) {
++function PickerCard({ title, kind, cover, loading, onClick, onDelete }: { title: string; kind: string; cover: string; loading?: boolean; onClick: () => void; onDelete?: () => void }) {
+     return (
+-        <button
+-            type="button"
+-            className="group relative cursor-pointer overflow-hidden rounded-lg border border-stone-200 bg-white text-left transition hover:border-stone-400 hover:shadow-md dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-500"
+-            onClick={onClick}
+-            disabled={loading}
+-        >
++        <div className="group relative">
++            <button type="button" className="relative w-full cursor-pointer overflow-hidden rounded-lg border border-stone-200 bg-white text-left transition hover:border-stone-400 hover:shadow-md dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-500" onClick={onClick} disabled={loading}>
+             {cover ? (
+@@ -177,3 +173,5 @@ function PickerCard({ title, kind, cover, loading, onClick }: { title: string; k
+             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-stone-950/0 text-sm font-medium text-white opacity-0 transition group-hover:bg-stone-950/55 group-hover:opacity-100">插入</div>
+-        </button>
++            </button>
++            {onDelete ? <button type="button" title="删除素材" className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-black/65 text-white opacity-0 transition hover:bg-red-600 group-hover:opacity-100" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onDelete(); }}><Trash2 className="size-4" /></button> : null}
++        </div>
+     );
+@@ -182,5 +180,6 @@ function PickerCard({ title, kind, cover, loading, onClick }: { title: string; k
+ function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => void }) {
+-    const { message } = App.useApp();
++    const { message, modal } = App.useApp();
+     const assets = useAssetStore((state) => state.assets);
+     const addAsset = useAssetStore((state) => state.addAsset);
++    const removeAsset = useAssetStore((state) => state.removeAsset);
+     const [keyword, setKeyword] = useState("");
+@@ -342,3 +341,3 @@ function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) =>
+                     {visible.map((asset) => (
+-                        <PickerCard key={asset.id} title={asset.title} kind={asset.kind} cover={asset.coverUrl || (asset.kind === "image" ? asset.data.dataUrl : "")} onClick={() => handleInsert(asset)} />
++                        <PickerCard key={asset.id} title={asset.title} kind={asset.kind} cover={asset.coverUrl || (asset.kind === "image" ? asset.data.dataUrl : "")} onClick={() => handleInsert(asset)} onDelete={() => modal.confirm({ title: "删除素材？", content: `确定删除「${asset.title}」吗？`, okText: "删除", okButtonProps: { danger: true }, cancelText: "取消", onOk: () => { removeAsset(asset.id); message.success("素材已删除"); } })} />
+                     ))}
+diff --git a/web/src/app/(user)/canvas/components/canvas-side-panel.tsx b/web/src/app/(user)/canvas/components/canvas-side-panel.tsx
+index 6e2cf84..3a947f4 100644
+--- a/web/src/app/(user)/canvas/components/canvas-side-panel.tsx
++++ b/web/src/app/(user)/canvas/components/canvas-side-panel.tsx
+@@ -3,5 +3,5 @@
+ import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+-import { Empty, Input, Pagination, Select, Spin } from "antd";
++import { App, Empty, Input, Pagination, Select, Spin } from "antd";
+ import { useQuery } from "@tanstack/react-query";
+-import { BookOpen, ChevronRight, Clapperboard, Eye, FileText, Group, Image as ImageIcon, Music2, Plus, Search, Settings2, Type, Video } from "lucide-react";
++import { BookOpen, ChevronRight, Clapperboard, Eye, FileText, Group, Image as ImageIcon, Music2, Plus, Search, Settings2, Trash2, Type, Video } from "lucide-react";
+ import { motion } from "motion/react";
+@@ -272,3 +272,5 @@ function AssetSourceTab({ label, active, theme, onClick }: { label: string; acti
+ function MyAssetsTab({ theme, onAdd, onAssetDragStart, onAssetDragEnd }: { theme: CanvasTheme; onAdd: () => void; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void }) {
++    const { modal, message } = App.useApp();
+     const assets = useAssetStore((state) => state.assets);
++    const removeAsset = useAssetStore((state) => state.removeAsset);
+     const [keyword, setKeyword] = useState("");
+@@ -293,3 +295,3 @@ function MyAssetsTab({ theme, onAdd, onAssetDragStart, onAssetDragEnd }: { theme
+             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+-                {filtered.length ? <div className="grid grid-cols-2 gap-2 px-1 pt-1">{filtered.map((asset) => <AssetDragCard key={asset.id} asset={asset} theme={theme} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} />)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无素材" className="pt-16" />}
++                {filtered.length ? <div className="grid grid-cols-2 gap-2 px-1 pt-1">{filtered.map((asset) => <AssetDragCard key={asset.id} asset={asset} theme={theme} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} onDelete={() => modal.confirm({ title: "删除素材？", content: `确定删除「${asset.title}」吗？`, okText: "删除", okButtonProps: { danger: true }, cancelText: "取消", onOk: () => { removeAsset(asset.id); message.success("素材已删除"); } })} />)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无素材" className="pt-16" />}
+             </div>
+@@ -326,4 +328,4 @@ function LibraryAssetsTab({ theme, onAssetDragStart, onAssetDragEnd }: { theme:
+ 
+-function AssetDragCard({ asset, theme, onAssetDragStart, onAssetDragEnd }: { asset: Asset; theme: CanvasTheme; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void }) {
+-    return <DraggableAssetCard theme={theme} title={asset.title} payload={assetPayload(asset)} kind={asset.kind} imageUrl={asset.kind === "text" ? asset.coverUrl : asset.kind === "image" ? asset.coverUrl || asset.data.dataUrl : asset.kind === "video" ? asset.coverUrl || asset.data.url : ""} text={asset.kind === "text" ? asset.data.content : ""} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} />;
++function AssetDragCard({ asset, theme, onAssetDragStart, onAssetDragEnd, onDelete }: { asset: Asset; theme: CanvasTheme; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void; onDelete: () => void }) {
++    return <DraggableAssetCard theme={theme} title={asset.title} payload={assetPayload(asset)} kind={asset.kind} imageUrl={asset.kind === "text" ? asset.coverUrl : asset.kind === "image" ? asset.coverUrl || asset.data.dataUrl : asset.kind === "video" ? asset.coverUrl || asset.data.url : ""} text={asset.kind === "text" ? asset.data.content : ""} onAssetDragStart={onAssetDragStart} onAssetDragEnd={onAssetDragEnd} onDelete={onDelete} />;
+ }
+@@ -334,3 +336,3 @@ function LibraryAssetDragCard({ asset, theme, onAssetDragStart, onAssetDragEnd }
+ 
+-function DraggableAssetCard({ theme, title, payload, kind, imageUrl, text, onAssetDragStart, onAssetDragEnd }: { theme: CanvasTheme; title: string; payload: InsertAssetPayload; kind: "text" | "image" | "video" | "audio"; imageUrl: string; text: string; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void }) {
++function DraggableAssetCard({ theme, title, payload, kind, imageUrl, text, onAssetDragStart, onAssetDragEnd, onDelete }: { theme: CanvasTheme; title: string; payload: InsertAssetPayload; kind: "text" | "image" | "video" | "audio"; imageUrl: string; text: string; onAssetDragStart: (payload: InsertAssetPayload) => void; onAssetDragEnd: () => void; onDelete?: () => void }) {
+     return (
+@@ -349,2 +351,3 @@ function DraggableAssetCard({ theme, title, payload, kind, imageUrl, text, onAss
+             {kind === "text" ? imageUrl ? <div className="flex size-full flex-col"><img src={imageUrl} alt={title} className="h-1/2 w-full object-cover" /><div className="h-1/2 overflow-hidden whitespace-pre-wrap break-words p-2.5 text-[11px] leading-snug opacity-80">{text}</div></div> : <div className="size-full overflow-hidden whitespace-pre-wrap break-words p-2.5 text-[11px] leading-snug opacity-80">{text}</div> : kind === "audio" ? <span className="grid size-full place-items-center"><Music2 className="size-8 opacity-45" /></span> : imageUrl ? kind === "video" ? <video src={imageUrl + "#t=0.1"} muted playsInline preload="metadata" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" /> : <img src={imageUrl} alt={title} className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" /> : <span className="grid size-full place-items-center"><FileText className="size-8 opacity-45" /></span>}
++            {onDelete ? <button type="button" draggable={false} title="删除素材" className="absolute right-1.5 top-1.5 z-10 grid size-7 place-items-center rounded-full bg-black/65 text-white opacity-0 transition hover:bg-red-600 group-hover:opacity-100" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onDelete(); }}><Trash2 className="size-3.5" /></button> : null}
+         </div>
+diff --git a/web/src/stores/use-config-store.ts b/web/src/stores/use-config-store.ts
+index 14f221b..02c5425 100644
+--- a/web/src/stores/use-config-store.ts
++++ b/web/src/stores/use-config-store.ts
+@@ -16,2 +16,3 @@ export type LocalModelChannel = {
+     models: string[];
++    protocol?: string;
+ };
+@@ -446,5 +447,6 @@ export function normalizeLocalChannels(config: Partial<AiConfig>) {
+         models: Array.isArray(channel.models) ? channel.models.filter(Boolean) : [],
++        protocol: typeof channel.protocol === "string" ? channel.protocol : "",
+     }));
+     if (!normalized.length) {
+-        normalized.push({ id: "local-default", name: "本地直连", baseUrl: config.baseUrl || defaultConfig.baseUrl, apiKey: config.apiKey || "", models: Array.isArray(config.models) ? config.models.filter(Boolean) : [] });
++        normalized.push({ id: "local-default", name: "本地直连", baseUrl: config.baseUrl || defaultConfig.baseUrl, apiKey: config.apiKey || "", models: Array.isArray(config.models) ? config.models.filter(Boolean) : [], protocol: "" });
+     }
+@@ -454,11 +456,17 @@ export function normalizeLocalChannels(config: Partial<AiConfig>) {
+ export function channelIdForActiveModel(config: AiConfig) {
+-    if (modelMatchesCapability(config.model, "image") && config.imageChannelId) return config.imageChannelId;
+-    if (modelMatchesCapability(config.model, "video") && config.videoChannelId) return config.videoChannelId;
+-    if (modelMatchesCapability(config.model, "audio") && config.audioChannelId) return config.audioChannelId;
+-    if (modelMatchesCapability(config.model, "text") && config.textChannelId) return config.textChannelId;
+-    if (config.activeChannelId) return config.activeChannelId;
+-    if (config.model === config.videoModel) return config.videoChannelId;
+-    if (config.model === config.textModel) return config.textChannelId;
+-    if (config.model === config.audioModel) return config.audioChannelId;
+-    return config.imageChannelId;
++    const preferredId = modelMatchesCapability(config.model, "image")
++        ? config.imageChannelId
++        : modelMatchesCapability(config.model, "video")
++          ? config.videoChannelId
++          : modelMatchesCapability(config.model, "audio")
++            ? config.audioChannelId
++            : modelMatchesCapability(config.model, "text")
++              ? config.textChannelId
++              : config.activeChannelId || (config.model === config.videoModel ? config.videoChannelId : config.model === config.textModel ? config.textChannelId : config.model === config.audioModel ? config.audioChannelId : config.imageChannelId);
++    if (config.channelMode !== "local") return preferredId;
++
++    const channels = normalizeLocalChannels(config);
++    const preferred = channels.find((channel) => channel.id === preferredId && channel.models.includes(config.model));
++    if (preferred) return preferred.id;
++    return channels.find((channel) => channel.models.includes(config.model))?.id || preferredId;
+ }
+diff --git a/handler/workbench_channel.go b/handler/workbench_channel.go
+new file mode 100644
+index 0000000..07390be
+--- /dev/null
++++ b/handler/workbench_channel.go
+@@ -0,0 +1,164 @@
++package handler
++
++import (
++	"encoding/json"
++	"fmt"
++	"strings"
++
++	"github.com/tigerowo/infinite-canvas/model"
++)
++
++func workbenchProtocol(channel model.ModelChannel) string {
++	value := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(channel.Protocol)), "workbench-")
++	switch value {
++	case "pix", "kwjm", "exchangetoken", "modeltop", "custom":
++		return value
++	default:
++		return ""
++	}
++}
++
++func isWorkbenchChannel(channel model.ModelChannel) bool { return workbenchProtocol(channel) != "" }
++
++func normalizeWorkbenchRequestBody(body []byte, contentType, modelName string, channel model.ModelChannel, upstreamPath string) ([]byte, string, error) {
++	payload, err := readAPIMartPayload(body, contentType, channel)
++	if err != nil {
++		return body, contentType, err
++	}
++	protocol := workbenchProtocol(channel)
++	if protocol == "pix" && (upstreamPath == "/images/generations" || upstreamPath == "/images/edits") {
++		normalized := normalizeWorkbenchPixImage(payload, modelName)
++		if images, ok := normalized["images"].([]string); ok && len(images) > workbenchPixImageReferenceLimit(modelName) {
++			return body, contentType, fmt.Errorf("PIX %s 最多支持 %d 张参考图，当前绑定了 %d 张", firstNonEmpty(modelName, "image model"), workbenchPixImageReferenceLimit(modelName), len(images))
++		}
++		return encodeWorkbenchPayload(normalized)
++	}
++	if upstreamPath == "/videos/generations" && (protocol == "pix" || protocol == "kwjm") {
++		return encodeWorkbenchPayload(normalizeWorkbenchVideo(payload, modelName, protocol))
++	}
++	return body, contentType, nil
++}
++
++func encodeWorkbenchPayload(payload map[string]any) ([]byte, string, error) {
++	encoded, err := json.Marshal(payload)
++	return encoded, "application/json", err
++}
++
++func normalizeWorkbenchPixImage(payload map[string]any, modelName string) map[string]any {
++	images := workbenchReferences(payload, "image", "images", "image_urls", "input_reference", "input_reference[]")
++	result := map[string]any{
++		"model":  firstNonEmpty(modelName, toStringSafe(payload["model"])),
++		"prompt": toStringSafe(payload["prompt"]),
++		"mode":   "text-to-image",
++		"count":  workbenchNumber(payload, "n", "count", 1),
++	}
++	for _, key := range []string{"size", "quality", "aspect_ratio", "thinking_level", "bot_type", "chaos", "version"} {
++		if value, ok := payload[key]; ok && !isEmptyValue(value) {
++			result[key] = value
++		}
++	}
++	if len(images) > 0 {
++		result["mode"] = "image-edit"
++		if len(images) > 1 {
++			result["mode"] = "multi-reference"
++		}
++		result["images"] = images
++	}
++	return result
++}
++
++func workbenchPixImageReferenceLimit(modelName string) int {
++	modelName = strings.ToLower(strings.TrimSpace(modelName))
++	if strings.Contains(modelName, "mj_imagine") {
++		return 4
++	}
++	if strings.Contains(modelName, "gemini") {
++		return 14
++	}
++	return 16
++}
++
++func normalizeWorkbenchVideo(payload map[string]any, modelName, protocol string) map[string]any {
++	firstFrames := workbenchReferences(payload, "first_frame_url", "first_frame_image")
++	lastFrames := workbenchReferences(payload, "last_frame_url", "last_frame_image")
++	references := workbenchReferences(payload, "input_reference", "input_reference[]", "image", "images")
++	prompt := toStringSafe(payload["prompt"])
++	duration := workbenchNumber(payload, "seconds", "duration", 5)
++	ratio := firstNonEmpty(toStringSafe(payload["size"]), toStringSafe(payload["aspect_ratio"]), "16:9")
++	resolution := firstNonEmpty(toStringSafe(payload["resolution_name"]), toStringSafe(payload["resolution"]), "720p")
++	if protocol == "kwjm" {
++		model := "kw-video-v2"
++		if strings.Contains(strings.ToLower(modelName), "fast") {
++			model = "kw-video-v2-fast"
++		}
++		content := []any{map[string]any{"type": "text", "text": prompt}}
++		for _, value := range firstFrames {
++			content = append(content, workbenchContent("image", value, "first_frame"))
++		}
++		for _, value := range lastFrames {
++			content = append(content, workbenchContent("image", value, "last_frame"))
++		}
++		for _, value := range references {
++			content = append(content, workbenchContent("image", value, "reference_image"))
++		}
++		return map[string]any{"model": model, "content": content, "generate_audio": workbenchBool(payload["video_generate_audio"]), "resolution": resolution, "ratio": ratio, "duration": duration, "watermark": false}
++	}
++	images := append(append(firstFrames, lastFrames...), references...)
++	mode := "text-to-video"
++	if len(firstFrames) > 0 && len(lastFrames) > 0 {
++		mode = "first-last"
++	} else if len(firstFrames) > 0 {
++		mode = "first-frame"
++	} else if len(images) > 0 {
++		mode = "reference"
++	}
++	pixModel := firstNonEmpty(modelName, "seedance-2-0-official")
++	if strings.HasPrefix(strings.ToLower(pixModel), "seedance-2.0") {
++		pixModel = "seedance-2-0-official"
++	}
++	result := map[string]any{"model": pixModel, "prompt": prompt, "mode": mode, "aspect_ratio": ratio, "duration": duration, "count": 1, "resolution": resolution}
++	if len(images) > 0 {
++		result["images"] = images
++	}
++	return result
++}
++
++func workbenchContent(kind, value, role string) map[string]any {
++	key := kind + "_url"
++	return map[string]any{"type": key, key: map[string]any{"url": value}, "role": role}
++}
++
++func workbenchReferences(payload map[string]any, keys ...string) []string {
++	var result []string
++	seen := map[string]bool{}
++	for _, key := range keys {
++		for _, value := range collectAPIMartReferenceStrings(payload[key], 0) {
++			value = strings.TrimSpace(value)
++			if value != "" && !seen[value] {
++				result = append(result, value)
++				seen[value] = true
++			}
++		}
++	}
++	return result
++}
++
++func workbenchNumber(payload map[string]any, primary, secondary string, fallback int) int {
++	for _, key := range []string{primary, secondary} {
++		if value := strings.TrimSpace(toStringSafe(payload[key])); value != "" {
++			var number int
++			if _, err := fmt.Sscanf(value, "%d", &number); err == nil && number > 0 {
++				return number
++			}
++		}
++	}
++	return fallback
++}
++
++func workbenchBool(value any) bool {
++	switch strings.ToLower(strings.TrimSpace(toStringSafe(value))) {
++	case "1", "true", "yes", "on":
++		return true
++	}
++	return false
++}
+diff --git a/handler/workbench_channel_test.go b/handler/workbench_channel_test.go
+new file mode 100644
+index 0000000..167cba0
+--- /dev/null
++++ b/handler/workbench_channel_test.go
+@@ -0,0 +1,123 @@
++package handler
++
++import (
++	"encoding/json"
++	"fmt"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	"github.com/tigerowo/infinite-canvas/model"
++)
++
++func TestWorkbenchPixUploadUsesFilesEndpoint(t *testing.T) {
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path != "/v1/files" {
++			t.Fatalf("upload path = %q", r.URL.Path)
++		}
++		if _, err := io.ReadAll(r.Body); err != nil {
++			t.Fatal(err)
++		}
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = w.Write([]byte(`{"data":{"file":{"url":"https://cdn.example.com/input.png"}}}`))
++	}))
++	defer server.Close()
++	got, err := uploadAPIMartImageBytes(model.ModelChannel{BaseURL: server.URL, APIKey: "test", Protocol: "workbench-pix"}, []byte("png"), "input.png", "image/png")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got != "https://cdn.example.com/input.png" {
++		t.Fatalf("upload URL = %q", got)
++	}
++}
++
++func TestResolveWorkbenchPaths(t *testing.T) {
++	tests := []struct{ protocol, path, want string }{
++		{"workbench-kwjm", "/videos", "/videos/generations"},
++		{"workbench-kwjm", "/videos/job-1", "/videos/generations/job-1"},
++		{"workbench-pix", "/images/edits", "/images/generations"},
++		{"workbench-pix", "/videos/job 1", "/skills/task-status?task_id=job+1"},
++		{"workbench-exchangetoken", "/videos", "/contents/generations/tasks"},
++	}
++	for _, test := range tests {
++		got := resolveAIProxyPath(model.ModelChannel{Protocol: test.protocol}, "seedance-2.0", test.path)
++		if got != test.want {
++			t.Fatalf("%s %s: got %q, want %q", test.protocol, test.path, got, test.want)
++		}
++	}
++}
++
++func TestNormalizeWorkbenchVideoBodies(t *testing.T) {
++	body := []byte(`{"prompt":"跳舞","seconds":"8","size":"9:16","resolution_name":"720p","video_generate_audio":"true"}`)
++	kwjm, _, err := normalizeWorkbenchRequestBody(body, "application/json", "seedance-2.0-fast", model.ModelChannel{Protocol: "workbench-kwjm"}, "/videos/generations")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var kwjmPayload map[string]any
++	if err := json.Unmarshal(kwjm, &kwjmPayload); err != nil {
++		t.Fatal(err)
++	}
++	if kwjmPayload["model"] != "kw-video-v2-fast" || kwjmPayload["ratio"] != "9:16" || kwjmPayload["generate_audio"] != true {
++		t.Fatalf("unexpected KWJM body: %s", kwjm)
++	}
++
++	pix, _, err := normalizeWorkbenchRequestBody(body, "application/json", "seedance-2.0", model.ModelChannel{Protocol: "workbench-pix"}, "/videos/generations")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var pixPayload map[string]any
++	if err := json.Unmarshal(pix, &pixPayload); err != nil {
++		t.Fatal(err)
++	}
++	if pixPayload["model"] != "seedance-2-0-official" || pixPayload["mode"] != "text-to-video" || pixPayload["aspect_ratio"] != "9:16" {
++		t.Fatalf("unexpected PIX body: %s", pix)
++	}
++}
++
++func TestNormalizeWorkbenchPixImageEdit(t *testing.T) {
++	body := []byte(`{"model":"gpt-image-2","prompt":"换成白发","n":2,"image":["https://example.com/a.png"]}`)
++	got, _, err := normalizeWorkbenchRequestBody(body, "application/json", "gpt-image-2", model.ModelChannel{Protocol: "workbench-pix"}, "/images/generations")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var payload map[string]any
++	if err := json.Unmarshal(got, &payload); err != nil {
++		t.Fatal(err)
++	}
++	if payload["mode"] != "image-edit" || payload["count"] != float64(2) {
++		t.Fatalf("unexpected PIX image body: %s", got)
++	}
++}
++
++func TestNormalizeWorkbenchPixImageMultiReference(t *testing.T) {
++	body := []byte(`{"model":"gpt-image-2","prompt":"组合人物和场景","image":["https://example.com/a.png","https://example.com/b.png"]}`)
++	got, _, err := normalizeWorkbenchRequestBody(body, "application/json", "gpt-image-2", model.ModelChannel{Protocol: "workbench-pix"}, "/images/generations")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var payload map[string]any
++	if err := json.Unmarshal(got, &payload); err != nil {
++		t.Fatal(err)
++	}
++	if payload["mode"] != "multi-reference" {
++		t.Fatalf("unexpected PIX multi-reference body: %s", got)
++	}
++	if images, ok := payload["images"].([]any); !ok || len(images) != 2 {
++		t.Fatalf("unexpected PIX image references: %s", got)
++	}
++}
++
++func TestNormalizeWorkbenchPixImageRejectsTooManyReferences(t *testing.T) {
++	images := make([]string, 17)
++	for index := range images {
++		images[index] = fmt.Sprintf("https://example.com/%d.png", index)
++	}
++	body, err := json.Marshal(map[string]any{"model": "gpt-image-2", "prompt": "组合素材", "images": images})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, _, err := normalizeWorkbenchRequestBody(body, "application/json", "gpt-image-2", model.ModelChannel{Protocol: "workbench-pix"}, "/images/generations"); err == nil {
++		t.Fatal("expected reference limit error")
++	}
++}
+diff --git a/service/video_task_test.go b/service/video_task_test.go
+new file mode 100644
+index 0000000..a277501
+--- /dev/null
++++ b/service/video_task_test.go
+@@ -0,0 +1,19 @@
++package service
++
++import "testing"
++
++func TestNormalizeVideoTaskStatusChineseProviderValues(t *testing.T) {
++	tests := map[string]string{
++		"生成中":  "processing",
++		"处理中":  "processing",
++		"排队中":  "queued",
++		"生成成功": "completed",
++		"已完成":  "completed",
++		"生成失败": "failed",
++	}
++	for input, want := range tests {
++		if got := NormalizeVideoTaskStatus(input); got != want {
++			t.Fatalf("NormalizeVideoTaskStatus(%q) = %q, want %q", input, got, want)
++		}
++	}
++}
+
